@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api.php", "destination": "/api/app" },
+    { "source": "/export_csv.php", "destination": "/api/export_csv" },
+    { "source": "/export_xlsx.php", "destination": "/api/export_xlsx" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
