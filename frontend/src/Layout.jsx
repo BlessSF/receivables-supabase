@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { getBranding, applyTabBranding } from './branding';
 import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconLogout } from './icons';
 
 const NAV_GROUPS = [
@@ -29,18 +31,34 @@ const NAV_GROUPS = [
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const displayName = user?.full_name || user?.username || '';
+  const brand = getBranding(user);
+  const displayName = brand.displayName;
+
+  useEffect(() => {
+    applyTabBranding(brand);
+    return () => applyTabBranding(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand.name, brand.initial, brand.color]);
 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">M</span>
-          <div>
-            <div className="brand-name">Multipliers</div>
+        {brand.logo ? (
+          <div className="brand brand-custom" data-initial={brand.initial} style={{ '--brand-color': brand.color }} title={brand.name}>
+            <div className="brand-logo-card">
+              <img src={brand.logo} alt={brand.name} />
+            </div>
             <div className="brand-sub">Receivables Management</div>
           </div>
-        </div>
+        ) : (
+          <div className="brand">
+            <span className="brand-mark">{brand.initial}</span>
+            <div>
+              <div className="brand-name">{brand.name}</div>
+              <div className="brand-sub">Receivables Management</div>
+            </div>
+          </div>
+        )}
         <nav className="sidebar-nav">
           {NAV_GROUPS.map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
@@ -68,7 +86,7 @@ export default function Layout() {
               <div className="sidebar-role">{user?.is_admin ? 'Admin · all branches' : `${user?.username} branch`}</div>
             </div>
           </div>
-          <button className="logout-btn" onClick={logout}><IconLogout /> Log out</button>
+          <button className="logout-btn" onClick={logout} title="Log out"><IconLogout /> Log out</button>
         </div>
       </aside>
       <main className="main">

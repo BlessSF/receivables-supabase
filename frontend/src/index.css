@@ -182,16 +182,17 @@ button { font-family: inherit; }
 .panel h2 { margin: 0 0 16px; font-size: 16px; font-weight: 600; letter-spacing: -0.005em; }
 
 /* Panels that hold a table run edge to edge so the ruled lines reach the border. */
-.panel:has(> .table-wrap) { padding: 0; overflow: hidden; }
+.panel:has(> .table-wrap) { padding: 0; overflow: clip; }
 .panel:has(> .table-wrap) > h2 { padding: 20px 24px 14px; margin: 0; }
 .panel:has(> .table-wrap) > .table-toolbar { padding: 16px 24px; margin: 0; border-bottom: 1px solid var(--line); }
 
 /* ---------- Summary tiles (light) ---------- */
 .kpi-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 16px; margin-bottom: 24px;
 }
 .kpi-card {
+  min-width: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 18px 20px 18px 22px; position: relative; overflow: hidden;
 }
@@ -203,8 +204,8 @@ button { font-family: inherit; }
 .kpi-card.accent-amber::before { background: var(--amber); }
 .kpi-label { font-size: 13px; color: var(--slate); font-weight: 500; margin-bottom: 8px; }
 .kpi-value {
-  font-family: var(--font-display); font-size: 30px; font-weight: 500; line-height: 1.1; letter-spacing: -0.01em;
-  font-variant-numeric: lining-nums;
+  font-family: var(--font-display); font-size: clamp(20px, 1.75vw, 30px); font-weight: 500; line-height: 1.15; letter-spacing: -0.01em;
+  font-variant-numeric: lining-nums; overflow-wrap: anywhere;
 }
 .kpi-card.accent-red .kpi-value { color: var(--brick); }
 .kpi-sub { font-size: 12.5px; color: var(--slate); margin-top: 8px; }
@@ -306,21 +307,32 @@ button { font-family: inherit; }
 .activity-amount { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
 .activity-time { font-size: 12px; color: var(--slate); margin-top: 2px; }
 
-/* ---------- Tables ---------- */
-.table-wrap { overflow: auto; max-height: 72vh; }
-.data-table { min-width: 100%; width: max-content; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+/* ---------- Tables ----------
+   Tables fill the panel width and wrap long text instead of scrolling
+   sideways. Money/number cells never wrap so figures stay on one line.
+   The header row sticks to the top of the window while you scroll the page. */
+.table-wrap { overflow: visible; }
+.data-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: clamp(12px, 0.78vw, 13.5px);
+}
 .data-table th {
   position: sticky; top: 0; z-index: 2;
-  text-align: left; padding: 12px 14px; font-size: 12.5px; font-weight: 600;
+  text-align: left; padding: 10px 10px; font-size: clamp(11.5px, 0.72vw, 12.5px); font-weight: 600; line-height: 1.3;
   color: var(--slate); background: var(--panel-tint);
-  border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+  border-bottom: 1px solid var(--line-strong); white-space: normal; vertical-align: bottom;
 }
 .data-table td {
-  padding: 12px 14px; border-bottom: 1px solid var(--line);
-  vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums;
+  padding: 10px 10px; border-bottom: 1px solid var(--line);
+  vertical-align: middle; white-space: normal; overflow-wrap: break-word; font-variant-numeric: tabular-nums;
 }
-.data-table th:first-child, .data-table td:first-child { padding-left: 24px; }
-.data-table th:last-child, .data-table td:last-child { padding-right: 24px; }
+.data-table td.num, .data-table td.text-right, .data-table .nowrap { white-space: nowrap; }
+.data-table td .badge { white-space: nowrap; }
+.data-table td:has(> .badge) { white-space: normal; }
+.data-table td > .badge + .badge, .data-table td > .badge ~ .badge { margin-top: 3px; }
+.data-table td:has(> .btn) { white-space: nowrap; width: 1%; }
+.data-table th:first-child, .data-table td:first-child { padding-left: 20px; }
+.data-table th:last-child, .data-table td:last-child { padding-right: 20px; }
 .data-table tbody tr { transition: background 0.08s ease; }
 .data-table tbody tr:hover { background: #f5f8f8; }
 .data-table tbody tr:last-child td { border-bottom: none; }
@@ -372,17 +384,27 @@ button { font-family: inherit; }
 }
 .check input { width: 16px; height: 16px; accent-color: var(--teal); margin: 0; cursor: pointer; }
 
-/* Editable ledger cells */
+/* Editable ledger cells -- inputs fill their column and shrink with it */
 .editable-cell input, .editable-cell select {
-  border: 1px solid transparent; background: transparent; font: inherit; font-size: 13.5px; color: var(--ink);
-  padding: 6px 8px; border-radius: 6px; width: auto; min-width: 84px; font-variant-numeric: tabular-nums;
+  border: 1px solid transparent; background: transparent; font: inherit; font-size: inherit; color: var(--ink);
+  padding: 5px 6px; border-radius: 6px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums;
 }
-.editable-cell input[type="date"] { min-width: 140px; }
-.editable-cell input.num, .editable-cell input.mono { text-align: right; min-width: 104px; }
+.editable-cell input[type="date"] { padding-right: 2px; }
+.editable-cell input.num, .editable-cell input.mono { text-align: right; padding-left: 3px; padding-right: 4px; }
 .editable-cell input:hover, .editable-cell select:hover { border-color: var(--line-strong); background: #fff; }
-.editable-cell input:focus, .editable-cell select:focus { border-color: var(--teal); background: #fff; outline: none; box-shadow: var(--ring); min-width: 150px; }
+.editable-cell input:focus, .editable-cell select:focus { border-color: var(--teal); background: #fff; outline: none; box-shadow: var(--ring); }
 .editable-cell.saving input { background: var(--amber-soft); }
 .editable-cell.saved input { background: var(--teal-soft); }
+.data-table td:has(> .editable-cell) { padding-left: 4px; padding-right: 4px; }
+.data-table td:first-child:has(> .editable-cell) { padding-left: 14px; }
+/* Ledger grid: fixed column widths from <colgroup>, cells truncate instead of widening the table */
+.ledger-table { table-layout: fixed; }
+.ledger-table th { overflow-wrap: normal; word-break: normal; hyphens: auto; -webkit-hyphens: auto; }
+.ledger-table td { overflow: hidden; text-overflow: ellipsis; }
+.ledger-table td .badge { white-space: normal; line-height: 1.25; }
+.ledger-table td.cell-action { width: auto; padding-left: 2px; padding-right: 12px; text-align: center; overflow: visible; }
+.btn-icon { width: 28px; height: 28px; padding: 0; font-size: 16px; }
+.editable-cell input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 2px; padding: 0; cursor: pointer; opacity: 0.6; }
 
 /* ---------- Badges ---------- */
 .badge {
@@ -528,6 +550,57 @@ button { font-family: inherit; }
 
 * { scrollbar-width: thin; scrollbar-color: #c3ccd4 transparent; }
 
+/* ---------- Custom account logo (e.g. Demic Lab) ---------- */
+.brand-custom { flex-direction: column; align-items: stretch; gap: 8px; }
+.brand-logo-card {
+  background: #fff; border-radius: 10px; padding: 10px 12px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.brand-logo-card img { display: block; width: 100%; max-width: 190px; height: auto; }
+.brand-custom .brand-sub { padding-left: 2px; }
+
+/* ---------- Back links (← Back to …) ---------- */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px; margin-bottom: 12px;
+  border-radius: 999px; font-weight: 600; color: var(--ink-soft);
+}
+.back-link:hover { color: var(--teal-strong); border-color: var(--teal); background: var(--teal-soft); text-decoration: none; }
+
+/* Page header actions wrap neatly instead of pushing the page wider */
+.page-header > div { min-width: 0; }
+.page-header h1 { overflow-wrap: anywhere; }
+
+/* ---------- Compact sidebar (laptops): icons only, more room for tables ---------- */
+@media (max-width: 1440px) and (min-width: 781px) {
+  .sidebar { width: 72px; padding: 18px 10px 14px; }
+  .brand, .brand-custom { padding: 2px 0 18px; justify-content: center; }
+  .brand > div, .brand-custom .brand-sub, .brand-logo-card { display: none; }
+  .brand-custom::before {
+    content: attr(data-initial); width: 36px; height: 36px; border-radius: 9px; margin: 0 auto;
+    display: grid; place-items: center; background: var(--brand-color, #0a1fd8);
+    color: #fff; font-family: var(--font-display); font-size: 22px; font-weight: 600;
+  }
+  .nav-group-label { font-size: 0; padding: 10px 0 4px; }
+  .nav-group-label::after { content: ''; display: block; height: 1px; margin: 0 10px; background: rgba(255,255,255,0.10); }
+  .nav-link { justify-content: center; padding: 10px 0; }
+  .nav-link span { display: none; }
+  .nav-link.active::before { left: -10px; }
+  .sidebar-footer { padding: 12px 0 0; }
+  .sidebar-account { justify-content: center; }
+  .sidebar-account > div:not(.avatar) { display: none; }
+  .logout-btn { padding: 8px 0; font-size: 0; gap: 0; }
+  .main { padding: 28px 28px 56px; }
+}
+
+/* Narrower screens: the ledger keeps a readable minimum width and scrolls inside its panel */
+@media (max-width: 1199px) {
+  .table-wrap:has(> .ledger-table) { overflow-x: auto; }
+  .table-wrap:has(> .ledger-table) th { position: static; }
+  .ledger-table { min-width: 1060px; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .main { padding: 28px 24px 56px; }
@@ -538,6 +611,8 @@ button { font-family: inherit; }
 }
 
 @media (max-width: 780px) {
+  .table-wrap { overflow-x: auto; }
+  .data-table th { position: static; }
   .shell { flex-direction: column; align-items: stretch; }
   .sidebar {
     position: static; width: 100%; height: auto; flex-direction: row;
@@ -554,8 +629,8 @@ button { font-family: inherit; }
   .panel { padding: 16px; }
   .panel:has(> .table-wrap) > h2 { padding: 16px 16px 12px; }
   .panel:has(> .table-wrap) > .table-toolbar { padding: 12px 16px; }
-  .data-table th:first-child, .data-table td:first-child { padding-left: 16px; }
-  .data-table th:last-child, .data-table td:last-child { padding-right: 16px; }
+  .data-table th:first-child, .data-table td:first-child { padding-left: 12px; }
+  .data-table th:last-child, .data-table td:last-child { padding-right: 12px; }
   .kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi-value { font-size: 24px; }
   .form-grid { grid-template-columns: 1fr; }
@@ -576,4 +651,4 @@ button { font-family: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
-} 
+}

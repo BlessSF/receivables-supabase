@@ -83,7 +83,7 @@ export default function Companies() {
             <h1>{editing?.id ? 'Edit Company' : 'Add Company'}</h1>
             <div className="subtitle">Company / HMO account details</div>
           </div>
-          <button className="btn btn-secondary" onClick={() => setEditing(null)}>← Back to list</button>
+          <button className="btn btn-secondary btn-sm back-link" onClick={() => setEditing(null)}>← Back to list</button>
         </div>
         <div className="panel">
           <form onSubmit={submit}>

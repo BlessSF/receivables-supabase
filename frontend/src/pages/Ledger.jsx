@@ -148,7 +148,7 @@ export default function Ledger() {
     <div>
       <div className="page-header">
         <div>
-          {company && <Link to="/ledger" className="btn btn-secondary btn-sm" style={{ marginBottom: 8, display: 'inline-block' }}>← Back to All Companies</Link>}
+          {company && <Link to="/ledger" className="btn btn-secondary btn-sm back-link">← Back to All Companies</Link>}
           <h1>Receivable Ledger{company ? ` — ${company.name}` : ''}</h1>
           <div className="subtitle">{company ? 'Click any cell to edit — it saves automatically. Use arrow keys or Enter to move between cells, like a spreadsheet.' : 'All companies — pick one below to focus, or filter with search'}</div>
         </div>
@@ -271,7 +271,18 @@ export default function Ledger() {
           </div>
         ) : (
           <div className="table-wrap">
-            <table className="data-table" id={GRID_ID}>
+            <table className="data-table ledger-table" id={GRID_ID}>
+              {/* Fixed column widths (in %) so all 14 columns always fit the screen */}
+              <colgroup>
+                <col style={{ width: '9%' }} /><col style={{ width: '6%' }} />
+                <col style={{ width: '7%' }} /><col style={{ width: '7%' }} />
+                <col style={{ width: '6%' }} /><col style={{ width: '5%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '9%' }} /><col style={{ width: '5.5%' }} />
+                <col style={{ width: '6.5%' }} /><col style={{ width: '7.5%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} /><col style={{ width: '3%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Billing Date</th><th>SOA #</th>
@@ -303,11 +314,11 @@ export default function Ledger() {
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span className="badge badge-success">Paid</span>}
-                      {!r.is_paid && r.is_overdue && <span className="badge badge-danger">{r.days_overdue} day{r.days_overdue === 1 ? '' : 's'} past due</span>}
+                      {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td><EditableText row={rowIdx} col={9} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
-                    <td><button className="btn btn-danger btn-sm" onClick={() => removeRow(r.id)}>×</button></td>
+                    <td className="cell-action"><button className="btn btn-danger btn-sm btn-icon" title="Delete this entry" onClick={() => removeRow(r.id)}>×</button></td>
                   </tr>
                 ))}
               </tbody>
