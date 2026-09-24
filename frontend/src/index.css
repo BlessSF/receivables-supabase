@@ -389,7 +389,7 @@ button { font-family: inherit; }
   border: 1px solid transparent; background: transparent; font: inherit; font-size: inherit; color: var(--ink);
   padding: 5px 6px; border-radius: 6px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums;
 }
-.editable-cell input[type="date"] { padding-right: 2px; }
+.editable-cell input[type="date"] { padding-left: 4px; padding-right: 0; }
 .editable-cell input.num, .editable-cell input.mono { text-align: right; padding-left: 3px; padding-right: 4px; }
 .editable-cell input:hover, .editable-cell select:hover { border-color: var(--line-strong); background: #fff; }
 .editable-cell input:focus, .editable-cell select:focus { border-color: var(--teal); background: #fff; outline: none; box-shadow: var(--ring); }
@@ -572,33 +572,50 @@ button { font-family: inherit; }
 .page-header > div { min-width: 0; }
 .page-header h1 { overflow-wrap: anywhere; }
 
-/* ---------- Compact sidebar (laptops): icons only, more room for tables ---------- */
+/* ---------- Sidebar: slightly narrower on laptops, full logo always visible ---------- */
 @media (max-width: 1440px) and (min-width: 781px) {
-  .sidebar { width: 72px; padding: 18px 10px 14px; }
-  .brand, .brand-custom { padding: 2px 0 18px; justify-content: center; }
-  .brand > div, .brand-custom .brand-sub, .brand-logo-card { display: none; }
-  .brand-custom::before {
+  .sidebar { width: 212px; padding: 20px 12px 14px; }
+  .brand-logo-card img { max-width: 170px; }
+  .main { padding: 28px 28px 56px; }
+}
+
+/* Collapse button (bottom of the sidebar) */
+.collapse-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  background: transparent; border: none; color: #8494ad; cursor: pointer;
+  padding: 6px 8px; margin-bottom: 10px; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 500;
+}
+.collapse-btn:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.collapse-btn svg { transition: transform 0.15s ease; }
+
+/* ---------- Collapsed sidebar (icons only) -- only when you click "Collapse" ---------- */
+@media (min-width: 781px) {
+  .shell.is-collapsed .sidebar { width: 72px; padding: 18px 10px 14px; }
+  .shell.is-collapsed .brand, .shell.is-collapsed .brand-custom { padding: 2px 0 18px; justify-content: center; }
+  .shell.is-collapsed .brand > div, .shell.is-collapsed .brand-custom .brand-sub, .shell.is-collapsed .brand-logo-card { display: none; }
+  .shell.is-collapsed .brand-custom::before {
     content: attr(data-initial); width: 36px; height: 36px; border-radius: 9px; margin: 0 auto;
     display: grid; place-items: center; background: var(--brand-color, #0a1fd8);
     color: #fff; font-family: var(--font-display); font-size: 22px; font-weight: 600;
   }
-  .nav-group-label { font-size: 0; padding: 10px 0 4px; }
-  .nav-group-label::after { content: ''; display: block; height: 1px; margin: 0 10px; background: rgba(255,255,255,0.10); }
-  .nav-link { justify-content: center; padding: 10px 0; }
-  .nav-link span { display: none; }
-  .nav-link.active::before { left: -10px; }
-  .sidebar-footer { padding: 12px 0 0; }
-  .sidebar-account { justify-content: center; }
-  .sidebar-account > div:not(.avatar) { display: none; }
-  .logout-btn { padding: 8px 0; font-size: 0; gap: 0; }
-  .main { padding: 28px 28px 56px; }
+  .shell.is-collapsed .nav-group-label { font-size: 0; padding: 10px 0 4px; }
+  .shell.is-collapsed .nav-group-label::after { content: ''; display: block; height: 1px; margin: 0 10px; background: rgba(255,255,255,0.10); }
+  .shell.is-collapsed .nav-link { justify-content: center; padding: 10px 0; }
+  .shell.is-collapsed .nav-link span { display: none; }
+  .shell.is-collapsed .nav-link.active::before { left: -10px; }
+  .shell.is-collapsed .sidebar-footer { padding: 12px 0 0; }
+  .shell.is-collapsed .sidebar-account { justify-content: center; }
+  .shell.is-collapsed .sidebar-account > div:not(.avatar) { display: none; }
+  .shell.is-collapsed .logout-btn { padding: 8px 0; font-size: 0; gap: 0; }
+  .shell.is-collapsed .collapse-btn { font-size: 0; gap: 0; }
+  .shell.is-collapsed .collapse-btn svg { transform: rotate(180deg); }
 }
 
 /* Narrower screens: the ledger keeps a readable minimum width and scrolls inside its panel */
-@media (max-width: 1199px) {
+@media (max-width: 1150px) {
   .table-wrap:has(> .ledger-table) { overflow-x: auto; }
   .table-wrap:has(> .ledger-table) th { position: static; }
-  .ledger-table { min-width: 1060px; }
+  .ledger-table { min-width: 940px; }
 }
 
 /* ---------- Responsive ---------- */
