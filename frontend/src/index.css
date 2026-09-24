@@ -399,12 +399,16 @@ button { font-family: inherit; }
 .data-table td:first-child:has(> .editable-cell) { padding-left: 14px; }
 /* Ledger grid: fixed column widths from <colgroup>, cells truncate instead of widening the table */
 .ledger-table { table-layout: fixed; }
-.ledger-table th { overflow-wrap: normal; word-break: normal; hyphens: auto; -webkit-hyphens: auto; }
+.ledger-table th { font-size: 0.9em; overflow-wrap: normal; word-break: normal; hyphens: auto; -webkit-hyphens: auto; }
 .ledger-table td { overflow: hidden; text-overflow: ellipsis; }
 .ledger-table td .badge { white-space: normal; line-height: 1.25; }
 .ledger-table td.cell-action { width: auto; padding-left: 2px; padding-right: 12px; text-align: center; overflow: visible; }
+/* No up/down spinner arrows in number cells -- they took space and hid digits */
+.editable-cell input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.editable-cell input[type="number"]::-webkit-inner-spin-button,
+.editable-cell input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .btn-icon { width: 28px; height: 28px; padding: 0; font-size: 16px; }
-.editable-cell input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 2px; padding: 0; cursor: pointer; opacity: 0.6; }
+.editable-cell input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 1px; padding: 0; width: 12px; height: 12px; cursor: pointer; opacity: 0.55; }
 
 /* ---------- Badges ---------- */
 .badge {

@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, AGING_BADGE, fdate, timeAgo } from '../utils';
 
 const GRID_ID = 'ledger-grid';
+
+let measureCtx = null;
+function getMeasureCtx() {
+  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+  return measureCtx;
+}
 
 function focusCell(row, col) {
   const el = document.querySelector(`#${GRID_ID} [data-r="${row}"][data-c="${col}"] input`);
@@ -113,6 +119,73 @@ export default function Ledger() {
       .sort((a, b) => new Date(b.created_at || b.billing_date || 0) - new Date(a.created_at || a.billing_date || 0))
       .slice(0, ACTIVITY_LIMIT);
   }, [filtered]);
+
+  // ---- Auto-fit ledger grid ----
+  // Each column's width is measured from its longest value (a column holding
+  // millions gets wider, one holding 0.00 gets narrower). If all 14 columns
+  // still don't fit the screen, the grid's text shrinks a little until they
+  // do -- so nothing is ever cut off and there's no sideways scrolling.
+  const BASE_FONT = 13;
+  const colPx = useMemo(() => {
+    const ctx = getMeasureCtx();
+    const fam = getComputedStyle(document.body).fontFamily || 'sans-serif';
+    ctx.font = `${BASE_FONT}px ${fam}`;
+    const tw = (v) => ctx.measureText(String(v ?? '')).width;
+    const widest = (key, fmt = (v) => v, min = '') =>
+      entries.reduce((m, r) => Math.max(m, tw(fmt(r[key]))), tw(min));
+    ctx.font = `600 ${BASE_FONT}px ${fam}`;
+    const bold = (key) => entries.reduce((m, r) => Math.max(m, ctx.measureText(peso(r[key])).width), ctx.measureText('₱0.00').width);
+    const balanceW = bold('balance');
+    ctx.font = `${BASE_FONT}px ${fam}`;
+    const INPUT = 27;   // input padding + border + cell padding (+ a little room)
+    const CELL = 24;    // plain cell padding
+    const DATE = tw('00/00/0000') + 52; // text + calendar icon + padding
+    const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
+    // A column is never narrower than the longest word of its header
+    ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
+    const HEADERS = ['Billing Date', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
+      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ''];
+    const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
+    ctx.font = `${BASE_FONT}px ${fam}`;
+    return [
+      DATE + 10,                                              // Billing Date (first column has extra left padding)
+      cap(widest('soa_number', undefined, 'SOA #0'), 14) + INPUT,
+      widest('amount', undefined, '0.00') + INPUT,
+      widest('tax_withheld', undefined, '0.00') + INPUT,
+      widest('surcharge', undefined, '0.00') + INPUT,
+      widest('rebate', undefined, '0.00') + INPUT,
+      widest('receivable_amount', peso, '₱0.00') + CELL,
+      DATE,                                                   // Payment Date
+      cap(widest('check_ref', undefined, 'Check'), 12) + INPUT,
+      widest('paid_amount', undefined, '0.00') + INPUT,
+      balanceW + CELL,
+      tw('0,000 days') + 30,                                  // Aging badge
+      cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
+      46,                                                     // delete button
+    ].map((px, i) => Math.max(px, headerMin[i]));
+  }, [entries]);
+  const colWidths = useMemo(() => {
+    const total = colPx.reduce((a, b) => a + b, 0);
+    return colPx.map((x) => `${((x / total) * 100).toFixed(2)}%`);
+  }, [colPx]);
+
+  const gridWrapRef = useRef(null);
+  const [gridFont, setGridFont] = useState(BASE_FONT);
+  useLayoutEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el) return undefined;
+    const needed = colPx.reduce((a, b) => a + b, 0);
+    const fit = () => {
+      const avail = el.clientWidth;
+      if (!avail) return;
+      const scaled = BASE_FONT * Math.min(1.04, avail / needed);
+      setGridFont(Math.max(10.5, Math.min(13.5, Math.floor(scaled * 4) / 4)));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [colPx, data]);
 
   async function saveField(id, field, value) {
     const r = await api.inlineUpdateLedger(id, field, value);
@@ -270,18 +343,11 @@ export default function Ledger() {
             ))}
           </div>
         ) : (
-          <div className="table-wrap">
-            <table className="data-table ledger-table" id={GRID_ID}>
-              {/* Fixed column widths (in %) so all 14 columns always fit the screen */}
+          <div className="table-wrap" ref={gridWrapRef}>
+            <table className="data-table ledger-table" id={GRID_ID} style={{ fontSize: `${gridFont}px` }}>
+              {/* Column widths are sized from the data (see colWidths) so all 14 columns fit */}
               <colgroup>
-                <col style={{ width: '9%' }} /><col style={{ width: '6%' }} />
-                <col style={{ width: '7%' }} /><col style={{ width: '7%' }} />
-                <col style={{ width: '6%' }} /><col style={{ width: '5%' }} />
-                <col style={{ width: '7.5%' }} />
-                <col style={{ width: '9%' }} /><col style={{ width: '5%' }} />
-                <col style={{ width: '6.5%' }} /><col style={{ width: '8%' }} />
-                <col style={{ width: '6.5%' }} />
-                <col style={{ width: '5%' }} /><col style={{ width: '3%' }} />
+                {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
               </colgroup>
               <thead>
                 <tr>
