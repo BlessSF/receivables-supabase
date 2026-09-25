@@ -10,6 +10,8 @@ import Aging from './pages/Aging';
 import PastDue from './pages/PastDue';
 import SoaTracker from './pages/SoaTracker';
 import Monitoring from './pages/Monitoring';
+import ExecDashboard from './pages/ExecDashboard';
+import { isExecutive } from './utils';
 
 function Gate() {
   const { user } = useAuth();
@@ -19,6 +21,21 @@ function Gate() {
   }
   if (user === null) {
     return <Login />;
+  }
+
+  // Owner / accounting accounts: report pages only
+  if (isExecutive(user)) {
+    return (
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<ExecDashboard />} />
+          <Route path="/summary" element={<Summary />} />
+          <Route path="/past-due" element={<PastDue />} />
+          <Route path="/aging" element={<Aging />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    );
   }
 
   return (

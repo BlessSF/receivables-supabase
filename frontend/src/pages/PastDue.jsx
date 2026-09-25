@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate } from '../utils';
+import { peso, fdate, isExecutive } from '../utils';
+import { useAuth } from '../AuthContext';
 
 export default function PastDue() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const readOnly = isExecutive(user);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
 
@@ -54,13 +57,14 @@ export default function PastDue() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Company</th><th>Billing Date</th><th>Due Date</th><th className="text-right">Days Overdue</th><th className="text-right">Balance</th></tr>
+              <tr><th>Company</th><th>SOA #</th><th>Billing Date</th><th>Due Date</th><th className="text-right">Days Overdue</th><th className="text-right">Balance</th></tr>
             </thead>
             <tbody>
-              {data.entries.length === 0 && <tr><td colSpan={5} className="empty-state">Nothing is past due right now.</td></tr>}
+              {data.entries.length === 0 && <tr><td colSpan={6} className="empty-state">Nothing is past due right now.</td></tr>}
               {data.entries.map((r) => (
-                <tr key={r.id} className="clickable-row" title="Open this entry in the Ledger" onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}>
-                  <td className="row-link">{r.company_name}</td>
+                <tr key={r.id} {...(readOnly ? {} : { className: 'clickable-row', title: 'Open this entry in the Ledger', onClick: () => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`) })}>
+                  <td className={readOnly ? '' : 'row-link'}>{r.company_name}</td>
+                  <td>{r.soa_number || '—'}</td>
                   <td>{fdate(r.billing_date)}</td>
                   <td>{fdate(r.due)}</td>
                   <td className="text-right num">{r.days}</td>

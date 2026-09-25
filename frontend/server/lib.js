@@ -167,7 +167,7 @@ export function branchWhereStandalone(auth, alias = 'c') {
 
 export async function canAccessCompany(auth, companyId) {
   if (!companyId) return false;
-  if (auth.isAdmin()) {
+  if (auth.branch() === null) { // admin or executive: every company
     return toInt(await scalar('SELECT COUNT(*) FROM companies WHERE id = ?', [companyId])) > 0;
   }
   return toInt(await scalar('SELECT COUNT(*) FROM companies WHERE id = ? AND LOWER(branch) = LOWER(?)', [companyId, auth.branch()])) > 0;

@@ -7,7 +7,7 @@ import { all, one, scalar, exec, insertId } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { todayYmd } from './dates.js';
+import { todayYmd, todayMs, parseDate } from './dates.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   agingGraceDays, taxWithheldPercent, setSetting, soaNumberConflicts, recordSoaNumberUsed,
@@ -23,8 +23,17 @@ const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 
 function userPayload(u) {
   if (!u) return null;
-  return { id: u.id, username: u.username, full_name: u.full_name, role: u.role, is_admin: u.role === 'admin' };
+  return {
+    id: u.id, username: u.username, full_name: u.full_name, role: u.role,
+    is_admin: u.role === 'admin',
+    is_executive: u.role === 'executive',
+  };
 }
+
+// What an executive (owner / accounting) account may call: reports only, no editing.
+const EXECUTIVE_ACTIONS = new Set([
+  'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
+]);
 
 function recalcRow(d) {
   const amount = toFloat(d.amount);
@@ -98,6 +107,95 @@ const actions = {
     } };
   },
 
+  // ---------------------------------------------------------------- EXECUTIVE DASHBOARD
+  // The owner / accounting overview: where the money is, how old it is, how
+  // collections are trending, and who to chase first.
+  async get_exec_dashboard(input, auth) {
+    const [bw, bp] = branchWhere(auth, 'c');
+    const due = await makeImplicitDue();
+    const rows = await all(
+      `SELECT l.id, l.company_id, l.billing_date, l.due_date, l.payment_date, l.amount, l.paid_amount, l.balance,
+              l.soa_number, c.name AS company_name
+       FROM ledger_entries l JOIN companies c ON c.id = l.company_id
+       WHERE 1=1 ${bw}`, bp);
+
+    const labels = ['Not Yet Due', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'N/A'];
+    const buckets = Object.fromEntries(labels.map((l) => [l, { count: 0, total: 0 }]));
+    let billed = 0, collected = 0, outstanding = 0, pastDueTotal = 0, pastDueCount = 0, openCount = 0;
+    let overpaidTotal = 0, overpaidCount = 0;
+    const byCompany = new Map();
+
+    // Month keys for the last 12 months (Manila time), oldest first
+    const today = new Date(todayMs());
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1));
+      months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    const trend = Object.fromEntries(months.map((m) => [m, { month: m, billed: 0, collected: 0 }]));
+    const monthOf = (v) => {
+      const ms = parseDate(v);
+      if (ms === null) return null;
+      const d = new Date(ms);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
+    const recentPayments = [];
+
+    for (const r of rows) {
+      const amount = toFloat(r.amount);
+      const paid = toFloat(r.paid_amount);
+      const bal = toFloat(r.balance);
+      billed += amount;
+      collected += paid;
+      const bm = monthOf(r.billing_date);
+      if (bm && trend[bm]) trend[bm].billed += amount;
+      if (paid > 0) {
+        const pm = monthOf(r.payment_date);
+        if (pm && trend[pm]) trend[pm].collected += paid;
+        if (r.payment_date && parseDate(r.payment_date) !== null) {
+          recentPayments.push({ id: r.id, company_id: r.company_id, company_name: r.company_name,
+            payment_date: r.payment_date, paid_amount: paid, soa_number: r.soa_number, _t: parseDate(r.payment_date) });
+        }
+      }
+      if (bal < -0.009) { overpaidTotal += -bal; overpaidCount++; }
+      if (bal <= 0.009) continue;
+
+      outstanding += bal;
+      openCount++;
+      const d = daysOverdue(dueOf(r, due));
+      const bucket = agingBucket(d);
+      buckets[bucket].count++;
+      buckets[bucket].total += bal;
+      if (d !== null && d > 0) {
+        pastDueTotal += bal;
+        pastDueCount++;
+        const c = byCompany.get(r.company_id) || { id: toInt(r.company_id), name: r.company_name, past_due: 0, entries: 0, oldest_days: 0 };
+        c.past_due += bal;
+        c.entries++;
+        c.oldest_days = Math.max(c.oldest_days, d);
+        byCompany.set(r.company_id, c);
+      }
+    }
+
+    recentPayments.sort((a, b) => b._t - a._t || b.id - a.id);
+
+    return { ok: true, data: {
+      today: todayYmd(),
+      totals: {
+        billed, collected, outstanding, past_due: pastDueTotal, past_due_count: pastDueCount,
+        open_count: openCount,
+        collection_rate: billed > 0 ? round((collected / billed) * 100, 1) : 0,
+        past_due_share: outstanding > 0 ? round((pastDueTotal / outstanding) * 100, 1) : 0,
+        companies_past_due: byCompany.size,
+        overpaid_total: overpaidTotal, overpaid_count: overpaidCount,
+      },
+      buckets,
+      top_past_due: [...byCompany.values()].sort((a, b) => b.past_due - a.past_due).slice(0, 8),
+      trend: Object.values(trend),
+      recent_payments: recentPayments.slice(0, 8).map(({ _t, ...p }) => p),
+    } };
+  },
+
   // ---------------------------------------------------------------- SUMMARY
   async get_summary(input, auth) {
     const companyId = isSet(input.company_id) && input.company_id !== '' ? toInt(input.company_id) : null;
@@ -107,7 +205,7 @@ const actions = {
     };
     let agingFilter = input.aging ?? '';
     if (typeof agingFilter !== 'string' || !Object.hasOwn(bucketFilterMap, agingFilter)) agingFilter = '';
-    const showAll = truthy(input.show_all);
+    const showAll = truthy(input.show_all) && !auth.isExecutive();
     const searchQuery = trim(input.q ?? '');
 
     let sql = 'SELECT l.*, c.name as company_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id';
@@ -140,6 +238,9 @@ const actions = {
       r.aging_bucket = isPaid ? 'Paid' : agingBucket(d);
       return r;
     });
+
+    // Owner / accounting accounts only see entries that are past due.
+    if (auth.isExecutive()) summary = summary.filter((r) => r.is_overdue);
 
     if (agingFilter) summary = summary.filter((r) => r.aging_bucket === bucketFilterMap[agingFilter]);
 
@@ -654,6 +755,14 @@ export default async function handleApi(req, res) {
 
     // ---- everything else needs a login
     if (!user) return sendJson(res, 401, { ok: false, error: 'Not logged in.' });
+
+    if (user.role === 'executive' && !EXECUTIVE_ACTIONS.has(action)) {
+      return sendJson(res, 403, { ok: false, error: 'Your account can view reports only.' });
+    }
+    // The executive dashboard is for owner / accounting accounts only.
+    if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin') {
+      return sendJson(res, 403, { ok: false, error: 'Not available for this account.' });
+    }
 
     const fn = typeof action === 'string' && Object.hasOwn(actions, action) ? actions[action] : null;
     if (!fn) return sendJson(res, 400, { ok: false, error: 'Unknown action: ' + action });

@@ -57,3 +57,7 @@ export function numClass(n, extra = '') {
   const v = Number(n) || 0;
   return ['num', v === 0 ? 'zero' : '', v < 0 ? 'neg' : '', extra].filter(Boolean).join(' ');
 }
+/** Owner / accounting accounts: read-only reports (dashboard, summary, aging, past due). */
+export function isExecutive(user) {
+  return user?.role === 'executive';
+}

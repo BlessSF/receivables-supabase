@@ -80,12 +80,18 @@ function csv(header, rows) {
   return [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\n') + '\n';
 }
 
+// Owner / accounting accounts can only download the report exports.
+function blockedForExecutive(user, type) {
+  return user.role === 'executive' && type !== 'aging' && type !== 'past_due';
+}
+
 export async function handleCsv(req, res) {
   const user = readSession(req);
   if (!user) return sendText(res, 401, 'Not logged in.');
   const auth = makeAuth(user);
   const query = getQuery(req);
   const type = query.type ?? 'ledger';
+  if (blockedForExecutive(user, type)) return sendText(res, 403, 'Your account can download reports only.');
   const companyId = await resolveCompanyId(auth, query, false);
   const send = (name, text) => sendFile(res, Buffer.from(text, 'utf8'), 'text/csv; charset=utf-8', name);
 
@@ -218,6 +224,8 @@ export async function handleXlsx(req, res) {
   const auth = makeAuth(user);
   const query = getQuery(req);
   const type = query.type ?? 'ledger';
+  // (the Excel export has no separate past-due sheet, so only "aging" is allowed here)
+  if (user.role === 'executive' && type !== 'aging') return sendText(res, 403, 'Your account can download reports only.');
   const companyId = await resolveCompanyId(auth, query, true);
   const wb = new ExcelJS.Workbook();
   const send = async (name) => {

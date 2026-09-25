@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, AGING_BADGE } from '../utils';
+import { peso, fdate, AGING_BADGE, isExecutive } from '../utils';
+import { useAuth } from '../AuthContext';
 
 const BUCKET_OPTIONS = [
   ['', 'All statuses'],
@@ -28,10 +29,22 @@ function sortSummary(rows) {
   });
 }
 
+// Owner / accounting accounts only see past-due entries
+const EXEC_BUCKET_OPTIONS = [
+  ['', 'All past due'],
+  ['0-30', '1-30 days late'],
+  ['31-60', '31-60 days late'],
+  ['61-90', '61-90 days late'],
+  ['over90', 'Over 90 days late'],
+];
+
 export default function Summary() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const readOnly = isExecutive(user);
   const [companies, setCompanies] = useState([]);
-  const [companyId, setCompanyId] = useState('');
+  const [searchParams] = useSearchParams();
+  const [companyId, setCompanyId] = useState(() => searchParams.get('company_id') || '');
   const [aging, setAging] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [q, setQ] = useState('');
@@ -65,9 +78,11 @@ export default function Summary() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Summary{selectedCompany ? ` — ${selectedCompany.name}` : ''}</h1>
+          <h1>{readOnly ? 'Past Due Summary' : 'Summary'}{selectedCompany ? ` — ${selectedCompany.name}` : ''}</h1>
           <div className="subtitle">
-            {showAll ? 'Every entry' : 'Every unpaid entry'}{selectedCompany ? '' : ' across all companies'} — billed, paid, deduction, and how long it's been outstanding.
+            {readOnly
+              ? `Every past-due entry${selectedCompany ? '' : ' across all companies'} — what was billed, what was paid, what is still owed, and how late it is.`
+              : `${showAll ? 'Every entry' : 'Every unpaid entry'}${selectedCompany ? '' : ' across all companies'} — billed, paid, deduction, and how long it's been outstanding.`}
           </div>
         </div>
       </div>
@@ -88,13 +103,15 @@ export default function Summary() {
           <div className="form-group">
             <label>Filter by status</label>
             <select className="select-inline" value={aging} onChange={(e) => setAging(e.target.value)}>
-              {BUCKET_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {(readOnly ? EXEC_BUCKET_OPTIONS : BUCKET_OPTIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, paddingBottom: 9 }}>
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-            Include fully paid entries
-          </label>
+          {!readOnly && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, paddingBottom: 9 }}>
+              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+              Include fully paid entries
+            </label>
+          )}
           {filtersActive && <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Clear filters</button>}
         </div>
       </div>
@@ -105,7 +122,11 @@ export default function Summary() {
         <div className="kpi-card accent-red">
           <div className="kpi-label">Past Due Entries</div>
           <div className="kpi-value">{overdueCount}</div>
-          <div className="kpi-sub">out of {rows ? rows.length : '…'} {showAll ? 'entries shown' : 'unpaid entries'}{filtersActive ? ' (filtered)' : ''}</div>
+          <div className="kpi-sub">
+            {readOnly
+              ? `across ${new Set((rows || []).map((r) => r.company_id)).size} companies${filtersActive ? ' (filtered)' : ''}`
+              : `out of ${rows ? rows.length : '…'} ${showAll ? 'entries shown' : 'unpaid entries'}${filtersActive ? ' (filtered)' : ''}`}
+          </div>
         </div>
         <div className="kpi-card">
           <div className="kpi-label">Total Billed</div>
@@ -116,7 +137,7 @@ export default function Summary() {
           <div className="kpi-value">{peso(totalPaid)}</div>
         </div>
         <div className="kpi-card accent-red">
-          <div className="kpi-label">Total Deduction</div>
+          <div className="kpi-label">{readOnly ? 'Still Owed' : 'Total Deduction'}</div>
           <div className="kpi-value">{peso(totalDeduction)}</div>
         </div>
       </div>
@@ -127,23 +148,25 @@ export default function Summary() {
             <thead>
               <tr>
                 <th>Company</th><th>Date of Billing</th><th className="text-right">Amount</th>
-                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">Deduction</th>
+                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
                 <th>Comment</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
               {!rows && <tr><td colSpan={8} className="empty-state">Loading…</td></tr>}
               {rows && rows.length === 0 && (
-                <tr><td colSpan={8} className="empty-state">{filtersActive ? (q ? `No entries match "${q}".` : 'Nothing matches these filters.') : 'Nothing outstanding right now. 🎉'}</td></tr>
+                <tr><td colSpan={8} className="empty-state">{filtersActive ? (q ? `No entries match "${q}".` : 'Nothing matches these filters.') : (readOnly ? 'Nothing is past due right now. 🎉' : 'Nothing outstanding right now. 🎉')}</td></tr>
               )}
               {rows && rows.map((r) => (
                 <tr
                   key={r.id}
-                  className="clickable-row"
-                  title="Open this entry in the Ledger"
-                  onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}
+                  {...(readOnly ? {} : {
+                    className: 'clickable-row',
+                    title: 'Open this entry in the Ledger',
+                    onClick: () => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`),
+                  })}
                 >
-                  <td className="row-link">{r.company_name}</td>
+                  <td className={readOnly ? '' : 'row-link'}>{r.company_name}</td>
                   <td>{fdate(r.billing_date)}</td>
                   <td className="text-right num">{peso(r.amount)}</td>
                   <td className="text-right num">{peso(r.paid_amount)}</td>

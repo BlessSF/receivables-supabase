@@ -82,10 +82,14 @@ export async function attemptLogin(username, password) {
 
 /** Per-request auth context (what PHP read from $_SESSION). */
 export function makeAuth(user) {
+  const role = user?.role;
   return {
     user,
-    isAdmin: () => !!user && user.role === 'admin',
-    // Admins see every branch; a branch account only its own (username).
-    branch: () => (!user ? null : user.role === 'admin' ? null : user.username),
+    isAdmin: () => role === 'admin',
+    // "executive" = owner / accounting: sees every branch, but read-only
+    // and only the report pages (dashboard, summary, aging, past due).
+    isExecutive: () => role === 'executive',
+    // Admins and executives see every branch; a branch account only its own (username).
+    branch: () => (!user ? null : role === 'admin' || role === 'executive' ? null : user.username),
   };
 }

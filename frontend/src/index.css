@@ -355,6 +355,21 @@ button { font-family: inherit; }
 }
 .row-highlight { animation: rowFlash 2.2s ease-out; }
 
+/* Ledger row opened from Summary / Past Due: stays highlighted */
+.row-focus > td { background: #fff6d6 !important; border-bottom-color: #f1d98a; }
+.row-focus > td:first-child { box-shadow: inset 4px 0 0 #e0a800; }
+.row-focus { animation: rowFlash 1.6s ease-out 2; }
+.focus-note {
+  display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #fff6d6; border: 1px solid #f1d98a; color: #6b5200;
+  padding: 6px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+}
+.focus-dot { width: 8px; height: 8px; border-radius: 50%; background: #e0a800; }
+.focus-note button {
+  border: none; background: transparent; color: #6b5200; font: inherit; font-weight: 700;
+  cursor: pointer; padding: 0 2px; text-decoration: underline;
+}
+
 .text-right { text-align: right !important; }
 .empty-state { text-align: center; color: var(--slate); padding: 44px 24px !important; white-space: normal; }
 
@@ -553,6 +568,86 @@ button { font-family: inherit; }
 .company-card-stats strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 * { scrollbar-width: thin; scrollbar-color: #c3ccd4 transparent; }
+
+/* ---------- Executive dashboard (owner / accounting) ---------- */
+.exec-hero {
+  background: linear-gradient(135deg, #fdfaf3 0%, #f4efe2 100%);
+  border: 1px solid #e8dfc8; border-radius: 14px; padding: 26px 30px; margin-bottom: 20px;
+}
+.exec-hero-date { font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a7a55; }
+.exec-hero h1 { margin: 6px 0 8px; font-size: clamp(26px, 2.4vw, 34px); }
+.exec-hero-line { margin: 0; font-size: 16px; color: var(--ink-soft); max-width: 760px; line-height: 1.55; }
+.exec-hero-line strong { color: var(--ink); }
+
+.exec-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.exec-kpi {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+  border-top: 3px solid var(--slate);
+}
+.exec-kpi.is-danger { border-top-color: var(--brick); }
+.exec-kpi.is-danger .exec-kpi-value { color: var(--brick); }
+.exec-kpi.is-good { border-top-color: var(--teal); }
+.exec-kpi-label { font-size: 12.5px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; }
+.exec-kpi-value { font-family: var(--font-display); font-size: clamp(22px, 1.9vw, 30px); margin: 6px 0 4px; font-variant-numeric: lining-nums; overflow-wrap: anywhere; }
+.exec-kpi-unit { font-family: var(--font-ui); font-size: 14px; color: var(--slate); }
+.exec-kpi-sub { font-size: 12.5px; color: var(--slate); }
+
+.exec-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.exec-section-head h2 { margin: 0; }
+.exec-link { font-size: 13px; font-weight: 600; color: var(--teal); text-decoration: none; }
+.exec-link:hover { text-decoration: underline; }
+
+.exec-stack { display: flex; height: 22px; border-radius: 999px; overflow: hidden; background: var(--slate-soft); }
+.exec-stack > div { height: 100%; min-width: 3px; }
+.exec-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 18px; margin-top: 16px; }
+.exec-legend-item { display: flex; gap: 10px; align-items: flex-start; }
+.exec-dot { width: 10px; height: 10px; border-radius: 3px; margin-top: 4px; flex: none; }
+.exec-legend-label { font-size: 12.5px; color: var(--slate); }
+.exec-legend-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.exec-legend-value span { font-weight: 400; color: var(--slate); font-size: 12px; }
+
+.exec-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.exec-grid > .panel, .exec-side > .panel { margin-bottom: 0; }
+.exec-side { display: flex; flex-direction: column; gap: 20px; }
+@media (max-width: 1100px) { .exec-grid { grid-template-columns: 1fr; } }
+
+.exec-callers { list-style: none; margin: 0; padding: 0; }
+.exec-caller {
+  display: flex; gap: 14px; align-items: flex-start; padding: 12px 8px; margin: 0 -8px;
+  border-radius: 8px; color: inherit; text-decoration: none; border-bottom: 1px solid var(--line);
+}
+.exec-callers li:last-child .exec-caller { border-bottom: none; }
+.exec-caller:hover { background: var(--panel-tint); text-decoration: none; }
+.exec-rank {
+  width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: var(--brick-soft); color: var(--brick); font-weight: 700; font-size: 12.5px;
+}
+.exec-caller-main { flex: 1; min-width: 0; }
+.exec-caller-top { display: flex; justify-content: space-between; gap: 10px; }
+.exec-caller-top strong { overflow-wrap: anywhere; }
+.exec-caller-top .num { font-weight: 700; white-space: nowrap; }
+.exec-caller-bar { height: 6px; background: var(--slate-soft); border-radius: 999px; margin: 7px 0 6px; overflow: hidden; }
+.exec-caller-bar > div { height: 100%; background: linear-gradient(90deg, #d9702a, #b02e25); border-radius: 999px; }
+.exec-caller-meta { font-size: 12.5px; color: var(--slate); }
+.text-danger { color: var(--brick); font-weight: 600; }
+
+.exec-chart { width: 100%; height: auto; display: block; }
+.exec-chart-label { font-size: 11px; fill: #61708a; }
+.exec-chart-key { display: flex; gap: 14px; font-size: 12.5px; color: var(--slate); }
+.exec-chart-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.exec-note { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+.exec-payments { list-style: none; margin: 0; padding: 0; }
+.exec-payments li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.exec-payments li:last-child { border-bottom: none; }
+.exec-payments li > div { display: flex; flex-direction: column; min-width: 0; }
+.exec-payments li > div span { font-size: 12.5px; color: var(--slate); }
+.exec-pay-amt { color: var(--teal); font-weight: 700; white-space: nowrap; }
+
+.exec-flag {
+  background: var(--amber-soft); border: 1px solid #efd7a6; color: #6d4a0c;
+  border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
+}
 
 /* ---------- Custom account logo (e.g. Demic Lab) ---------- */
 .brand-custom { flex-direction: column; align-items: stretch; gap: 8px; }

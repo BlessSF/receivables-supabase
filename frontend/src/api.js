@@ -35,6 +35,7 @@ export const api = {
 
   // dashboard / summary
   getDashboard: () => call('get_dashboard'),
+  getExecDashboard: () => call('get_exec_dashboard'),
   getSummary: (params) => call('get_summary', { params }),
 
   // companies

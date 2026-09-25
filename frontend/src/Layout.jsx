@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
+import { isExecutive } from './utils';
 import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconLogout } from './icons';
 
 const NAV_GROUPS = [
@@ -25,6 +26,23 @@ const NAV_GROUPS = [
       { to: '/past-due', label: 'Past Due', Icon: IconAlert },
       { to: '/soa-tracker', label: 'SOA Tracker', Icon: IconHash },
       { to: '/monitoring', label: 'Monitoring', Icon: IconActivity },
+    ],
+  },
+];
+
+// Owner / accounting accounts: reports only
+const EXEC_NAV_GROUPS = [
+  {
+    items: [
+      { to: '/', label: 'Dashboard', end: true, Icon: IconDashboard },
+    ],
+  },
+  {
+    label: 'Reports',
+    items: [
+      { to: '/summary', label: 'Past Due Summary', Icon: IconList },
+      { to: '/past-due', label: 'Past Due by Company', Icon: IconAlert },
+      { to: '/aging', label: 'Aging Report', Icon: IconClock },
     ],
   },
 ];
@@ -86,7 +104,7 @@ export default function Layout() {
           </div>
         )}
         <nav className="sidebar-nav">
-          {NAV_GROUPS.map((group, i) => (
+          {(isExecutive(user) ? EXEC_NAV_GROUPS : NAV_GROUPS).map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
               {group.label && <div className="nav-group-label">{group.label}</div>}
               {group.items.map(({ to, label, end, Icon }) => (
@@ -113,7 +131,7 @@ export default function Layout() {
             <div className="avatar" aria-hidden="true">{displayName.charAt(0).toUpperCase()}</div>
             <div>
               <div className="sidebar-user">{displayName}</div>
-              <div className="sidebar-role">{user?.is_admin ? 'Admin · all branches' : `${user?.username} branch`}</div>
+              <div className="sidebar-role">{isExecutive(user) ? 'Reports · view only' : user?.is_admin ? 'Admin · all branches' : `${user?.username} branch`}</div>
             </div>
           </div>
           <button className="logout-btn" onClick={logout} title="Log out"><IconLogout /> Log out</button>

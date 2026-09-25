@@ -90,18 +90,26 @@ export default function Ledger() {
   useEffect(() => { api.getCompanies().then((r) => setCompanies(r.data)); }, []);
   useEffect(reload, [reload]);
 
-  // Arrived here from a Summary/Dashboard row click ("?entry=123") — scroll
-  // to that ledger row and flash it so it's obvious which one it was.
+  // Arrived here from a Summary / Past Due / Dashboard row click ("?entry=123"):
+  // scroll to that ledger row and keep it highlighted so it's obvious which
+  // one it was. The highlight stays until you click another row.
   useEffect(() => {
     if (!entryParam || !data) return;
-    flashRow(Number(entryParam));
+    setSearch('');
+    flashRow(entryParam);
   }, [entryParam, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function flashRow(id) {
-    setHighlightId(id);
-    const el = document.getElementById(`entry-${id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => setHighlightId(null), 2400);
+    const key = String(id);
+    setHighlightId(key);
+    // wait for the row to be on screen, then bring it into view
+    let tries = 0;
+    const go = () => {
+      const el = document.getElementById(`entry-${key}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else if (tries++ < 10) setTimeout(go, 80);
+    };
+    requestAnimationFrame(go);
   }
 
   const entries = data?.entries || [];
@@ -307,6 +315,18 @@ export default function Ledger() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m20 20-4.3-4.3" /></svg>
             <input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          {company && highlightId && (() => {
+            const hit = entries.find((e) => String(e.id) === highlightId);
+            if (!hit) return null;
+            return (
+              <div className="focus-note">
+                <span className="focus-dot" />
+                Highlighted: billing {fdate(hit.billing_date)}{hit.soa_number ? ` · ${hit.soa_number}` : ''} · balance {peso(hit.balance)}
+                <button type="button" onClick={() => flashRow(highlightId)}>Show</button>
+                <button type="button" onClick={() => setHighlightId(null)}>Clear</button>
+              </div>
+            );
+          })()}
           <span className="table-toolbar-count">
             {company ? `${filtered.length} entries` : `${activityRows.length} of ${filtered.length} entries shown`}
           </span>
@@ -366,7 +386,12 @@ export default function Ledger() {
                   <tr><td colSpan={14} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
-                  <tr key={r.id} id={`entry-${r.id}`} className={highlightId === r.id ? 'row-highlight' : ''}>
+                  <tr
+                    key={r.id}
+                    id={`entry-${r.id}`}
+                    className={highlightId === String(r.id) ? 'row-focus' : ''}
+                    onClick={() => { if (highlightId && highlightId !== String(r.id)) setHighlightId(null); }}
+                  >
                     <td><EditableText row={rowIdx} col={0} value={r.billing_date} type="date" onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
                     <td><EditableText row={rowIdx} col={1} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
                     <td><EditableText row={rowIdx} col={2} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
