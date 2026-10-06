@@ -7,7 +7,8 @@ import { all, one, scalar, exec, insertId } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { todayYmd, todayMs, parseDate } from './dates.js';
+import { todayYmd, todayMs, parseDate, normalizePeriod } from './dates.js';
+import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   agingGraceDays, taxWithheldPercent, setSetting, soaNumberConflicts, recordSoaNumberUsed,
@@ -33,6 +34,7 @@ function userPayload(u) {
 // What an executive (owner / accounting) account may call: reports only, no editing.
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
+  'get_monthly_report',
 ]);
 
 function recalcRow(d) {
@@ -407,7 +409,7 @@ const actions = {
   },
 
   async inline_update_ledger(input, auth) {
-    const allowed = ['billing_date', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
+    const allowed = ['billing_date', 'period_date', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
       'payment_date', 'check_ref', 'check_date', 'paid_amount', 'due_date', 'remarks', 'deduction_remarks',
       'payment_method', 'payment_method_bank', 'payment_method_other'];
     const id = toInt(input.id);
@@ -422,6 +424,14 @@ const actions = {
 
     if (['amount', 'tax_withheld', 'surcharge', 'rebate', 'paid_amount'].includes(field)) {
       value = value === '' || value === null ? 0 : toFloat(value);
+    } else if (field === 'period_date') {
+      // Always stored as the 1st of the month: "2026-06-01" = June 2026.
+      if (value === '' || value === null) {
+        value = null;
+      } else {
+        value = normalizePeriod(value);
+        if (value === null) jsonExit({ ok: false, error: 'Choose a month and a year for the Period Date.' }, 400);
+      }
     } else if (['billing_date', 'payment_date', 'due_date', 'check_date'].includes(field)) {
       value = value === '' ? null : value === null ? null : String(value);
     } else if (field === 'soa_number') {
@@ -585,6 +595,11 @@ const actions = {
       total: sum(pastDue, 'balance'),
       by_company: Object.keys(sortedByCompany).length ? sortedByCompany : [],
     } };
+  },
+
+  // ---------------------------------------------------------------- REPORTS BY MONTH
+  async get_monthly_report(input, auth) {
+    return { ok: true, data: await buildMonthlyReport(auth, input) };
   },
 
   // ---------------------------------------------------------------- SOA TRACKER

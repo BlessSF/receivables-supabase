@@ -4,7 +4,8 @@ import { all, scalar } from './db.js';
 import { getQuery, sendText, sendFile } from './http.js';
 import { readSession, makeAuth } from './auth.js';
 import { toInt, toFloat, toStr } from './php.js';
-import { excelSerial } from './dates.js';
+import { excelSerial, periodLabel } from './dates.js';
+import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   branchWhere, branchWhereStandalone, canAccessCompany,
@@ -112,12 +113,12 @@ export async function handleCsv(req, res) {
   }
 
   const rows = (await loadLedger(auth, companyId)).map((r) => [
-    r.company_name, r.billing_date, r.soa_number, r.amount, r.tax_withheld, r.surcharge, r.rebate,
+    r.company_name, r.billing_date, periodLabel(r.period_date), r.soa_number, r.amount, r.tax_withheld, r.surcharge, r.rebate,
     r.receivable_amount, r.payment_date, r.check_ref, r.check_date ?? '', r.paid_amount, r.balance,
     paymentMethodLabel(r), r.due_date, r.remarks,
   ]);
   return send(companyId ? `ledger_company_${companyId}.csv` : 'full_receivable_ledger.csv', csv([
-    'Company', 'Billing Date', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Rebate',
+    'Company', 'Billing Date', 'Period Date', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Rebate',
     'Receivable', 'Payment Date', 'Check #', 'Check Date', 'Paid', 'Balance', 'Payment Method', 'Due Date', 'Remarks',
   ], rows));
 }
@@ -218,6 +219,115 @@ class Sheet {
   }
 }
 
+// "Reports by Month": same layout as the Excel sheet the team used to keep by hand.
+// Company | OVERDUE (SOA / month / balance) | DUE FOR <month> | DUE FOR <next month>
+function writeMonthlySheet(wb, report, preparedBy) {
+  const RED = 'FFD3202A';
+  const BLUE = 'FF1A47D6';
+  const WHITE = { argb: 'FFFFFFFF' };
+  const line = { style: 'thin', color: { argb: 'FFB9C0CA' } };
+  const box = { left: line, right: line, top: line, bottom: line };
+  const MONEY = '#,##0.00';
+
+  const ws = wb.addWorksheet('Reports by Month', { views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }] });
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  ws.columns = [
+    { width: 30 },
+    { width: 14 }, { width: 17 }, { width: 20 }, { width: 3 },
+    { width: 14 }, { width: 17 }, { width: 20 }, { width: 3 },
+    { width: 14 }, { width: 17 }, { width: 20 },
+  ];
+
+  // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio
+  const blocks = [
+    { key: 'overdue', col: 2, title: 'OVERDUE', color: RED, totalLabel: 'OVERDUE TOTAL' },
+    { key: 'due1', col: 6, title: `DUE FOR ${report.month_name.toUpperCase()} ${report.month.slice(0, 4)}`, color: BLUE, totalLabel: `${report.month_name.toUpperCase()} DUE TOTAL:` },
+    { key: 'due2', col: 10, title: `DUE FOR ${report.next_name.toUpperCase()} ${report.next_month.slice(0, 4)}`, color: BLUE, totalLabel: `${report.next_name.toUpperCase()} DUE TOTAL:` },
+  ];
+
+  // ---- header rows
+  ws.mergeCells(1, 1, 2, 1);
+  const head = ws.getCell(1, 1);
+  head.value = 'COMPANY';
+  head.font = { bold: true };
+  head.alignment = { horizontal: 'left', vertical: 'middle' };
+  head.border = box;
+  for (const b of blocks) {
+    ws.mergeCells(1, b.col, 1, b.col + 2);
+    const t = ws.getCell(1, b.col);
+    t.value = b.title;
+    t.font = { bold: true, size: 13, color: WHITE };
+    t.fill = fill(b.color);
+    t.alignment = { horizontal: 'center', vertical: 'middle' };
+    for (let i = 0; i < 3; i++) ws.getCell(1, b.col + i).border = box;
+    ['SOA NUMBER', 'MONTH', 'REMAINING BALANCE'].forEach((label, i) => {
+      const c = ws.getCell(2, b.col + i);
+      c.value = label;
+      c.font = { bold: true, size: 10 };
+      c.alignment = { horizontal: i === 2 ? 'right' : 'center', vertical: 'middle' };
+      c.border = box;
+    });
+  }
+  ws.getRow(1).height = 22;
+  ws.getRow(2).height = 18;
+
+  // ---- one block of rows per company (as many lines as its longest column)
+  let r = 3;
+  for (const c of report.companies) {
+    const n = Math.max(1, c.overdue.length, c.due1.length, c.due2.length);
+    if (n > 1) ws.mergeCells(r, 1, r + n - 1, 1);
+    const name = ws.getCell(r, 1);
+    name.value = c.company;
+    name.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    for (let i = 0; i < n; i++) ws.getCell(r + i, 1).border = box;
+    for (const b of blocks) {
+      for (let i = 0; i < n; i++) {
+        const item = c[b.key][i];
+        const soa = ws.getCell(r + i, b.col);
+        const month = ws.getCell(r + i, b.col + 1);
+        const bal = ws.getCell(r + i, b.col + 2);
+        if (item) {
+          soa.value = item.soa_number || '';
+          month.value = item.period || '';
+          bal.value = Math.round(item.balance * 100) / 100;
+        }
+        bal.numFmt = MONEY;
+        soa.alignment = { horizontal: 'center' };
+        month.alignment = { horizontal: 'center' };
+        bal.alignment = { horizontal: 'right' };
+        for (const cell of [soa, month, bal]) cell.border = box;
+      }
+    }
+    r += n;
+  }
+
+  // ---- totals bar
+  r += 1;
+  for (const b of blocks) {
+    const total = report.totals[b.key];
+    ws.mergeCells(r, b.col, r, b.col + 1);
+    const label = ws.getCell(r, b.col);
+    label.value = b.totalLabel;
+    const amount = ws.getCell(r, b.col + 2);
+    amount.value = Math.round(total * 100) / 100;
+    amount.numFmt = MONEY;
+    amount.alignment = { horizontal: 'right' };
+    for (const cell of [label, ws.getCell(r, b.col + 1), amount]) {
+      cell.fill = fill(b.color);
+      cell.font = { bold: true, color: WHITE };
+    }
+  }
+  if (preparedBy) {
+    ws.getCell(r + 3, 1).value = 'Prepared by:';
+    ws.getCell(r + 3, 1).font = { bold: true };
+    ws.getCell(r + 4, 1).value = preparedBy;
+  }
+  if (report.no_period.count > 0) {
+    ws.getCell(r + 6, 1).value = `Not included: ${report.no_period.count} open entr${report.no_period.count === 1 ? 'y' : 'ies'} with no Period Date (${(Math.round(report.no_period.total * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}).`;
+    ws.getCell(r + 6, 1).font = { italic: true, color: { argb: 'FF6B7688' } };
+  }
+}
+
 export async function handleXlsx(req, res) {
   const user = readSession(req);
   if (!user) return sendText(res, 401, 'Not logged in.');
@@ -225,7 +335,7 @@ export async function handleXlsx(req, res) {
   const query = getQuery(req);
   const type = query.type ?? 'ledger';
   // (the Excel export has no separate past-due sheet, so only "aging" is allowed here)
-  if (user.role === 'executive' && type !== 'aging') return sendText(res, 403, 'Your account can download reports only.');
+  if (user.role === 'executive' && type !== 'aging' && type !== 'monthly') return sendText(res, 403, 'Your account can download reports only.');
   const companyId = await resolveCompanyId(auth, query, true);
   const wb = new ExcelJS.Workbook();
   const send = async (name) => {
@@ -249,6 +359,12 @@ export async function handleXlsx(req, res) {
       sheet.addRow([c.name, c.code, status, c.contact_person, c.contact_number, c.email_address, c.remarks], badge ? { 2: badge } : {});
     }
     return send('companies.xlsx');
+  }
+
+  if (type === 'monthly') {
+    const report = await buildMonthlyReport(auth, query);
+    writeMonthlySheet(wb, report, user.full_name || user.username || '');
+    return send(`reports_by_month_${report.month}.xlsx`);
   }
 
   if (type === 'aging') {
@@ -276,6 +392,7 @@ export async function handleXlsx(req, res) {
   const sheet = new Sheet(wb, 'Receivable Ledger', [
     { header: 'Company', width: 22, type: 'string' },
     { header: 'Billing Date', width: 13, type: 'date' },
+    { header: 'Period Date', width: 14, type: 'string' },
     { header: 'SOA #', width: 14, type: 'string' },
     { header: 'Amount', width: 13, type: 'money' },
     { header: 'Tax Withheld', width: 13, type: 'money' },
@@ -298,12 +415,12 @@ export async function handleXlsx(req, res) {
     const balance = toFloat(r.balance);
     for (const k of keys) totals[k] += toFloat(r[k]);
     sheet.addRow([
-      r.company_name, r.billing_date, r.soa_number, toFloat(r.amount), toFloat(r.tax_withheld),
+      r.company_name, r.billing_date, periodLabel(r.period_date), r.soa_number, toFloat(r.amount), toFloat(r.tax_withheld),
       toFloat(r.surcharge), toFloat(r.rebate), toFloat(r.receivable_amount), r.payment_date, r.check_ref,
       r.check_date ?? '', toFloat(r.paid_amount), balance, paymentMethodLabel(r), r.due_date, r.remarks,
-    ], balance <= 0.009 ? { 12: 'green' } : {});
+    ], balance <= 0.009 ? { 13: 'green' } : {});
   }
-  sheet.setTotals(['TOTAL', null, null, totals.amount, totals.tax_withheld, totals.surcharge, totals.rebate,
+  sheet.setTotals(['TOTAL', null, null, null, totals.amount, totals.tax_withheld, totals.surcharge, totals.rebate,
     totals.receivable_amount, null, null, null, totals.paid_amount, totals.balance, null, null, null]);
 
   const filename = companyId

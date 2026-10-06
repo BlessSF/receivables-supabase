@@ -1,22 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, AGING_BADGE, fdate, timeAgo } from '../utils';
-
-const GRID_ID = 'ledger-grid';
+import { peso, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts } from '../utils';
+import { GRID_ID, gridKeyDown, DateCell, PeriodCell } from '../gridCells';
 
 let measureCtx = null;
 function getMeasureCtx() {
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
   return measureCtx;
-}
-
-function focusCell(row, col) {
-  const el = document.querySelector(`#${GRID_ID} [data-r="${row}"][data-c="${col}"] input`);
-  if (el) {
-    el.focus();
-    if (el.select && el.type !== 'date') el.select();
-  }
 }
 
 function EditableText({ value, onSave, type = 'text', align, row, col }) {
@@ -38,25 +29,7 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
     }
   }
 
-  function onKeyDown(e) {
-    const { key, target } = e;
-    if (key === 'Enter') { e.preventDefault(); target.blur(); focusCell(row + 1, col); return; }
-    if (key === 'ArrowDown') { e.preventDefault(); focusCell(row + 1, col); return; }
-    if (key === 'ArrowUp') { e.preventDefault(); focusCell(row - 1, col); return; }
-    if (key === 'ArrowRight' || key === 'ArrowLeft') {
-      // Only jump cells when the cursor is already at that edge of the text,
-      // so normal left/right editing inside the field still works.
-      let atEdge = true;
-      try {
-        if (type === 'text') {
-          atEdge = key === 'ArrowRight'
-            ? target.selectionStart === target.value.length
-            : target.selectionStart === 0;
-        }
-      } catch { /* selection API unsupported on this input type — treat as edge */ }
-      if (atEdge) { focusCell(row, key === 'ArrowRight' ? col + 1 : col - 1); }
-    }
-  }
+  const onKeyDown = (e) => gridKeyDown(e, row, col, type === 'text');
 
   return (
     <div className={`editable-cell ${state}`} data-r={row} data-c={col}>
@@ -117,9 +90,17 @@ export default function Ledger() {
     if (!search.trim()) return entries;
     const q = search.trim().toLowerCase();
     return entries.filter((r) =>
-      [r.company_name, r.soa_number, r.remarks, r.billing_date].filter(Boolean).join(' ').toLowerCase().includes(q)
+      [r.company_name, r.soa_number, r.remarks, r.billing_date, periodLabel(r.period_date)].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
   }, [entries, search]);
+
+  const periodYears = useMemo(() => {
+    const now = new Date().getFullYear();
+    const seen = entries.map((r) => periodParts(r.period_date)?.y).filter(Boolean);
+    const lo = Math.min(now - 2, ...seen);
+    const hi = Math.max(now + 1, ...seen);
+    return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+  }, [entries]);
 
   const ACTIVITY_LIMIT = 60;
   const activityRows = useMemo(() => {
@@ -130,7 +111,7 @@ export default function Ledger() {
 
   // ---- Auto-fit ledger grid ----
   // Each column's width is measured from its longest value (a column holding
-  // millions gets wider, one holding 0.00 gets narrower). If all 14 columns
+  // millions gets wider, one holding 0.00 gets narrower). If all the columns
   // still don't fit the screen, the grid's text shrinks a little until they
   // do -- so nothing is ever cut off and there's no sideways scrolling.
   const BASE_FONT = 13;
@@ -147,16 +128,18 @@ export default function Ledger() {
     ctx.font = `${BASE_FONT}px ${fam}`;
     const INPUT = 27;   // input padding + border + cell padding (+ a little room)
     const CELL = 24;    // plain cell padding
-    const DATE = tw('00/00/0000') + 52; // text + calendar icon + padding
+    const DATE = tw('September 30, 2026') + 40; // longest date text + calendar icon + padding
+    const PERIOD = tw('September') + tw('2026') + 34; // month + year dropdowns
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
+    const HEADERS = ['Billing Date', 'Period Date', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ''];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
       DATE + 10,                                              // Billing Date (first column has extra left padding)
+      PERIOD,                                                 // Period Date
       cap(widest('soa_number', undefined, 'SOA #0'), 14) + INPUT,
       widest('amount', undefined, '0.00') + INPUT,
       widest('tax_withheld', undefined, '0.00') + INPUT,
@@ -172,6 +155,7 @@ export default function Ledger() {
       46,                                                     // delete button
     ].map((px, i) => Math.max(px, headerMin[i]));
   }, [entries]);
+  const MIN_FONT = 10.5;
   const colWidths = useMemo(() => {
     const total = colPx.reduce((a, b) => a + b, 0);
     return colPx.map((x) => `${((x / total) * 100).toFixed(2)}%`);
@@ -179,6 +163,8 @@ export default function Ledger() {
 
   const gridWrapRef = useRef(null);
   const [gridFont, setGridFont] = useState(BASE_FONT);
+  const [gridScroll, setGridScroll] = useState(false); // too narrow even at the smallest text: scroll sideways instead of cutting cells off
+  const neededPx = colPx.reduce((a, b) => a + b, 0);
   useLayoutEffect(() => {
     const el = gridWrapRef.current;
     if (!el) return undefined;
@@ -187,7 +173,8 @@ export default function Ledger() {
       const avail = el.clientWidth;
       if (!avail) return;
       const scaled = BASE_FONT * Math.min(1.04, avail / needed);
-      setGridFont(Math.max(10.5, Math.min(13.5, Math.floor(scaled * 4) / 4)));
+      setGridFont(Math.max(MIN_FONT, Math.min(13.5, Math.floor(scaled * 4) / 4)));
+      setGridScroll(scaled < MIN_FONT - 0.01);
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -363,15 +350,15 @@ export default function Ledger() {
             ))}
           </div>
         ) : (
-          <div className="table-wrap" ref={gridWrapRef}>
-            <table className="data-table ledger-table" id={GRID_ID} style={{ fontSize: `${gridFont}px` }}>
-              {/* Column widths are sized from the data (see colWidths) so all 14 columns fit */}
+          <div className={`table-wrap${gridScroll ? ' ledger-scroll' : ''}`} ref={gridWrapRef}>
+            <table className="data-table ledger-table" id={GRID_ID} style={{ fontSize: `${gridFont}px`, minWidth: gridScroll ? Math.ceil(neededPx * (MIN_FONT / BASE_FONT)) : undefined }}>
+              {/* Column widths are sized from the data (see colWidths) so all columns fit */}
               <colgroup>
                 {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
               </colgroup>
               <thead>
                 <tr>
-                  <th>Billing Date</th><th>SOA #</th>
+                  <th>Billing Date</th><th>Period Date</th><th>SOA #</th>
                   <th className="text-right">Amount</th><th className="text-right">Tax W/H</th>
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
                   <th className="text-right">Receivable</th>
@@ -383,7 +370,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={14} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
+                  <tr><td colSpan={15} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -392,23 +379,24 @@ export default function Ledger() {
                     className={highlightId === String(r.id) ? 'row-focus' : ''}
                     onClick={() => { if (highlightId && highlightId !== String(r.id)) setHighlightId(null); }}
                   >
-                    <td><EditableText row={rowIdx} col={0} value={r.billing_date} type="date" onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
-                    <td><EditableText row={rowIdx} col={1} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
-                    <td><EditableText row={rowIdx} col={2} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
-                    <td><EditableText row={rowIdx} col={3} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
-                    <td><EditableText row={rowIdx} col={4} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                    <td><EditableText row={rowIdx} col={5} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                    <td><DateCell row={rowIdx} col={0} value={r.billing_date} onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
+                    <td><PeriodCell row={rowIdx} col={1} value={r.period_date} billingDate={r.billing_date} years={periodYears} onSave={(v) => saveField(r.id, 'period_date', v)} /></td>
+                    <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
+                    <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
+                    <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
+                    <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
+                    <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
-                    <td><EditableText row={rowIdx} col={6} value={r.payment_date} type="date" onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                    <td><EditableText row={rowIdx} col={7} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                    <td><EditableText row={rowIdx} col={8} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                    <td><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                    <td><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                    <td><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span className="badge badge-success">Paid</span>}
                       {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
-                    <td><EditableText row={rowIdx} col={9} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
+                    <td><EditableText row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
                     <td className="cell-action"><button className="btn btn-danger btn-sm btn-icon" title="Delete this entry" onClick={() => removeRow(r.id)}>×</button></td>
                   </tr>
                 ))}

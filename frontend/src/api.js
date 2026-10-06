@@ -60,6 +60,7 @@ export const api = {
   // reports
   getAging: (params) => call('get_aging', { params }),
   getPastDue: () => call('get_past_due'),
+  getMonthlyReport: (params) => call('get_monthly_report', { params }),
 
   // soa tracker
   getSoaTracker: (prefix) => call('get_soa_tracker', { params: { prefix } }),

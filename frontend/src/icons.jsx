@@ -24,6 +24,9 @@ export const IconHash = () => (
 export const IconActivity = () => (
   <svg {...common}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
 );
+export const IconCalendar = () => (
+  <svg {...common}><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 10h18M8 2.5v4M16 2.5v4" /></svg>
+);
 export const IconLogout = () => (
   <svg {...common} width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
 );

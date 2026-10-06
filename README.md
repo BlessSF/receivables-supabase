@@ -63,6 +63,18 @@ URL-encode it.
 
 If you change an environment variable later, redeploy so it takes effect.
 
+## Updating a database you already set up (Period Date)
+
+The Ledger has a **Period Date** column (the month a bill covers) and there is a
+**Reports by Month** page that uses it. If your Supabase database was created before
+this change, run `database/add_period_date.sql` **once**, **before** you deploy the new
+code: Supabase -> SQL Editor -> New query -> paste the file -> Run.
+
+It adds the column and fills it from each entry's old Billing Date (e.g. `2026-06-01`
+or `JULY 16-31, 2026` become June / July 2026). Entries whose billing date can't be
+read are left blank; set their month in the Ledger. It is safe to run twice. New
+databases created from `supabase_setup.sql` already include all of this.
+
 ## Running it on your PC (optional)
 
 ```

@@ -11,6 +11,7 @@ import PastDue from './pages/PastDue';
 import SoaTracker from './pages/SoaTracker';
 import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
+import MonthlyReport from './pages/MonthlyReport';
 import { isExecutive } from './utils';
 
 function Gate() {
@@ -32,6 +33,7 @@ function Gate() {
           <Route path="/summary" element={<Summary />} />
           <Route path="/past-due" element={<PastDue />} />
           <Route path="/aging" element={<Aging />} />
+          <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -43,6 +45,7 @@ function Gate() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/summary" element={<Summary />} />
+        <Route path="/reports-by-month" element={<MonthlyReport />} />
         <Route path="/companies" element={<Companies />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/aging" element={<Aging />} />

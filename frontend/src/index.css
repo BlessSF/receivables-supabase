@@ -425,6 +425,41 @@ button { font-family: inherit; }
 .btn-icon { width: 28px; height: 28px; padding: 0; font-size: 16px; }
 .editable-cell input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 1px; padding: 0; width: 12px; height: 12px; cursor: pointer; opacity: 0.55; }
 
+/* Date cell: "January 16, 2026" text + a calendar button (the real date picker is hidden behind it) */
+.date-cell { position: relative; }
+.date-cell > input[type="text"] { padding-right: 26px; text-overflow: ellipsis; }
+.date-cell > input[type="text"]::placeholder { color: #aab4c1; }
+.date-btn {
+  position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px; background: transparent;
+  color: var(--slate); opacity: 0.65; cursor: pointer; display: grid; place-items: center;
+}
+.date-btn:hover { opacity: 1; background: var(--slate-soft); }
+.editable-cell .date-native {
+  position: absolute; right: 3px; top: 0; width: 22px; height: 100%; padding: 0; border: 0;
+  opacity: 0; pointer-events: none;
+}
+
+/* Period cell: month + year dropdowns that read like plain cell text until you hover */
+.period-cell { display: flex; align-items: center; gap: 1px; }
+.period-cell select {
+  appearance: none; -webkit-appearance: none; cursor: pointer; text-overflow: ellipsis;
+  width: auto; flex: 0 1 auto; field-sizing: content; /* month shrinks to the chosen name where the browser supports it */
+  background-repeat: no-repeat; background-position: right 4px center; background-size: 10px;
+}
+.period-cell select:hover, .period-cell select:focus {
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2361708a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.period-cell select.is-empty { color: #a3aebb; }
+.period-cell .period-year { width: auto; flex: none; padding-left: 3px; }
+.editable-cell.saving select { background-color: var(--amber-soft); }
+.editable-cell.saved select { background-color: var(--teal-soft); }
+
+/* Ledger narrower than its columns need even at the smallest text: scroll sideways inside the panel */
+.table-wrap.ledger-scroll { overflow-x: auto; }
+.table-wrap.ledger-scroll th { position: static; }
+
 /* ---------- Badges ---------- */
 .badge {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px;
@@ -767,4 +802,57 @@ button { font-family: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- Reports by Month (same layout as the monthly Excel sheet) ---------- */
+.report-warn { background: var(--amber-soft); color: #6b4a0b; border-color: #efd7a6; border-left-color: var(--amber); }
+.report-panel { padding: 0; overflow: clip; }
+.report-scroll { overflow-x: auto; }
+.report-table { width: 100%; min-width: 1120px; border-collapse: separate; border-spacing: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.report-table th, .report-table td { padding: 6px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.report-table .rep-col-company { width: 17%; }
+.report-table .rep-col-soa { width: 8.5%; }
+.report-table .rep-col-month { width: 9.5%; }
+.report-table .rep-col-bal { width: 10.5%; }
+.report-table .rep-col-gap { width: 14px; }
+.report-table thead th { background: var(--panel-tint); font-weight: 700; color: var(--ink); text-align: center; border-bottom: 1px solid var(--line-strong); }
+.report-table .rep-company-head { text-align: left; padding-left: 20px; }
+.report-table .rep-sub th { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink-soft); }
+.report-table .rep-sub th.text-right { text-align: right; }
+.report-table th.rep-band { color: #fff; font-size: 14px; letter-spacing: 0.02em; padding: 8px 10px; border-right-color: rgba(255, 255, 255, 0.25); }
+.rep-red { background: #d3202a !important; color: #fff; }
+.rep-blue { background: #1a47d6 !important; color: #fff; }
+.report-table .rep-gap { padding: 0; background: var(--panel); border-right: none; border-bottom: none; }
+.report-table thead th.rep-gap { background: var(--panel); border-bottom: none; }
+.report-table .rep-company { padding-left: 20px; font-weight: 600; vertical-align: middle; background: #fff; border-right: 1px solid var(--line-strong); }
+.report-table .rep-center { text-align: center; white-space: nowrap; }
+.report-table tbody tr.rep-first > td { border-top: 1px solid var(--line-strong); }
+.report-table tbody tr:hover > td:not(.rep-gap) { background: #f5f8f8; }
+.report-table tbody tr:hover > td.rep-company { background: #fff; }
+.rep-link { color: var(--ink); font-weight: inherit; }
+.rep-link:hover { color: var(--teal-strong); text-decoration: underline; }
+.report-table .empty-state { text-align: center; }
+.report-table tfoot td { border: none; padding-top: 12px; padding-bottom: 14px; }
+.report-table tfoot .rep-total { font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em; }
+.report-table tfoot .rep-total-amt { font-size: 14px; }
+.report-table tfoot .rep-gap, .report-table tfoot .rep-foot-space { background: var(--panel); }
+.report-foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 20px 20px 22px; flex-wrap: wrap; }
+.report-prepared-label { font-size: 12px; color: var(--slate); }
+.report-prepared-name { font-weight: 600; margin-top: 2px; }
+.report-later { font-size: 12.5px; color: var(--slate); }
+
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; }
+  .shell { display: block; }
+  .sidebar, .report-actions, .report-filters, .report-warn { display: none !important; }
+  .main { padding: 0; max-width: none; }
+  .page-header { margin-bottom: 10px; }
+  .page-header h1 { font-size: 22px; }
+  .panel { border: none; box-shadow: none; }
+  .report-scroll { overflow: visible; }
+  .report-table { min-width: 0; font-size: 10.5px; }
+  .report-table th, .report-table td { padding: 3px 6px; }
+  .report-table tr { break-inside: avoid; }
 }

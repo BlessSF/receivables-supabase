@@ -103,3 +103,53 @@ export function excelSerial(dateStr) {
   const epoch = utc(1899, 11, 30);
   return Math.round((ms - epoch) / DAY);
 }
+
+// ---------------------------------------------------------------- months / periods
+// A ledger entry's "Period Date" is stored as the 1st of the month it covers
+// (e.g. "2026-06-01" = June 2026). Months are compared as "YYYY-MM" keys.
+
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** "2026-06-01" (or any readable date) -> "2026-06", else null. */
+export function monthKey(value) {
+  const ms = parseDate(value);
+  if (ms === null) return null;
+  const d = new Date(ms);
+  return `${String(d.getUTCFullYear()).padStart(4, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** This month in Manila time as "YYYY-MM". */
+export function currentMonthKey() {
+  return monthKey(ymd(todayMs()));
+}
+
+/** "2026-11" + 3 -> "2027-02". */
+export function addMonthsKey(key, n) {
+  const [y, m] = key.split('-').map(Number);
+  const total = y * 12 + (m - 1) + n;
+  return `${String(Math.floor(total / 12)).padStart(4, '0')}-${String((total % 12) + 1).padStart(2, '0')}`;
+}
+
+/** "2026-06" -> "June 2026" */
+export function monthLabel(key) {
+  if (!key) return '';
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** "2026-06" -> "June" */
+export function monthName(key) {
+  return key ? MONTH_NAMES[Number(key.split('-')[1]) - 1] : '';
+}
+
+/** Period Date value as text, e.g. "June 2026" ('' when empty/unreadable). */
+export function periodLabel(value) {
+  return monthLabel(monthKey(value));
+}
+
+/** Normalizes "2026-06" or "2026-06-17" to "2026-06-01"; null if it isn't a real month. */
+export function normalizePeriod(value) {
+  const m = String(value ?? '').trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:-\d{1,2})?$/);
+  return m ? `${m[1]}-${m[2]}-01` : null;
+}

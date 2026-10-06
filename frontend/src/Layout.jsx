@@ -3,13 +3,17 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconLogout } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout } from './icons';
+
+// The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
+const LEDGER_NARROW_PX = 1700;
 
 const NAV_GROUPS = [
   {
     items: [
       { to: '/', label: 'Dashboard', end: true, Icon: IconDashboard },
       { to: '/summary', label: 'Summary', Icon: IconList },
+      { to: '/reports-by-month', label: 'Reports by Month', Icon: IconCalendar },
     ],
   },
   {
@@ -43,6 +47,7 @@ const EXEC_NAV_GROUPS = [
       { to: '/summary', label: 'Past Due Summary', Icon: IconList },
       { to: '/past-due', label: 'Past Due by Company', Icon: IconAlert },
       { to: '/aging', label: 'Aging Report', Icon: IconClock },
+      { to: '/reports-by-month', label: 'Reports by Month', Icon: IconCalendar },
     ],
   },
 ];
@@ -52,17 +57,17 @@ export default function Layout() {
   const brand = getBranding(user);
   const displayName = brand.displayName;
   // Sidebar: full (with logo) by default. "Collapse sidebar" hides the labels
-  // and is remembered. On a company's Ledger (14 columns) the sidebar
+  // and is remembered. On a company's Ledger (15 columns) the sidebar
   // collapses automatically on laptop-size windows so the grid fits; the
   // expand button still brings it back.
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('rv_sidebar_collapsed') === '1'; } catch { return false; }
   });
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 1500);
+  const [narrow, setNarrow] = useState(() => window.innerWidth < LEDGER_NARROW_PX);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
   useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < 1500);
+    const onResize = () => setNarrow(window.innerWidth < LEDGER_NARROW_PX);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
