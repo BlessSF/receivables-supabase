@@ -6,8 +6,9 @@
 
 const CUSTOM_BRANDS = {
   demic: {
-    name: 'Demic Lab',
-    logo: '/demic-logo.png',
+    name: 'Project DL',
+    mark: 'DL', // letters shown in the small badge next to the name
+    logo: null, // no logo image
     color: '#0a1fd8',
   },
 };
@@ -19,7 +20,7 @@ export function getBranding(user) {
   const custom = CUSTOM_BRANDS[key];
   const displayName = user?.full_name || user?.username || '';
   const initial = (displayName.trim().charAt(0) || 'M').toUpperCase();
-  if (custom) return { ...custom, initial, displayName };
+  if (custom) return { ...custom, initial: custom.mark || initial, displayName };
   return { name: 'Multipliers', logo: null, color: DEFAULT_COLOR, initial, displayName };
 }
 

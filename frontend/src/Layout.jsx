@@ -101,7 +101,7 @@ export default function Layout() {
           </div>
         ) : (
           <div className="brand">
-            <span className="brand-mark">{brand.initial}</span>
+            <span className="brand-mark" style={brand.initial.length > 1 ? { fontSize: 15, letterSpacing: '0.02em' } : undefined}>{brand.initial}</span>
             <div>
               <div className="brand-name">{brand.name}</div>
               <div className="brand-sub">Receivables Management</div>
