@@ -222,12 +222,16 @@ button { font-family: inherit; }
 .kpi-dark-card {
   padding: 26px 28px 24px; position: relative; min-width: 0;
   background: #eceef1;
+  container-type: inline-size; /* lets the amount scale to the card width */
 }
 .kpi-dark-label { font-size: 13.5px; font-weight: 500; color: #5b6573; margin-bottom: 14px; }
 .kpi-dark-value {
-  font-family: var(--font-display); font-size: clamp(24px, 2.2vw, 34px); font-weight: 500;
+  font-family: var(--font-display); font-size: 24px; /* fallback */
+  font-size: clamp(14px, 9.5cqw, 34px); /* auto-fits the card width */
+  font-weight: 500;
   letter-spacing: -0.01em; color: #1f2937; line-height: 1.1; margin-bottom: 20px;
-  font-variant-numeric: lining-nums; overflow-wrap: anywhere;
+  font-variant-numeric: lining-nums; white-space: nowrap;
+  height: 1.1em; /* same height in every card so the bars line up */
 }
 .kpi-dark-track { height: 4px; border-radius: 999px; background: #d0d4da; overflow: hidden; margin-bottom: 12px; }
 .kpi-dark-fill { height: 100%; border-radius: 999px; background: #4f86e0; transition: width 0.5s ease; }
