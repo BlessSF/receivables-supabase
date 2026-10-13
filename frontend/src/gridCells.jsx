@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MONTHS, formatLongDate, parseLooseDate, periodParts, periodValue, defaultPeriodYear } from './utils';
 
 // Cells for the Ledger grid, plus the keyboard helpers every cell shares.
@@ -182,6 +183,118 @@ export function PeriodCell({ value, billingDate, years, onSave, row, col }) {
         <select className="period-year" value={parts.y} onChange={onYear} onKeyDown={onKeyDown} aria-label="Period year">
           {yearList.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Remarks: in the grid it is one tidy line (the full text shows as a tooltip on hover).
+ * Click it and the text opens in a roomier box that wraps and grows, floating over the
+ * table -- so long notes can be read and edited in full without widening the column or
+ * pushing anything around. Enter saves (and moves down), Shift+Enter adds a new line,
+ * Esc cancels, clicking away saves.
+ */
+export function RemarksCell({ value, onSave, row, col }) {
+  const [val, setVal] = useState(value ?? '');
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState(''); // '', 'saving', 'saved', 'error'
+  const [box, setBox] = useState(null);
+  const inputRef = useRef(null);
+  const areaRef = useRef(null);
+  const cancelRef = useRef(false);
+  useEffect(() => { if (!open) setVal(value ?? ''); }, [value, open]);
+
+  function place() {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const width = Math.min(Math.max(r.width, 380), vw - 16);
+    let left = r.right - width;           // grow to the left: Remarks sits at the right edge of the grid
+    if (left + width > vw - 8) left = vw - 8 - width;
+    if (left < 8) left = 8;
+    setBox({ top: r.top, left, width });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    place();
+    const again = () => place();
+    window.addEventListener('resize', again);
+    window.addEventListener('scroll', again, true);
+    return () => {
+      window.removeEventListener('resize', again);
+      window.removeEventListener('scroll', again, true);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // focus on open, and grow the box to fit the text (scrolls inside after ~12 lines)
+  useLayoutEffect(() => {
+    const ta = areaRef.current;
+    if (!open || !box || !ta) return;
+    ta.style.height = 'auto';
+    const h = Math.min(ta.scrollHeight + 2, 260);
+    ta.style.height = `${h}px`;
+    const vh = window.innerHeight;
+    ta.style.top = `${Math.max(8, Math.min(box.top, vh - h - 8))}px`;
+    if (document.activeElement !== ta) {
+      ta.focus();
+      const end = ta.value.length;
+      ta.setSelectionRange(end, end);
+    }
+  }, [open, box, val]);
+
+  async function commit() {
+    const next = val;
+    setOpen(false);
+    setBox(null);
+    if (cancelRef.current) { cancelRef.current = false; setVal(value ?? ''); return; }
+    if ((next || '') === (value ?? '')) return;
+    setState('saving');
+    try {
+      await onSave(next);
+      setState('saved');
+      setTimeout(() => setState(''), 700);
+    } catch (e) {
+      setState('error');
+      alert(e.message);
+      setVal(value ?? '');
+    }
+  }
+
+  function onKeyDown(e) {
+    const t = e.target;
+    const atStart = t.selectionStart === 0 && t.selectionEnd === 0;
+    const atEnd = t.selectionStart === t.value.length && t.selectionEnd === t.value.length;
+    if (e.key === 'Escape') { e.preventDefault(); cancelRef.current = true; t.blur(); return; }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); t.blur(); focusCell(row + 1, col); return; }
+    if (e.key === 'ArrowUp' && atStart) { e.preventDefault(); t.blur(); focusCell(row - 1, col); return; }
+    if (e.key === 'ArrowDown' && atEnd) { e.preventDefault(); t.blur(); focusCell(row + 1, col); return; }
+    if (e.key === 'ArrowLeft' && atStart) { e.preventDefault(); t.blur(); focusCell(row, col - 1); }
+  }
+
+  return (
+    <div className={`editable-cell remarks-cell ${state}`} data-r={row} data-c={col}>
+      <input
+        ref={inputRef}
+        readOnly
+        value={(val || '').replace(/\s*\n\s*/g, ' ')}
+        title={val || undefined}
+        onFocus={() => setOpen(true)}
+      />
+      {open && createPortal(
+        <textarea
+          ref={areaRef}
+          className="remarks-pop"
+          value={val}
+          rows={1}
+          style={box ? { left: box.left, top: box.top, width: box.width } : { left: 0, top: 0, visibility: 'hidden' }}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={onKeyDown}
+        />,
+        document.body
       )}
     </div>
   );

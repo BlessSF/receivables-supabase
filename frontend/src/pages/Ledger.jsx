@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } fr
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts } from '../utils';
-import { GRID_ID, gridKeyDown, DateCell, PeriodCell } from '../gridCells';
+import { GRID_ID, gridKeyDown, DateCell, PeriodCell, RemarksCell } from '../gridCells';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -409,7 +409,7 @@ export default function Ledger() {
                       {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
-                    <td><EditableText row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
+                    <td><RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
                     <td className="cell-action">
                       {company?.account_type === 'HMO' && (
                         <button className="btn btn-secondary btn-sm btn-icon" title="Charge this entry to the company linked to this HMO" onClick={() => chargeToCompany(r)}>→</button>

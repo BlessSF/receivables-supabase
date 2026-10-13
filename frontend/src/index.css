@@ -430,6 +430,16 @@ button { font-family: inherit; }
 .btn-icon { width: 28px; height: 28px; padding: 0; font-size: 16px; }
 .editable-cell input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 1px; padding: 0; width: 12px; height: 12px; cursor: pointer; opacity: 0.55; }
 
+/* Remarks: one tidy line in the grid; click to open the full text in a floating box */
+.remarks-cell input { text-overflow: ellipsis; cursor: text; }
+.remarks-pop {
+  position: fixed; z-index: 1000; box-sizing: border-box; margin: 0; padding: 8px 10px;
+  font: inherit; font-size: 13px; line-height: 1.45; color: var(--ink); background: #fff;
+  border: 1px solid var(--teal); border-radius: 8px; resize: none; overflow-y: auto;
+  box-shadow: var(--ring), 0 12px 30px rgba(15, 23, 42, 0.2);
+}
+.remarks-pop:focus { outline: none; }
+
 /* Date cell: "January 16, 2026" text + a calendar button (the real date picker is hidden behind it) */
 .date-cell { position: relative; }
 .date-cell > input[type="text"] { padding-right: 26px; text-overflow: ellipsis; }
