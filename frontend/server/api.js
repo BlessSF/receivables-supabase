@@ -544,7 +544,7 @@ const actions = {
     const remarks = elvis(trim(input.remarks ?? ''), null);
     const txnDate = elvis(trim(input.txn_date ?? ''), todayYmd());
 
-    if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO, a company, or both.' }, 400);
+    if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
     if (billTo === 'HMO' && !hmoId) jsonExit({ ok: false, error: 'Billing the HMO needs an HMO selected.' }, 400);
     if (billTo === 'COMPANY' && !companyId) jsonExit({ ok: false, error: 'Billing the company needs a company selected.' }, 400);
     if (amount < 0) jsonExit({ ok: false, error: 'Amount cannot be negative.' }, 400);

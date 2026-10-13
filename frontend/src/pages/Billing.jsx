@@ -24,18 +24,12 @@ export default function Billing() {
   const [filter, setFilter] = useState('OPEN');
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [partnerMap, setPartnerMap] = useState({}); // hmo id -> [company ids]
   const [params, setParams] = useSearchParams();
 
   function load() { api.getBilling().then((r) => setRows(r.data)).catch((e) => setFlash({ type: 'error', msg: e.message })); }
   useEffect(() => {
     load();
     api.getCompanies().then((r) => setAccounts(r.data));
-    api.getHmoPartners().then((r) => {
-      const m = {};
-      r.data.forEach((p) => { (m[p.hmo_id] = m[p.hmo_id] || []).push(Number(p.company_id)); });
-      setPartnerMap(m);
-    }).catch(() => {});
     // Arrived from the HMOs page ("+ New Charge"): open a transaction with that HMO already chosen.
     const pre = params.get('hmo_id');
     if (pre) {
@@ -45,7 +39,6 @@ export default function Billing() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hmos = useMemo(() => accounts.filter((a) => a.account_type === 'HMO'), [accounts]);
-  const companies = useMemo(() => accounts.filter((a) => a.account_type !== 'HMO'), [accounts]);
 
   const shown = useMemo(() => {
     if (!rows) return null;
@@ -60,13 +53,8 @@ export default function Billing() {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  // When an HMO is chosen, its partner companies are listed first in the Company dropdown.
-  const partnerIds = new Set(form && form.hmo_id ? (partnerMap[Number(form.hmo_id)] || []) : []);
-  const partnerList = companies.filter((c) => partnerIds.has(c.id));
-  const otherList = companies.filter((c) => !partnerIds.has(c.id));
-
   async function save(andPost) {
-    if (!form.hmo_id && !form.company_id) { setFlash({ type: 'error', msg: 'Choose an HMO, a company, or both.' }); return; }
+    if (!form.hmo_id) { setFlash({ type: 'error', msg: 'Choose an HMO.' }); return; }
     if (andPost && !(Number(form.amount) > 0)) { setFlash({ type: 'error', msg: 'Enter an amount greater than zero to post.' }); return; }
     setBusy(true);
     try {
@@ -110,7 +98,7 @@ export default function Billing() {
     setFlash(null);
     setForm({
       id: r.id, txn_date: r.txn_date || todayLocal(), patient_name: r.patient_name || '', service: r.service || '',
-      amount: r.amount, hmo_id: r.hmo_id || '', company_id: r.company_id || '', bill_to: r.bill_to || 'HMO', remarks: r.remarks || '',
+      amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO', remarks: r.remarks || '',
     });
   }
 
@@ -122,7 +110,7 @@ export default function Billing() {
       <div className="page-header">
         <div>
           <h1>Billing</h1>
-          <div className="subtitle">Open a transaction, pick the HMO and company, then post it to the ledger</div>
+          <div className="subtitle">Open a transaction, pick the HMO, then post it to that HMO's ledger</div>
         </div>
         <button className="btn" onClick={() => { setFlash(null); setForm(blank()); }}>+ New Transaction</button>
       </div>
@@ -151,31 +139,10 @@ export default function Billing() {
                 <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} />
               </div>
               <div className="form-group">
-                <label>HMO</label>
-                <select value={form.hmo_id} onChange={set('hmo_id')}>
-                  <option value="">— None —</option>
+                <label>HMO *</label>
+                <select required value={form.hmo_id} onChange={set('hmo_id')}>
+                  <option value="">Select an HMO…</option>
                   {hmos.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Company</label>
-                <select value={form.company_id} onChange={set('company_id')}>
-                  <option value="">— None —</option>
-                  {partnerList.length > 0 && (
-                    <optgroup label="Partner companies of this HMO">
-                      {partnerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </optgroup>
-                  )}
-                  {partnerList.length > 0
-                    ? <optgroup label="Other companies">{otherList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>
-                    : companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Charge to</label>
-                <select value={form.bill_to} onChange={set('bill_to')}>
-                  <option value="HMO">The HMO</option>
-                  <option value="COMPANY">The company</option>
                 </select>
               </div>
             </div>
@@ -212,14 +179,14 @@ export default function Billing() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Date</th><th>Patient</th><th>Service</th><th>HMO</th><th>Company</th>
-                <th>Charged to</th><th className="text-right">Amount</th><th>Status</th><th></th>
+                <th>#</th><th>Date</th><th>Patient</th><th>Service</th><th>HMO</th>
+                <th className="text-right">Amount</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {!shown && <tr><td colSpan={10} className="empty-state">Loading…</td></tr>}
+              {!shown && <tr><td colSpan={8} className="empty-state">Loading…</td></tr>}
               {shown && shown.length === 0 && (
-                <tr><td colSpan={10} className="empty-state">
+                <tr><td colSpan={8} className="empty-state">
                   {filter === 'OPEN' ? 'No open transactions. Click "+ New Transaction" to open one.' : 'Nothing here.'}
                 </td></tr>
               )}
@@ -229,10 +196,7 @@ export default function Billing() {
                   <td>{fdate(r.txn_date)}</td>
                   <td>{r.patient_name || '—'}</td>
                   <td>{r.service || '—'}</td>
-                  <td>{r.hmo_name || '—'}</td>
-                  <td>{r.company_name || '—'}</td>
                   <td>
-                    <span className={`badge ${r.bill_to === 'COMPANY' ? 'badge-secondary' : 'badge-info'}`}>{r.bill_to === 'COMPANY' ? 'Company' : 'HMO'}</span>{' '}
                     {r.status === 'POSTED' && r.ledger_entry_id
                       ? <Link to={`/ledger?company_id=${billedId(r)}&entry=${r.ledger_entry_id}`}>{billedName(r)}</Link>
                       : billedName(r)}
