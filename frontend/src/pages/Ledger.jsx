@@ -115,6 +115,7 @@ export default function Ledger() {
   // still don't fit the screen, the grid's text shrinks a little until they
   // do -- so nothing is ever cut off and there's no sideways scrolling.
   const BASE_FONT = 13;
+  const showMove = data?.company?.account_type === 'HMO' || entries.some((r) => r.via_hmo_id);
   const colPx = useMemo(() => {
     const ctx = getMeasureCtx();
     const fam = getComputedStyle(document.body).fontFamily || 'sans-serif';
@@ -152,9 +153,9 @@ export default function Ledger() {
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
-      46,                                                     // delete button
+      showMove ? 78 : 46,                                     // move + delete buttons
     ].map((px, i) => Math.max(px, headerMin[i]));
-  }, [entries]);
+  }, [entries, showMove]);
   const MIN_FONT = 10.5;
   const colWidths = useMemo(() => {
     const total = colPx.reduce((a, b) => a + b, 0);
@@ -199,6 +200,22 @@ export default function Ledger() {
     setData(r.data);
     // Wait a tick for the new row to actually be in the DOM before scrolling to it.
     setTimeout(() => flashRow(res.id), 60);
+  }
+
+  async function chargeToCompany(row) {
+    const members = companies.filter((c) => c.hmo_id === Number(data.company?.id));
+    if (!members.length) { alert('This HMO has no member companies yet. Open Companies, edit a company and set "Belongs to HMO".'); return; }
+    const list = members.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+    const pick = prompt(`Charge this entry to which company?\n\n${list}\n\nType the number:`);
+    if (!pick) return;
+    const chosen = members[Number(pick) - 1];
+    if (!chosen) { alert('Please type one of the numbers in the list.'); return; }
+    try { await api.chargeEntryToCompany(row.id, chosen.id); reload(); } catch (e) { alert(e.message); }
+  }
+
+  async function returnToHmo(row) {
+    if (!confirm(`Return this entry to ${row.via_hmo_name || 'the HMO'}?`)) return;
+    try { await api.returnEntryToHmo(row.id); reload(); } catch (e) { alert(e.message); }
   }
 
   async function removeRow(id) {
@@ -397,7 +414,15 @@ export default function Ledger() {
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td><EditableText row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
-                    <td className="cell-action"><button className="btn btn-danger btn-sm btn-icon" title="Delete this entry" onClick={() => removeRow(r.id)}>×</button></td>
+                    <td className="cell-action">
+                      {company?.account_type === 'HMO' && (
+                        <button className="btn btn-secondary btn-sm btn-icon" title="Charge this entry to a member company" onClick={() => chargeToCompany(r)}>→</button>
+                      )}
+                      {r.via_hmo_id && (
+                        <button className="btn btn-secondary btn-sm btn-icon" title={`Charged via ${r.via_hmo_name || 'HMO'} — click to return it to the HMO`} onClick={() => returnToHmo(r)}>↩</button>
+                      )}
+                      <button className="btn btn-danger btn-sm btn-icon" title="Delete this entry" onClick={() => removeRow(r.id)}>×</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
