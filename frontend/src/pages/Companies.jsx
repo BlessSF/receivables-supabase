@@ -4,7 +4,7 @@ import { api } from '../api';
 import { peso } from '../utils';
 import { useAuth } from '../AuthContext';
 
-const BLANK = { name: '', code: '', account_type: 'COMPANY', hmo_id: '', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
+const BLANK = { name: '', code: '', account_type: 'COMPANY', linked_company_id: '', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
 
 export default function Companies() {
   const { user } = useAuth();
@@ -22,31 +22,23 @@ export default function Companies() {
   }
   useEffect(load, [user]);
 
-  const hmos = useMemo(() => (companies || []).filter((c) => c.account_type === 'HMO'), [companies]);
+  const companyOptions = useMemo(() => (companies || []).filter((c) => c.account_type !== 'HMO'), [companies]);
+  const byId = useMemo(() => Object.fromEntries((companies || []).map((c) => [c.id, c])), [companies]);
 
-  // For each HMO: its member companies and the combined outstanding balance.
-  const rollup = useMemo(() => {
-    const map = {};
-    for (const h of hmos) map[h.id] = { members: 0, memberOutstanding: 0 };
-    for (const c of companies || []) {
-      if (c.hmo_id && map[c.hmo_id]) {
-        map[c.hmo_id].members += 1;
-        map[c.hmo_id].memberOutstanding += Number(c.outstanding) || 0;
-      }
-    }
-    return map;
-  }, [companies, hmos]);
-
-  const hmoName = (id) => hmos.find((h) => h.id === id)?.name || '';
+  // What to show in the "Linked" column: an HMO shows its company, a company shows its HMO(s).
+  function linkedLabel(c) {
+    if (c.account_type === 'HMO') return byId[c.linked_company_id]?.name || '';
+    return (companies || []).filter((h) => h.account_type === 'HMO' && h.linked_company_id === c.id).map((h) => h.name).join(', ');
+  }
 
   const filtered = useMemo(() => {
     if (!companies) return [];
     const q = search.trim().toLowerCase();
     if (!q) return companies;
     return companies.filter((c) =>
-      [c.name, c.code, c.contact_person, c.branch, hmoName(c.hmo_id)].filter(Boolean).join(' ').toLowerCase().includes(q)
+      [c.name, c.code, c.contact_person, c.branch, linkedLabel(c)].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
-  }, [companies, search, hmos]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [companies, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startAdd() { setForm(BLANK); setEditing({}); }
   function startEdit(c) { setForm({ ...BLANK, ...c }); setEditing(c); }
@@ -115,17 +107,17 @@ export default function Companies() {
               </div>
               <div className="form-group">
                 <label>Company or HMO?</label>
-                <select value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value, hmo_id: e.target.value === 'HMO' ? '' : form.hmo_id })}>
+                <select value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value, linked_company_id: e.target.value === 'HMO' ? form.linked_company_id : '' })}>
                   <option value="COMPANY">Company</option>
                   <option value="HMO">HMO</option>
                 </select>
               </div>
-              {form.account_type === 'COMPANY' && (
+              {form.account_type === 'HMO' && (
                 <div className="form-group">
-                  <label>Belongs to HMO</label>
-                  <select value={form.hmo_id || ''} onChange={(e) => setForm({ ...form, hmo_id: e.target.value })}>
+                  <label>Linked company (who this HMO bills)</label>
+                  <select value={form.linked_company_id || ''} onChange={(e) => setForm({ ...form, linked_company_id: e.target.value })}>
                     <option value="">— None —</option>
-                    {hmos.filter((h) => h.id !== form.id).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    {companyOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               )}
@@ -200,7 +192,7 @@ export default function Companies() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Name</th><th>Code</th><th>Type</th><th>HMO / Members</th><th>Status</th>
+                <th>#</th><th>Name</th><th>Code</th><th>Type</th><th>Linked HMO / Company</th><th>Status</th>
                 {user?.is_admin && <th>Branch</th>}
                 <th className="text-right">Entries</th><th className="text-right">Outstanding</th><th>Contact</th><th></th>
               </tr>
@@ -217,12 +209,7 @@ export default function Companies() {
                   <td>{c.code || '—'}</td>
                   <td><span className={`badge ${c.account_type === 'HMO' ? 'badge-info' : 'badge-secondary'}`}>{c.account_type}</span></td>
                   <td>
-                    {c.account_type === 'HMO' ? (
-                      <span title="Combined outstanding of member companies">
-                        {rollup[c.id]?.members || 0} member{(rollup[c.id]?.members || 0) === 1 ? '' : 's'}
-                        {rollup[c.id]?.members > 0 && <> · {peso(rollup[c.id].memberOutstanding)}</>}
-                      </span>
-                    ) : (hmoName(c.hmo_id) || '—')}
+                    {linkedLabel(c) || '—'}
                   </td>
                   <td>
                     <select

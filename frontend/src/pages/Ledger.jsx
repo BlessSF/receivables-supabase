@@ -203,14 +203,10 @@ export default function Ledger() {
   }
 
   async function chargeToCompany(row) {
-    const members = companies.filter((c) => c.hmo_id === Number(data.company?.id));
-    if (!members.length) { alert('This HMO has no member companies yet. Open Companies, edit a company and set "Belongs to HMO".'); return; }
-    const list = members.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
-    const pick = prompt(`Charge this entry to which company?\n\n${list}\n\nType the number:`);
-    if (!pick) return;
-    const chosen = members[Number(pick) - 1];
-    if (!chosen) { alert('Please type one of the numbers in the list.'); return; }
-    try { await api.chargeEntryToCompany(row.id, chosen.id); reload(); } catch (e) { alert(e.message); }
+    const linked = companies.find((c) => c.id === Number(data.company?.linked_company_id));
+    if (!linked) { alert('This HMO is not linked to a company yet. Open Companies, edit this HMO and choose its company.'); return; }
+    if (!confirm(`Charge this entry to ${linked.name}?`)) return;
+    try { await api.chargeEntryToCompany(row.id); reload(); } catch (e) { alert(e.message); }
   }
 
   async function returnToHmo(row) {
@@ -416,7 +412,7 @@ export default function Ledger() {
                     <td><EditableText row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
                     <td className="cell-action">
                       {company?.account_type === 'HMO' && (
-                        <button className="btn btn-secondary btn-sm btn-icon" title="Charge this entry to a member company" onClick={() => chargeToCompany(r)}>→</button>
+                        <button className="btn btn-secondary btn-sm btn-icon" title="Charge this entry to the company linked to this HMO" onClick={() => chargeToCompany(r)}>→</button>
                       )}
                       {r.via_hmo_id && (
                         <button className="btn btn-secondary btn-sm btn-icon" title={`Charged via ${r.via_hmo_name || 'HMO'} — click to return it to the HMO`} onClick={() => returnToHmo(r)}>↩</button>

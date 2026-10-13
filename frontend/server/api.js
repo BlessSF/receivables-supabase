@@ -486,21 +486,19 @@ const actions = {
     return { ok: true, message: 'Ledger entry deleted.' };
   },
 
-  // Move a charge from an HMO's ledger onto one of that HMO's member companies.
+  // Move a charge from an HMO's ledger onto the company that HMO is linked to.
   async charge_entry_to_company(input, auth) {
     const id = toInt(input.id);
-    const targetId = toInt(input.company_id);
     const entry = await one('SELECT id, company_id FROM ledger_entries WHERE id=?', [id]);
     if (!entry) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
     await requireCompanyAccess(auth, toInt(entry.company_id));
-    await requireCompanyAccess(auth, targetId);
-    const hmo = await one('SELECT id, account_type FROM companies WHERE id=?', [toInt(entry.company_id)]);
-    const target = await one('SELECT id, name, hmo_id FROM companies WHERE id=?', [targetId]);
+    const hmo = await one('SELECT id, account_type, linked_company_id FROM companies WHERE id=?', [toInt(entry.company_id)]);
     if (!hmo || hmo.account_type !== 'HMO') jsonExit({ ok: false, error: 'Only HMO charges can be charged to a company.' }, 400);
-    if (!target || toInt(target.hmo_id) !== toInt(hmo.id)) {
-      jsonExit({ ok: false, error: 'That company is not a member of this HMO.' }, 400);
-    }
-    await exec('UPDATE ledger_entries SET company_id=?, company_name=?, via_hmo_id=? WHERE id=?', [targetId, target.name, toInt(hmo.id), id]);
+    if (!hmo.linked_company_id) jsonExit({ ok: false, error: 'This HMO is not linked to a company yet. Edit the HMO under Companies and choose its company.' }, 400);
+    const target = await one('SELECT id, name FROM companies WHERE id=?', [toInt(hmo.linked_company_id)]);
+    if (!target) jsonExit({ ok: false, error: 'The linked company no longer exists.' }, 400);
+    await requireCompanyAccess(auth, toInt(target.id));
+    await exec('UPDATE ledger_entries SET company_id=?, company_name=?, via_hmo_id=? WHERE id=?', [toInt(target.id), target.name, toInt(hmo.id), id]);
     return { ok: true, message: `Charged to ${target.name}.` };
   },
 
@@ -727,30 +725,30 @@ async function saveCompany(input, auth, action) {
 
   if (name === '') jsonExit({ ok: false, error: 'Company name is required.' }, 400);
 
-  // "Belongs to HMO": only a COMPANY can belong to an HMO, and the target must
-  // really be an HMO account (and not the company itself).
-  let hmoId = toInt(input.hmo_id) || null;
-  if (accountType !== 'COMPANY') hmoId = null;
-  if (hmoId) {
-    const target = await scalar(`SELECT account_type FROM companies WHERE id=?`, [hmoId]);
-    if (target !== 'HMO' || hmoId === toInt(input.id)) {
-      jsonExit({ ok: false, error: 'Please choose a valid HMO for this company.' }, 400);
+  // Each HMO account is linked to ONE company (the company it bills). Only an
+  // HMO can have a linked company, and it must be a real COMPANY account.
+  let linkedId = toInt(input.linked_company_id) || null;
+  if (accountType !== 'HMO') linkedId = null;
+  if (linkedId) {
+    const target = await scalar(`SELECT account_type FROM companies WHERE id=?`, [linkedId]);
+    if (target !== 'COMPANY' || linkedId === toInt(input.id)) {
+      jsonExit({ ok: false, error: 'Please choose a valid company to link this HMO to.' }, 400);
     }
   }
 
   try {
     if (action === 'create_company') {
       const id = await insertId(
-        'INSERT INTO companies (name, code, status, account_type, hmo_id, branch, contact_person, contact_number, email_address, remarks) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        [name, code, status, accountType, hmoId, branch, contact, number, email, remarks]
+        'INSERT INTO companies (name, code, status, account_type, linked_company_id, branch, contact_person, contact_number, email_address, remarks) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [name, code, status, accountType, linkedId, branch, contact, number, email, remarks]
       );
       return { ok: true, id, message: `Company "${name}" added.` };
     }
     const editId = toInt(input.id);
     await requireCompanyAccess(auth, editId);
     await exec(
-      'UPDATE companies SET name=?, code=?, status=?, account_type=?, hmo_id=?, branch=?, contact_person=?, contact_number=?, email_address=?, remarks=? WHERE id=?',
-      [name, code, status, accountType, hmoId, branch, contact, number, email, remarks, editId]
+      'UPDATE companies SET name=?, code=?, status=?, account_type=?, linked_company_id=?, branch=?, contact_person=?, contact_number=?, email_address=?, remarks=? WHERE id=?',
+      [name, code, status, accountType, linkedId, branch, contact, number, email, remarks, editId]
     );
     await syncLedgerCompanyNames();
     return { ok: true, message: `Company "${name}" updated.` };
