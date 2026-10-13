@@ -47,6 +47,13 @@ export const api = {
   updateCompanyStatus: (id, status) => call('update_company_status', { method: 'POST', body: { id, status } }),
   getBranches: () => call('get_branches'),
 
+  // HMO providers
+  getHmos: () => call('get_hmos'),
+  getHmo: (id) => call('get_hmo', { params: { id } }),
+  getHmoPartners: () => call('get_hmo_partners'),
+  addHmoPartner: (hmoId, companyId) => call('add_hmo_partner', { method: 'POST', body: { hmo_id: hmoId, company_id: companyId } }),
+  removeHmoPartner: (hmoId, companyId) => call('remove_hmo_partner', { method: 'POST', body: { hmo_id: hmoId, company_id: companyId } }),
+
   // billing
   getBilling: () => call('get_billing'),
   saveBilling: (body) => call('save_billing', { method: 'POST', body }),

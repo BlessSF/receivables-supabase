@@ -637,6 +637,88 @@ const actions = {
     return { ok: true, message: 'Transaction voided.' };
   },
 
+  // ---------------------------------------------------------------- HMO PROVIDERS
+  // One row per HMO account with what the clinic has charged through it.
+  // "Billed to HMO" / "Billed to partners" come from posted Billing transactions;
+  // "Account balance" is whatever sits on the HMO's own ledger.
+  async get_hmos(input, auth) {
+    const [bw, bp] = branchWhere(auth, 'h');
+    const data = await all(
+      `SELECT h.id, h.name, h.code, h.status, h.contact_person, h.contact_number, h.email_address, h.remarks, h.branch,
+         COALESCE((SELECT SUM(l.balance) FROM ledger_entries l WHERE l.company_id = h.id), 0) AS account_balance,
+         (SELECT COUNT(*) FROM hmo_partners p WHERE p.hmo_id = h.id) AS partner_count,
+         COALESCE((SELECT SUM(t.amount) FROM billing_transactions t WHERE t.hmo_id = h.id AND t.status = 'OPEN'), 0) AS open_amount,
+         (SELECT COUNT(*) FROM billing_transactions t WHERE t.hmo_id = h.id AND t.status = 'OPEN') AS open_count,
+         COALESCE((SELECT SUM(t.amount) FROM billing_transactions t WHERE t.hmo_id = h.id AND t.status = 'POSTED' AND t.bill_to = 'HMO'), 0) AS billed_hmo,
+         COALESCE((SELECT SUM(l.balance) FROM billing_transactions t JOIN ledger_entries l ON l.id = t.ledger_entry_id
+                   WHERE t.hmo_id = h.id AND t.status = 'POSTED' AND t.bill_to = 'HMO'), 0) AS unpaid_hmo,
+         COALESCE((SELECT SUM(t.amount) FROM billing_transactions t WHERE t.hmo_id = h.id AND t.status = 'POSTED' AND t.bill_to = 'COMPANY'), 0) AS billed_partners,
+         COALESCE((SELECT SUM(l.balance) FROM billing_transactions t JOIN ledger_entries l ON l.id = t.ledger_entry_id
+                   WHERE t.hmo_id = h.id AND t.status = 'POSTED' AND t.bill_to = 'COMPANY'), 0) AS unpaid_partners
+       FROM companies h
+       WHERE h.account_type = 'HMO' ${bw}
+       ORDER BY UPPER(h.name) COLLATE "C" ASC, h.id ASC`, bp);
+    return { ok: true, data };
+  },
+
+  async get_hmo(input, auth) {
+    const id = toInt(input.id);
+    await requireCompanyAccess(auth, id);
+    const hmo = await one(`SELECT * FROM companies WHERE id = ? AND account_type = 'HMO'`, [id]);
+    if (!hmo) jsonExit({ ok: false, error: 'HMO not found.' }, 404);
+
+    // Partner companies: the ones set up explicitly, plus anyone the HMO has been billed with.
+    const partners = await all(
+      `SELECT c.id, c.name, c.status,
+         EXISTS (SELECT 1 FROM hmo_partners p WHERE p.hmo_id = ? AND p.company_id = c.id) AS is_partner,
+         (SELECT COUNT(*) FROM billing_transactions t WHERE t.hmo_id = ? AND t.company_id = c.id AND t.status <> 'VOID') AS txn_count,
+         COALESCE((SELECT SUM(t.amount) FROM billing_transactions t WHERE t.hmo_id = ? AND t.company_id = c.id AND t.status = 'POSTED' AND t.bill_to = 'COMPANY'), 0) AS billed_to_company,
+         COALESCE((SELECT SUM(l.balance) FROM billing_transactions t JOIN ledger_entries l ON l.id = t.ledger_entry_id
+                   WHERE t.hmo_id = ? AND t.company_id = c.id AND t.status = 'POSTED' AND t.bill_to = 'COMPANY'), 0) AS unpaid
+       FROM companies c
+       WHERE c.account_type = 'COMPANY'
+         AND (c.id IN (SELECT company_id FROM hmo_partners WHERE hmo_id = ?)
+              OR c.id IN (SELECT company_id FROM billing_transactions WHERE hmo_id = ? AND company_id IS NOT NULL))
+       ORDER BY UPPER(c.name) COLLATE "C" ASC`, [id, id, id, id, id, id]);
+
+    const transactions = await all(
+      `SELECT t.id, t.txn_date, t.patient_name, t.service, t.amount, t.bill_to, t.status, t.ledger_entry_id, t.company_id,
+              c.name AS company_name, l.balance AS ledger_balance, l.paid_amount AS ledger_paid
+       FROM billing_transactions t
+       LEFT JOIN companies c ON c.id = t.company_id
+       LEFT JOIN ledger_entries l ON l.id = t.ledger_entry_id
+       WHERE t.hmo_id = ?
+       ORDER BY t.id DESC LIMIT 300`, [id]);
+
+    return { ok: true, data: { hmo, partners, transactions } };
+  },
+
+  async get_hmo_partners(input, auth) {
+    const data = await all('SELECT hmo_id, company_id FROM hmo_partners');
+    return { ok: true, data };
+  },
+
+  async add_hmo_partner(input, auth) {
+    const hmoId = toInt(input.hmo_id);
+    const companyId = toInt(input.company_id);
+    await requireCompanyAccess(auth, hmoId);
+    await requireCompanyAccess(auth, companyId);
+    const hmoType = await scalar('SELECT account_type FROM companies WHERE id=?', [hmoId]);
+    const coType = await scalar('SELECT account_type FROM companies WHERE id=?', [companyId]);
+    if (hmoType !== 'HMO') jsonExit({ ok: false, error: 'That account is not an HMO.' }, 400);
+    if (coType !== 'COMPANY') jsonExit({ ok: false, error: 'Partners must be company accounts.' }, 400);
+    await exec('INSERT INTO hmo_partners (hmo_id, company_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [hmoId, companyId]);
+    return { ok: true, message: 'Partner company added.' };
+  },
+
+  async remove_hmo_partner(input, auth) {
+    const hmoId = toInt(input.hmo_id);
+    const companyId = toInt(input.company_id);
+    await requireCompanyAccess(auth, hmoId);
+    await exec('DELETE FROM hmo_partners WHERE hmo_id = ? AND company_id = ?', [hmoId, companyId]);
+    return { ok: true, message: 'Partner company removed.' };
+  },
+
   async get_settings() {
     return { ok: true, data: { aging_grace_days: await agingGraceDays(), tax_withheld_percent: await taxWithheldPercent() } };
   },

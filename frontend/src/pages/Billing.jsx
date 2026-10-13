@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 
@@ -24,12 +24,25 @@ export default function Billing() {
   const [filter, setFilter] = useState('OPEN');
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [partnerMap, setPartnerMap] = useState({}); // hmo id -> [company ids]
+  const [params, setParams] = useSearchParams();
 
   function load() { api.getBilling().then((r) => setRows(r.data)).catch((e) => setFlash({ type: 'error', msg: e.message })); }
   useEffect(() => {
     load();
     api.getCompanies().then((r) => setAccounts(r.data));
-  }, []);
+    api.getHmoPartners().then((r) => {
+      const m = {};
+      r.data.forEach((p) => { (m[p.hmo_id] = m[p.hmo_id] || []).push(Number(p.company_id)); });
+      setPartnerMap(m);
+    }).catch(() => {});
+    // Arrived from the HMOs page ("+ New Charge"): open a transaction with that HMO already chosen.
+    const pre = params.get('hmo_id');
+    if (pre) {
+      setForm({ ...blank(), hmo_id: pre });
+      setParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hmos = useMemo(() => accounts.filter((a) => a.account_type === 'HMO'), [accounts]);
   const companies = useMemo(() => accounts.filter((a) => a.account_type !== 'HMO'), [accounts]);
@@ -46,6 +59,11 @@ export default function Billing() {
   }, [rows]);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  // When an HMO is chosen, its partner companies are listed first in the Company dropdown.
+  const partnerIds = new Set(form && form.hmo_id ? (partnerMap[Number(form.hmo_id)] || []) : []);
+  const partnerList = companies.filter((c) => partnerIds.has(c.id));
+  const otherList = companies.filter((c) => !partnerIds.has(c.id));
 
   async function save(andPost) {
     if (!form.hmo_id && !form.company_id) { setFlash({ type: 'error', msg: 'Choose an HMO, a company, or both.' }); return; }
@@ -143,7 +161,14 @@ export default function Billing() {
                 <label>Company</label>
                 <select value={form.company_id} onChange={set('company_id')}>
                   <option value="">— None —</option>
-                  {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {partnerList.length > 0 && (
+                    <optgroup label="Partner companies of this HMO">
+                      {partnerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                  )}
+                  {partnerList.length > 0
+                    ? <optgroup label="Other companies">{otherList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>
+                    : companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="form-group">

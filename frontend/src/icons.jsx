@@ -33,3 +33,7 @@ export const IconLogout = () => (
 export const IconReceipt = () => (
   <svg {...common}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>
 );
+
+export const IconHeart = () => (
+  <svg {...common}><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>
+);
