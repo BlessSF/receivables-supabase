@@ -47,6 +47,12 @@ export const api = {
   updateCompanyStatus: (id, status) => call('update_company_status', { method: 'POST', body: { id, status } }),
   getBranches: () => call('get_branches'),
 
+  // billing
+  getBilling: () => call('get_billing'),
+  saveBilling: (body) => call('save_billing', { method: 'POST', body }),
+  postBilling: (id) => call('post_billing', { method: 'POST', body: { id } }),
+  voidBilling: (id) => call('void_billing', { method: 'POST', body: { id } }),
+
   // ledger
   getLedger: (companyId) => call('get_ledger', { params: { company_id: companyId } }),
   quickAddLedger: (companyId) => call('quick_add_ledger', { method: 'POST', body: { company_id: companyId } }),

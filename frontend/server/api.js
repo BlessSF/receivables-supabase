@@ -3,7 +3,7 @@
 // pages work unchanged. All requests hit /api.php?action=xxx (the
 // vercel.json rewrite sends that path to this code).
 
-import { all, one, scalar, exec, insertId } from './db.js';
+import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -513,6 +513,128 @@ const actions = {
     const hmoName = await scalar('SELECT name FROM companies WHERE id=?', [toInt(entry.via_hmo_id)]);
     await exec('UPDATE ledger_entries SET company_id=?, company_name=?, via_hmo_id=NULL WHERE id=?', [toInt(entry.via_hmo_id), hmoName, id]);
     return { ok: true, message: `Returned to ${hmoName}.` };
+  },
+
+  // ---------------------------------------------------------------- BILLING (POS-style)
+  // A billing transaction is opened with patient / service / amount, an HMO and
+  // a company. "Bill to" says which of the two gets charged. Posting it adds a
+  // charge to that account's ledger; voiding it removes that charge again.
+  async get_billing(input, auth) {
+    const b = auth.branch();
+    const w = b === null ? '' : ' WHERE (LOWER(h.branch) = LOWER(?) OR LOWER(c.branch) = LOWER(?))';
+    const p = b === null ? [] : [b, b];
+    const data = await all(
+      `SELECT t.*, h.name AS hmo_name, c.name AS company_name
+       FROM billing_transactions t
+       LEFT JOIN companies h ON h.id = t.hmo_id
+       LEFT JOIN companies c ON c.id = t.company_id
+       ${w}
+       ORDER BY t.id DESC LIMIT 500`, p);
+    return { ok: true, data };
+  },
+
+  async save_billing(input, auth) {
+    const id = toInt(input.id);
+    const hmoId = toInt(input.hmo_id) || null;
+    const companyId = toInt(input.company_id) || null;
+    const billTo = input.bill_to === 'COMPANY' ? 'COMPANY' : 'HMO';
+    const amount = toFloat(input.amount);
+    const patient = trim(input.patient_name ?? '');
+    const service = trim(input.service ?? '');
+    const remarks = elvis(trim(input.remarks ?? ''), null);
+    const txnDate = elvis(trim(input.txn_date ?? ''), todayYmd());
+
+    if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO, a company, or both.' }, 400);
+    if (billTo === 'HMO' && !hmoId) jsonExit({ ok: false, error: 'Billing the HMO needs an HMO selected.' }, 400);
+    if (billTo === 'COMPANY' && !companyId) jsonExit({ ok: false, error: 'Billing the company needs a company selected.' }, 400);
+    if (amount < 0) jsonExit({ ok: false, error: 'Amount cannot be negative.' }, 400);
+
+    if (hmoId) {
+      const t = await scalar('SELECT account_type FROM companies WHERE id=?', [hmoId]);
+      if (t !== 'HMO') jsonExit({ ok: false, error: 'The HMO you chose is not an HMO account.' }, 400);
+      await requireCompanyAccess(auth, hmoId);
+    }
+    if (companyId) {
+      const t = await scalar('SELECT account_type FROM companies WHERE id=?', [companyId]);
+      if (t !== 'COMPANY') jsonExit({ ok: false, error: 'The company you chose is an HMO account.' }, 400);
+      await requireCompanyAccess(auth, companyId);
+    }
+
+    if (!id) {
+      const newId = await insertId(
+        `INSERT INTO billing_transactions (txn_date, patient_name, service, amount, hmo_id, company_id, bill_to, status, remarks)
+         VALUES (?,?,?,?,?,?,?,'OPEN',?)`,
+        [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks]
+      );
+      return { ok: true, id: newId, message: 'Transaction opened.' };
+    }
+
+    const cur = await one('SELECT status FROM billing_transactions WHERE id=?', [id]);
+    if (!cur) jsonExit({ ok: false, error: 'Transaction not found.' }, 404);
+    if (cur.status !== 'OPEN') jsonExit({ ok: false, error: 'Only open transactions can be edited. Void it and open a new one.' }, 409);
+    await exec(
+      `UPDATE billing_transactions SET txn_date=?, patient_name=?, service=?, amount=?, hmo_id=?, company_id=?, bill_to=?, remarks=? WHERE id=?`,
+      [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks, id]
+    );
+    return { ok: true, id, message: 'Transaction updated.' };
+  },
+
+  async post_billing(input, auth) {
+    const id = toInt(input.id);
+    const t = await one('SELECT * FROM billing_transactions WHERE id=?', [id]);
+    if (!t) jsonExit({ ok: false, error: 'Transaction not found.' }, 404);
+    if (t.status !== 'OPEN') jsonExit({ ok: false, error: 'This transaction is already posted or voided.' }, 409);
+    const amount = toFloat(t.amount);
+    if (amount <= 0) jsonExit({ ok: false, error: 'Enter an amount greater than zero before posting.' }, 400);
+
+    const chargeId = toInt(t.bill_to === 'COMPANY' ? t.company_id : t.hmo_id);
+    if (!chargeId) jsonExit({ ok: false, error: 'The account to bill no longer exists. Edit the transaction first.' }, 400);
+    await requireCompanyAccess(auth, chargeId);
+
+    const hmoName = t.hmo_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.hmo_id)]) : null;
+    const coName = t.company_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.company_id)]) : null;
+    const chargeName = t.bill_to === 'COMPANY' ? coName : hmoName;
+    const parts = [];
+    if (trim(t.patient_name ?? '')) parts.push(trim(t.patient_name));
+    if (trim(t.service ?? '')) parts.push(trim(t.service));
+    let note = parts.join(' - ');
+    const who = [hmoName ? `HMO: ${hmoName}` : null, coName ? `Company: ${coName}` : null].filter(Boolean).join(' / ');
+    note = `${note ? note + ' ' : ''}(${who}) [Billing #${id}]`;
+    if (t.remarks) note += ` ${t.remarks}`;
+
+    const entryId = await transaction(async (client) => {
+      const eid = await insertId(
+        `INSERT INTO ledger_entries (company_id, company_name, billing_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
+         VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)`,
+        [chargeId, chargeName, t.txn_date || todayYmd(), amount, amount, amount, note], client
+      );
+      await exec(
+        `UPDATE billing_transactions SET status='POSTED', ledger_entry_id=?, posted_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`,
+        [eid, id], client
+      );
+      return eid;
+    });
+    return { ok: true, id, ledger_entry_id: entryId, company_id: chargeId, message: `Posted to ${chargeName}'s ledger.` };
+  },
+
+  async void_billing(input, auth) {
+    const id = toInt(input.id);
+    const t = await one('SELECT * FROM billing_transactions WHERE id=?', [id]);
+    if (!t) jsonExit({ ok: false, error: 'Transaction not found.' }, 404);
+    if (t.status === 'VOID') jsonExit({ ok: false, error: 'Already voided.' }, 409);
+
+    if (t.status === 'POSTED' && t.ledger_entry_id) {
+      const e = await one('SELECT id, company_id, paid_amount FROM ledger_entries WHERE id=?', [toInt(t.ledger_entry_id)]);
+      if (e) {
+        await requireCompanyAccess(auth, toInt(e.company_id));
+        if (toFloat(e.paid_amount) > 0) {
+          jsonExit({ ok: false, error: 'This charge already has a payment recorded. Remove the payment in the Ledger first, then void it.' }, 409);
+        }
+        await exec('DELETE FROM ledger_entries WHERE id=?', [toInt(e.id)]);
+      }
+    }
+    await exec(`UPDATE billing_transactions SET status='VOID', ledger_entry_id=NULL WHERE id=?`, [id]);
+    return { ok: true, message: 'Transaction voided.' };
   },
 
   async get_settings() {

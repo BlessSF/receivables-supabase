@@ -30,3 +30,6 @@ export const IconCalendar = () => (
 export const IconLogout = () => (
   <svg {...common} width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
 );
+export const IconReceipt = () => (
+  <svg {...common}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>
+);

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -20,6 +20,7 @@ const NAV_GROUPS = [
     label: 'Accounts',
     items: [
       { to: '/companies', label: 'Companies', Icon: IconBuilding },
+      { to: '/billing', label: 'Billing', Icon: IconReceipt },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
   },

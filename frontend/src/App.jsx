@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Summary from './pages/Summary';
 import Companies from './pages/Companies';
 import Ledger from './pages/Ledger';
+import Billing from './pages/Billing';
 import Aging from './pages/Aging';
 import PastDue from './pages/PastDue';
 import SoaTracker from './pages/SoaTracker';
@@ -47,6 +48,7 @@ function Gate() {
         <Route path="/summary" element={<Summary />} />
         <Route path="/reports-by-month" element={<MonthlyReport />} />
         <Route path="/companies" element={<Companies />} />
+        <Route path="/billing" element={<Billing />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/aging" element={<Aging />} />
         <Route path="/past-due" element={<PastDue />} />
