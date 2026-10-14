@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel } from '../utils';
-import { GRID_ID, gridKeyDown, DateCell, CoveredCell, RemarksCell } from '../gridCells';
+import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate } from '../utils';
+import { GRID_ID, gridKeyDown, DateCell, RemarksCell } from '../gridCells';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -115,7 +115,6 @@ export default function Ledger() {
   // still don't fit the screen, the grid's text shrinks a little until they
   // do -- so nothing is ever cut off and there's no sideways scrolling.
   const BASE_FONT = 13;
-  const showMove = data?.company?.account_type === 'HMO' || entries.some((r) => r.via_hmo_id);
   const colPx = useMemo(() => {
     const ctx = getMeasureCtx();
     const fam = getComputedStyle(document.body).fontFamily || 'sans-serif';
@@ -129,33 +128,34 @@ export default function Ledger() {
     ctx.font = `${BASE_FONT}px ${fam}`;
     const INPUT = 27;   // input padding + border + cell padding (+ a little room)
     const CELL = 24;    // plain cell padding
+    const RO = CELL + 16; // read-only text cell: cell padding + the text's own side padding + a little room
     const DATE = tw('September 30, 2026') + 40; // longest date text + calendar icon + padding
     const PERIOD = tw('Sept 30, 2026 to Sept 30, 2026') + 34; // longest covered period text
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ''];
+      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks'];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
       DATE + 10,                                              // Billing Date (first column has extra left padding)
-      PERIOD,                                                 // Covered Period
-      cap(widest('soa_number', undefined, 'SOA #0'), 14) + INPUT,
-      widest('amount', undefined, '0.00') + INPUT,
-      widest('tax_withheld', undefined, '0.00') + INPUT,
-      widest('surcharge', undefined, '0.00') + INPUT,
-      widest('rebate', undefined, '0.00') + INPUT,
+      PERIOD - 14,                                            // Covered Period
+      cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
+      widest('amount', money, '0.00') + RO,
+      widest('tax_withheld', money, '0.00') + RO,
+      widest('surcharge', money, '0.00') + RO,
+      widest('rebate', money, '0.00') + RO,
       widest('receivable_amount', peso, '₱0.00') + CELL,
       DATE,                                                   // Payment Date
-      cap(widest('check_ref', undefined, 'Check'), 12) + INPUT,
+      // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
+      Math.min(Math.max(widest('check_ref', undefined, 'Check'), tw('0'.repeat(14))), tw('0'.repeat(26))) + INPUT,
       widest('paid_amount', undefined, '0.00') + INPUT,
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
-      showMove ? 78 : 46,                                     // move + delete buttons
     ].map((px, i) => Math.max(px, headerMin[i]));
-  }, [entries, showMove]);
+  }, [entries]);
   const MIN_FONT = 10.5;
   const colWidths = useMemo(() => {
     const total = colPx.reduce((a, b) => a + b, 0);
@@ -193,18 +193,6 @@ export default function Ledger() {
     }));
   }
 
-  // v is "YYYY-MM-DD|YYYY-MM-DD", or '' to clear
-  async function saveCovered(id, v) {
-    const r = await api.inlineUpdateLedger(id, 'covered_period', v);
-    const [pf, pt] = v ? v.split('|') : [null, null];
-    setData((d) => ({
-      ...d,
-      entries: d.entries.map((e) =>
-        e.id === id ? { ...e, period_from: pf, period_to: pt, period_date: pf ? `${pf.slice(0, 7)}-01` : null, receivable_amount: r.receivable_amount, balance: r.balance } : e
-      ),
-    }));
-  }
-
   async function addRow() {
     if (!companyId) { alert('Choose a company first.'); return; }
     const res = await api.quickAddLedger(companyId);
@@ -212,24 +200,6 @@ export default function Ledger() {
     setData(r.data);
     // Wait a tick for the new row to actually be in the DOM before scrolling to it.
     setTimeout(() => flashRow(res.id), 60);
-  }
-
-  async function chargeToCompany(row) {
-    const linked = companies.find((c) => c.id === Number(data.company?.linked_company_id));
-    if (!linked) { alert('This HMO is not linked to a company yet. Open Companies, edit this HMO and choose its company.'); return; }
-    if (!confirm(`Charge this entry to ${linked.name}?`)) return;
-    try { await api.chargeEntryToCompany(row.id); reload(); } catch (e) { alert(e.message); }
-  }
-
-  async function returnToHmo(row) {
-    if (!confirm(`Return this entry to ${row.via_hmo_name || 'the HMO'}?`)) return;
-    try { await api.returnEntryToHmo(row.id); reload(); } catch (e) { alert(e.message); }
-  }
-
-  async function removeRow(id) {
-    if (!confirm('Delete this ledger entry?')) return;
-    await api.deleteLedger(id);
-    reload();
   }
 
   if (err) return <div className="flash flash-error">{err}</div>;
@@ -390,12 +360,12 @@ export default function Ledger() {
                   <th>Payment Date</th><th>Check Ref</th>
                   <th className="text-right">Paid</th><th className="text-right">Balance</th>
                   <th>Aging</th>
-                  <th>Remarks</th><th></th>
+                  <th>Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={15} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
+                  <tr><td colSpan={14} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -404,17 +374,17 @@ export default function Ledger() {
                     className={highlightId === String(r.id) ? 'row-focus' : ''}
                     onClick={() => { if (highlightId && highlightId !== String(r.id)) setHighlightId(null); }}
                   >
-                    <td><DateCell row={rowIdx} col={0} value={r.billing_date} onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
-                    <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
-                    <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
-                    <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
-                    <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
-                    <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                    <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                    <td><div className="ro-cell ro-first">{formatLongDate(r.billing_date) || '—'}</div></td>
+                    <td><div className="ro-cell">{coveredLabel(r.period_from, r.period_to, r.period_date) || '—'}</div></td>
+                    <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
+                    <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
+                    <td><div className="ro-cell ro-num">{money(r.tax_withheld)}</div></td>
+                    <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
+                    <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
-                    <td><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                    <td><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                    <td><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                    <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                    <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                    <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span className="badge badge-success">Paid</span>}
@@ -422,15 +392,6 @@ export default function Ledger() {
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td><RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
-                    <td className="cell-action">
-                      {company?.account_type === 'HMO' && (
-                        <button className="btn btn-secondary btn-sm btn-icon" title="Charge this entry to the company linked to this HMO" onClick={() => chargeToCompany(r)}>→</button>
-                      )}
-                      {r.via_hmo_id && (
-                        <button className="btn btn-secondary btn-sm btn-icon" title={`Charged via ${r.via_hmo_name || 'HMO'} — click to return it to the HMO`} onClick={() => returnToHmo(r)}>↩</button>
-                      )}
-                      <button className="btn btn-danger btn-sm btn-icon" title="Delete this entry" onClick={() => removeRow(r.id)}>×</button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
