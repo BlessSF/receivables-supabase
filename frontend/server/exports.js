@@ -4,7 +4,7 @@ import { all, scalar } from './db.js';
 import { getQuery, sendText, sendFile } from './http.js';
 import { readSession, makeAuth } from './auth.js';
 import { toInt, toFloat, toStr } from './php.js';
-import { excelSerial, periodLabel } from './dates.js';
+import { excelSerial, periodLabel, coveredLabel } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
@@ -113,12 +113,12 @@ export async function handleCsv(req, res) {
   }
 
   const rows = (await loadLedger(auth, companyId)).map((r) => [
-    r.company_name, r.billing_date, periodLabel(r.period_date), r.soa_number, r.amount, r.tax_withheld, r.surcharge, r.rebate,
+    r.company_name, r.billing_date, coveredLabel(r), r.soa_number, r.amount, r.tax_withheld, r.surcharge, r.rebate,
     r.receivable_amount, r.payment_date, r.check_ref, r.check_date ?? '', r.paid_amount, r.balance,
     paymentMethodLabel(r), r.due_date, r.remarks,
   ]);
   return send(companyId ? `ledger_company_${companyId}.csv` : 'full_receivable_ledger.csv', csv([
-    'Company', 'Billing Date', 'Period Date', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Rebate',
+    'Company', 'Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Rebate',
     'Receivable', 'Payment Date', 'Check #', 'Check Date', 'Paid', 'Balance', 'Payment Method', 'Due Date', 'Remarks',
   ], rows));
 }
@@ -392,7 +392,7 @@ export async function handleXlsx(req, res) {
   const sheet = new Sheet(wb, 'Receivable Ledger', [
     { header: 'Company', width: 22, type: 'string' },
     { header: 'Billing Date', width: 13, type: 'date' },
-    { header: 'Period Date', width: 14, type: 'string' },
+    { header: 'Covered Period', width: 22, type: 'string' },
     { header: 'SOA #', width: 14, type: 'string' },
     { header: 'Amount', width: 13, type: 'money' },
     { header: 'Tax Withheld', width: 13, type: 'money' },
@@ -415,7 +415,7 @@ export async function handleXlsx(req, res) {
     const balance = toFloat(r.balance);
     for (const k of keys) totals[k] += toFloat(r[k]);
     sheet.addRow([
-      r.company_name, r.billing_date, periodLabel(r.period_date), r.soa_number, toFloat(r.amount), toFloat(r.tax_withheld),
+      r.company_name, r.billing_date, coveredLabel(r), r.soa_number, toFloat(r.amount), toFloat(r.tax_withheld),
       toFloat(r.surcharge), toFloat(r.rebate), toFloat(r.receivable_amount), r.payment_date, r.check_ref,
       r.check_date ?? '', toFloat(r.paid_amount), balance, paymentMethodLabel(r), r.due_date, r.remarks,
     ], balance <= 0.009 ? { 13: 'green' } : {});

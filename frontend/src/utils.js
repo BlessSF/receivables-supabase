@@ -125,6 +125,18 @@ export function periodLabel(value) {
   return p ? `${MONTHS[p.m - 1]} ${p.y}` : '';
 }
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+
+/** Covered period as text: "Sept 18 to Sept 30" (the year is added only when the two dates are in different years). */
+export function coveredLabel(from, to, periodDate) {
+  const p = (v) => { const m = String(v ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? { y: +m[1], m: +m[2], d: +m[3] } : null; };
+  const a = p(from), b = p(to);
+  if (!a || !b) return periodLabel(periodDate);
+  const yr = a.y !== b.y;
+  const f = (x) => `${SHORT_MONTHS[x.m - 1]} ${x.d}${yr ? `, ${x.y}` : ''}`;
+  return `${f(a)} to ${f(b)}`;
+}
+
 export function periodValue(y, m) {
   return `${y}-${pad2(m)}-01`;
 }

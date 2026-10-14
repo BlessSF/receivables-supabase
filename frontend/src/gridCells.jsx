@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MONTHS, formatLongDate, parseLooseDate, periodParts, periodValue, defaultPeriodYear } from './utils';
+import { MONTHS, formatLongDate, parseLooseDate, periodParts, periodValue, defaultPeriodYear, coveredLabel } from './utils';
 
 // Cells for the Ledger grid, plus the keyboard helpers every cell shares.
 export const GRID_ID = 'ledger-grid';
@@ -294,6 +294,115 @@ export function RemarksCell({ value, onSave, row, col }) {
           onBlur={commit}
           onKeyDown={onKeyDown}
         />,
+        document.body
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Covered Period: shows "Sept 18 to Sept 30". Click it to pick the From and To dates in a small
+ * popup that floats over the table (so the grid layout never changes).
+ */
+export function CoveredCell({ from, to, periodDate, onSave, row, col }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState(from || '');
+  const [t, setT] = useState(to || '');
+  const [state, setState] = useState('');
+  const [pos, setPos] = useState(null);
+  const inputRef = useRef(null);
+  const popRef = useRef(null);
+  const skipFocus = useRef(false);
+  const label = coveredLabel(from, to, periodDate);
+
+  useEffect(() => { if (!open) { setF(from || ''); setT(to || ''); } }, [from, to, open]);
+
+  function openPop() {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = 290;
+    let left = r.left;
+    if (left + width > window.innerWidth - 8) left = window.innerWidth - 8 - width;
+    if (left < 8) left = 8;
+    let top = r.bottom + 4;
+    if (top + 190 > window.innerHeight) top = Math.max(8, r.top - 194);
+    setPos({ left, top, width });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (popRef.current && popRef.current.contains(e.target)) return;
+      if (inputRef.current && inputRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const close = () => setOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [open]);
+
+  async function save(next) {
+    setOpen(false);
+    skipFocus.current = true;
+    if (inputRef.current) inputRef.current.focus();
+    setState('saving');
+    try {
+      await onSave(next);
+      setState('saved');
+      setTimeout(() => setState(''), 700);
+    } catch (e) {
+      setState('error');
+      alert(e.message);
+    }
+  }
+
+  function apply() {
+    if (!f || !t) { alert('Pick both the From and To dates.'); return; }
+    if (f > t) { alert('The "to" date cannot be before the "from" date.'); return; }
+    save(`${f}|${t}`);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') { e.preventDefault(); if (!open) openPop(); return; }
+    if (e.key === 'Escape') { setOpen(false); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(false); focusCell(row + 1, col); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setOpen(false); focusCell(row - 1, col); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); setOpen(false); focusCell(row, col - 1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); setOpen(false); focusCell(row, col + 1); }
+  }
+
+  return (
+    <div className={`editable-cell covered-cell ${state}`} data-r={row} data-c={col}>
+      <input
+        ref={inputRef}
+        readOnly
+        placeholder="—"
+        value={label}
+        title={from && to ? `${from} to ${to}` : undefined}
+        onFocus={() => { if (skipFocus.current) { skipFocus.current = false; return; } openPop(); }}
+        onClick={() => { if (!open) openPop(); }}
+        onKeyDown={onKeyDown}
+      />
+      {open && pos && createPortal(
+        <div ref={popRef} className="covered-pop" style={{ left: pos.left, top: pos.top, width: pos.width }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); if (inputRef.current) { skipFocus.current = true; inputRef.current.focus(); } } if (e.key === 'Enter') { e.preventDefault(); apply(); } }}>
+          <label>From<input type="date" value={f} onChange={(e) => setF(e.target.value)} autoFocus /></label>
+          <label>To<input type="date" value={t} min={f || undefined} onChange={(e) => setT(e.target.value)} /></label>
+          <div className="covered-actions">
+            <button type="button" className="btn btn-sm" onClick={apply}>Save</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+            {(from || to || periodDate) && <button type="button" className="btn btn-secondary btn-sm" onClick={() => save('')}>Clear</button>}
+          </div>
+        </div>,
         document.body
       )}
     </div>

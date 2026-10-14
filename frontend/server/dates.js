@@ -148,6 +148,17 @@ export function periodLabel(value) {
   return monthLabel(monthKey(value));
 }
 
+/** Covered period as text: "Sept 18 to Sept 30" (adds the year only when the dates are in different years). */
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+export function coveredLabel(row) {
+  const p = (v) => { const m = String(v ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? { y: +m[1], m: +m[2], d: +m[3] } : null; };
+  const a = p(row.period_from), b = p(row.period_to);
+  if (!a || !b) return periodLabel(row.period_date);
+  const f = (x, withYear) => `${SHORT_MONTHS[x.m - 1]} ${x.d}${withYear ? `, ${x.y}` : ''}`;
+  const yr = a.y !== b.y;
+  return `${f(a, yr)} to ${f(b, yr)}`;
+}
+
 /** Normalizes "2026-06" or "2026-06-17" to "2026-06-01"; null if it isn't a real month. */
 export function normalizePeriod(value) {
   const m = String(value ?? '').trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:-\d{1,2})?$/);

@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts } from '../utils';
-import { GRID_ID, gridKeyDown, DateCell, PeriodCell, RemarksCell } from '../gridCells';
+import { peso, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel } from '../utils';
+import { GRID_ID, gridKeyDown, DateCell, CoveredCell, RemarksCell } from '../gridCells';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -90,7 +90,7 @@ export default function Ledger() {
     if (!search.trim()) return entries;
     const q = search.trim().toLowerCase();
     return entries.filter((r) =>
-      [r.company_name, r.soa_number, r.remarks, r.billing_date, periodLabel(r.period_date)].filter(Boolean).join(' ').toLowerCase().includes(q)
+      [r.company_name, r.soa_number, r.remarks, r.billing_date, coveredLabel(r.period_from, r.period_to, r.period_date)].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
   }, [entries, search]);
 
@@ -130,17 +130,17 @@ export default function Ledger() {
     const INPUT = 27;   // input padding + border + cell padding (+ a little room)
     const CELL = 24;    // plain cell padding
     const DATE = tw('September 30, 2026') + 40; // longest date text + calendar icon + padding
-    const PERIOD = tw('September') + tw('2026') + 34; // month + year dropdowns
+    const PERIOD = tw('Sept 30, 2026 to Sept 30, 2026') + 34; // longest covered period text
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'Period Date', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
+    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ''];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
       DATE + 10,                                              // Billing Date (first column has extra left padding)
-      PERIOD,                                                 // Period Date
+      PERIOD,                                                 // Covered Period
       cap(widest('soa_number', undefined, 'SOA #0'), 14) + INPUT,
       widest('amount', undefined, '0.00') + INPUT,
       widest('tax_withheld', undefined, '0.00') + INPUT,
@@ -189,6 +189,18 @@ export default function Ledger() {
       ...d,
       entries: d.entries.map((e) =>
         e.id === id ? { ...e, [field]: value, receivable_amount: r.receivable_amount, balance: r.balance } : e
+      ),
+    }));
+  }
+
+  // v is "YYYY-MM-DD|YYYY-MM-DD", or '' to clear
+  async function saveCovered(id, v) {
+    const r = await api.inlineUpdateLedger(id, 'covered_period', v);
+    const [pf, pt] = v ? v.split('|') : [null, null];
+    setData((d) => ({
+      ...d,
+      entries: d.entries.map((e) =>
+        e.id === id ? { ...e, period_from: pf, period_to: pt, period_date: pf ? `${pf.slice(0, 7)}-01` : null, receivable_amount: r.receivable_amount, balance: r.balance } : e
       ),
     }));
   }
@@ -371,7 +383,7 @@ export default function Ledger() {
               </colgroup>
               <thead>
                 <tr>
-                  <th>Billing Date</th><th>Period Date</th><th>SOA #</th>
+                  <th>Billing Date</th><th>Covered Period</th><th>SOA #</th>
                   <th className="text-right">Amount</th><th className="text-right">Tax W/H</th>
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
                   <th className="text-right">Receivable</th>
@@ -393,7 +405,7 @@ export default function Ledger() {
                     onClick={() => { if (highlightId && highlightId !== String(r.id)) setHighlightId(null); }}
                   >
                     <td><DateCell row={rowIdx} col={0} value={r.billing_date} onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
-                    <td><PeriodCell row={rowIdx} col={1} value={r.period_date} billingDate={r.billing_date} years={periodYears} onSave={(v) => saveField(r.id, 'period_date', v)} /></td>
+                    <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
                     <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
                     <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
                     <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate } from '../utils';
+import { peso, fdate, coveredLabel } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BLANK = { name: '', code: '', account_type: 'HMO', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
@@ -352,7 +352,7 @@ function HmoDetail({ id, onBack, onEdit }) {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>#</th><th>Date</th><th>Patient</th><th>Service</th><th>Billed to</th><th className="text-right">Amount</th><th className="text-right">Unpaid</th><th>Status</th></tr>
+              <tr><th>#</th><th>Billing Date</th><th>Covered Period</th><th>SOA #</th><th>Billed to</th><th className="text-right">Amount</th><th className="text-right">Unpaid</th><th>Status</th></tr>
             </thead>
             <tbody>
               {txns.length === 0 && <tr><td colSpan={8} className="empty-state">No charges here. Use "+ New Charge" to open one.</td></tr>}
@@ -360,8 +360,8 @@ function HmoDetail({ id, onBack, onEdit }) {
                 <tr key={t.id}>
                   <td className="num">{t.id}</td>
                   <td>{fdate(t.txn_date)}</td>
-                  <td>{t.patient_name || '—'}</td>
-                  <td>{t.service || '—'}</td>
+                  <td>{coveredLabel(t.period_from, t.period_to) || '—'}</td>
+                  <td>{t.soa_number || '—'}</td>
                   <td>
                     {t.bill_to === 'COMPANY'
                       ? <><span className="badge badge-secondary">Company</span> {t.company_name || '—'}</>

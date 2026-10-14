@@ -409,7 +409,7 @@ const actions = {
   },
 
   async inline_update_ledger(input, auth) {
-    const allowed = ['billing_date', 'period_date', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
+    const allowed = ['billing_date', 'period_date', 'covered_period', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
       'payment_date', 'check_ref', 'check_date', 'paid_amount', 'due_date', 'remarks', 'deduction_remarks',
       'payment_method', 'payment_method_bank', 'payment_method_other'];
     const id = toInt(input.id);
@@ -421,6 +421,20 @@ const actions = {
     const row = await one('SELECT * FROM ledger_entries WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
     await requireCompanyAccess(auth, toInt(row.company_id));
+
+    if (field === 'covered_period') {
+      // "2026-09-18|2026-09-30" (or '' to clear). period_date keeps the month so Reports by Month still works.
+      const [pf, pt] = String(value ?? '').split('|').map((x) => x.trim());
+      const ymd = /^\d{4}-\d{2}-\d{2}$/;
+      if (!pf && !pt) {
+        await exec(`UPDATE ledger_entries SET period_from=NULL, period_to=NULL, period_date=NULL, updated_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`, [id]);
+      } else {
+        if (!ymd.test(pf || '') || !ymd.test(pt || '')) jsonExit({ ok: false, error: 'Enter both dates for the covered period.' }, 400);
+        if (pf > pt) jsonExit({ ok: false, error: 'The covered period "to" date cannot be before the "from" date.' }, 400);
+        await exec(`UPDATE ledger_entries SET period_from=?, period_to=?, period_date=?, updated_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`, [pf, pt, normalizePeriod(pf), id]);
+      }
+      return { ok: true, receivable_amount: row.receivable_amount, balance: row.balance };
+    }
 
     if (['amount', 'tax_withheld', 'surcharge', 'rebate', 'paid_amount'].includes(field)) {
       value = value === '' || value === null ? 0 : toFloat(value);
@@ -543,11 +557,16 @@ const actions = {
     const service = trim(input.service ?? '');
     const remarks = elvis(trim(input.remarks ?? ''), null);
     const txnDate = elvis(trim(input.txn_date ?? ''), todayYmd());
+    const periodFrom = trim(input.period_from ?? '') || null;
+    const periodTo = trim(input.period_to ?? '') || null;
+    const soa = trim(input.soa_number ?? '').toUpperCase() || null;
 
     if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
     if (billTo === 'HMO' && !hmoId) jsonExit({ ok: false, error: 'Billing the HMO needs an HMO selected.' }, 400);
     if (billTo === 'COMPANY' && !companyId) jsonExit({ ok: false, error: 'Billing the company needs a company selected.' }, 400);
     if (amount < 0) jsonExit({ ok: false, error: 'Amount cannot be negative.' }, 400);
+    if ((periodFrom && !periodTo) || (!periodFrom && periodTo)) jsonExit({ ok: false, error: 'Enter both dates for the covered period.' }, 400);
+    if (periodFrom && periodTo && periodFrom > periodTo) jsonExit({ ok: false, error: 'The covered period "to" date cannot be before the "from" date.' }, 400);
 
     if (hmoId) {
       const t = await scalar('SELECT account_type FROM companies WHERE id=?', [hmoId]);
@@ -562,9 +581,9 @@ const actions = {
 
     if (!id) {
       const newId = await insertId(
-        `INSERT INTO billing_transactions (txn_date, patient_name, service, amount, hmo_id, company_id, bill_to, status, remarks)
-         VALUES (?,?,?,?,?,?,?,'OPEN',?)`,
-        [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks]
+        `INSERT INTO billing_transactions (txn_date, patient_name, service, amount, hmo_id, company_id, bill_to, status, remarks, period_from, period_to, soa_number)
+         VALUES (?,?,?,?,?,?,?,'OPEN',?,?,?,?)`,
+        [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks, periodFrom, periodTo, soa]
       );
       return { ok: true, id: newId, message: 'Transaction opened.' };
     }
@@ -573,8 +592,8 @@ const actions = {
     if (!cur) jsonExit({ ok: false, error: 'Transaction not found.' }, 404);
     if (cur.status !== 'OPEN') jsonExit({ ok: false, error: 'Only open transactions can be edited. Void it and open a new one.' }, 409);
     await exec(
-      `UPDATE billing_transactions SET txn_date=?, patient_name=?, service=?, amount=?, hmo_id=?, company_id=?, bill_to=?, remarks=? WHERE id=?`,
-      [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks, id]
+      `UPDATE billing_transactions SET txn_date=?, patient_name=?, service=?, amount=?, hmo_id=?, company_id=?, bill_to=?, remarks=?, period_from=?, period_to=?, soa_number=? WHERE id=?`,
+      [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks, periodFrom, periodTo, soa, id]
     );
     return { ok: true, id, message: 'Transaction updated.' };
   },
@@ -594,19 +613,17 @@ const actions = {
     const hmoName = t.hmo_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.hmo_id)]) : null;
     const coName = t.company_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.company_id)]) : null;
     const chargeName = t.bill_to === 'COMPANY' ? coName : hmoName;
-    const parts = [];
-    if (trim(t.patient_name ?? '')) parts.push(trim(t.patient_name));
-    if (trim(t.service ?? '')) parts.push(trim(t.service));
-    let note = parts.join(' - ');
-    const who = [hmoName ? `HMO: ${hmoName}` : null, coName ? `Company: ${coName}` : null].filter(Boolean).join(' / ');
-    note = `${note ? note + ' ' : ''}(${who}) [Billing #${id}]`;
-    if (t.remarks) note += ` ${t.remarks}`;
+    if (t.soa_number && (await soaNumberConflicts(t.soa_number))) {
+      jsonExit({ ok: false, error: `SOA number "${t.soa_number}" is already in use. Edit the transaction and use a different number.` }, 409);
+    }
+    const note = `[Billing #${id}]`;
+    const periodMonth = t.period_from ? normalizePeriod(t.period_from) : null;
 
     const entryId = await transaction(async (client) => {
       const eid = await insertId(
-        `INSERT INTO ledger_entries (company_id, company_name, billing_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
-         VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)`,
-        [chargeId, chargeName, t.txn_date || todayYmd(), amount, amount, amount, note], client
+        `INSERT INTO ledger_entries (company_id, company_name, billing_date, soa_number, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)`,
+        [chargeId, chargeName, t.txn_date || todayYmd(), t.soa_number || null, t.period_from || null, t.period_to || null, periodMonth, amount, amount, amount, note], client
       );
       await exec(
         `UPDATE billing_transactions SET status='POSTED', ledger_entry_id=?, posted_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`,
@@ -614,6 +631,7 @@ const actions = {
       );
       return eid;
     });
+    if (t.soa_number) await recordSoaNumberUsed(t.soa_number, chargeId, entryId);
     return { ok: true, id, ledger_entry_id: entryId, company_id: chargeId, message: `Posted to ${chargeName}'s ledger.` };
   },
 
@@ -630,6 +648,7 @@ const actions = {
         if (toFloat(e.paid_amount) > 0) {
           jsonExit({ ok: false, error: 'This charge already has a payment recorded. Remove the payment in the Ledger first, then void it.' }, 409);
         }
+        await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ?", [toInt(e.id)]);
         await exec('DELETE FROM ledger_entries WHERE id=?', [toInt(e.id)]);
       }
     }
@@ -682,7 +701,7 @@ const actions = {
        ORDER BY UPPER(c.name) COLLATE "C" ASC`, [id, id, id, id, id, id]);
 
     const transactions = await all(
-      `SELECT t.id, t.txn_date, t.patient_name, t.service, t.amount, t.bill_to, t.status, t.ledger_entry_id, t.company_id,
+      `SELECT t.id, t.txn_date, t.patient_name, t.service, t.period_from, t.period_to, t.soa_number, t.amount, t.bill_to, t.status, t.ledger_entry_id, t.company_id,
               c.name AS company_name, l.balance AS ledger_balance, l.paid_amount AS ledger_paid
        FROM billing_transactions t
        LEFT JOIN companies c ON c.id = t.company_id

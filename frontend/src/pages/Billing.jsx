@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate } from '../utils';
+import { peso, fdate, coveredLabel } from '../utils';
 
 function todayLocal() {
   const d = new Date();
@@ -11,8 +11,8 @@ function todayLocal() {
 }
 
 const blank = () => ({
-  id: null, txn_date: todayLocal(), amount: '',
-  hmo_id: '', company_id: '', bill_to: 'HMO', remarks: '',
+  id: null, txn_date: todayLocal(), period_from: '', period_to: '', soa_number: '', amount: '',
+  hmo_id: '', company_id: '', bill_to: 'HMO',
 });
 
 const STATUS_BADGE = { OPEN: 'badge-warning', POSTED: 'badge-success', VOID: 'badge-secondary' };
@@ -97,8 +97,8 @@ export default function Billing() {
   function edit(r) {
     setFlash(null);
     setForm({
-      id: r.id, txn_date: r.txn_date || todayLocal(), 
-      amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO', remarks: r.remarks || '',
+      id: r.id, txn_date: r.txn_date || todayLocal(), period_from: r.period_from || '', period_to: r.period_to || '',
+      soa_number: r.soa_number || '', amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO',
     });
   }
 
@@ -123,8 +123,20 @@ export default function Billing() {
           <form onSubmit={(e) => { e.preventDefault(); save(false); }}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Date</label>
+                <label>Billing Date</label>
                 <input type="date" value={form.txn_date} onChange={set('txn_date')} />
+              </div>
+              <div className="form-group">
+                <label>Covered Period</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input style={{ flex: 1, minWidth: 0 }} type="date" value={form.period_from} onChange={set('period_from')} aria-label="Covered from" />
+                  <span style={{ color: 'var(--slate)', fontSize: 13 }}>to</span>
+                  <input style={{ flex: 1, minWidth: 0 }} type="date" value={form.period_to} min={form.period_from || undefined} onChange={set('period_to')} aria-label="Covered to" />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>SOA #</label>
+                <input value={form.soa_number} onChange={set('soa_number')} />
               </div>
               <div className="form-group">
                 <label>Amount (₱)</label>
@@ -143,10 +155,6 @@ export default function Billing() {
                 No HMO accounts yet. Open Companies, edit each partner HMO and set "Company or HMO?" to HMO.
               </div>
             )}
-            <div className="form-group" style={{ marginTop: 14 }}>
-              <label>Remarks</label>
-              <textarea rows={2} value={form.remarks} onChange={set('remarks')} />
-            </div>
             <div className="form-actions">
               <button className="btn" type="button" disabled={busy} onClick={() => save(true)}>Save &amp; Post to Ledger</button>
               <button className="btn btn-secondary" type="submit" disabled={busy}>Save (keep open)</button>
@@ -171,14 +179,14 @@ export default function Billing() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Date</th><th>HMO</th>
+                <th>#</th><th>Billing Date</th><th>Covered Period</th><th>SOA #</th><th>HMO</th>
                 <th className="text-right">Amount</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {!shown && <tr><td colSpan={6} className="empty-state">Loading…</td></tr>}
+              {!shown && <tr><td colSpan={8} className="empty-state">Loading…</td></tr>}
               {shown && shown.length === 0 && (
-                <tr><td colSpan={6} className="empty-state">
+                <tr><td colSpan={8} className="empty-state">
                   {filter === 'OPEN' ? 'No open transactions. Click "+ New Transaction" to open one.' : 'Nothing here.'}
                 </td></tr>
               )}
@@ -186,6 +194,8 @@ export default function Billing() {
                 <tr key={r.id}>
                   <td className="num">{r.id}</td>
                   <td>{fdate(r.txn_date)}</td>
+                  <td>{coveredLabel(r.period_from, r.period_to) || '—'}</td>
+                  <td>{r.soa_number || '—'}</td>
                   <td>
                     {r.status === 'POSTED' && r.ledger_entry_id
                       ? <Link to={`/ledger?company_id=${billedId(r)}&entry=${r.ledger_entry_id}`}>{billedName(r)}</Link>

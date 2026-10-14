@@ -871,3 +871,13 @@ button { font-family: inherit; }
   .report-table th, .report-table td { padding: 3px 6px; }
   .report-table tr { break-inside: avoid; }
 }
+/* ---- Covered Period cell (ledger) ---- */
+.covered-cell input { cursor: pointer; text-overflow: ellipsis; }
+.covered-pop {
+  position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--teal); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(19, 32, 58, 0.22); padding: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.covered-pop label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.covered-pop input[type="date"] { height: 36px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 10px; font: inherit; font-size: 14px; color: var(--ink); }
+.covered-pop input[type="date"]:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.covered-actions { display: flex; gap: 8px; }
