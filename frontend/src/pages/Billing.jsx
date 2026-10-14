@@ -11,7 +11,7 @@ function todayLocal() {
 }
 
 const blank = () => ({
-  id: null, txn_date: todayLocal(), patient_name: '', amount: '',
+  id: null, txn_date: todayLocal(), amount: '',
   hmo_id: '', company_id: '', bill_to: 'HMO', remarks: '',
 });
 
@@ -97,7 +97,7 @@ export default function Billing() {
   function edit(r) {
     setFlash(null);
     setForm({
-      id: r.id, txn_date: r.txn_date || todayLocal(), patient_name: r.patient_name || '', 
+      id: r.id, txn_date: r.txn_date || todayLocal(), 
       amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO', remarks: r.remarks || '',
     });
   }
@@ -125,10 +125,6 @@ export default function Billing() {
               <div className="form-group">
                 <label>Date</label>
                 <input type="date" value={form.txn_date} onChange={set('txn_date')} />
-              </div>
-              <div className="form-group">
-                <label>Patient name</label>
-                <input value={form.patient_name} onChange={set('patient_name')} />
               </div>
               <div className="form-group">
                 <label>Amount (₱)</label>
@@ -175,14 +171,14 @@ export default function Billing() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Date</th><th>Patient</th><th>HMO</th>
+                <th>#</th><th>Date</th><th>HMO</th>
                 <th className="text-right">Amount</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {!shown && <tr><td colSpan={7} className="empty-state">Loading…</td></tr>}
+              {!shown && <tr><td colSpan={6} className="empty-state">Loading…</td></tr>}
               {shown && shown.length === 0 && (
-                <tr><td colSpan={7} className="empty-state">
+                <tr><td colSpan={6} className="empty-state">
                   {filter === 'OPEN' ? 'No open transactions. Click "+ New Transaction" to open one.' : 'Nothing here.'}
                 </td></tr>
               )}
@@ -190,7 +186,6 @@ export default function Billing() {
                 <tr key={r.id}>
                   <td className="num">{r.id}</td>
                   <td>{fdate(r.txn_date)}</td>
-                  <td>{r.patient_name || '—'}</td>
                   <td>
                     {r.status === 'POSTED' && r.ledger_entry_id
                       ? <Link to={`/ledger?company_id=${billedId(r)}&entry=${r.ledger_entry_id}`}>{billedName(r)}</Link>
