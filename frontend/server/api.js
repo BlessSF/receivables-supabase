@@ -616,7 +616,7 @@ const actions = {
     if (t.soa_number && (await soaNumberConflicts(t.soa_number))) {
       jsonExit({ ok: false, error: `SOA number "${t.soa_number}" is already in use. Edit the transaction and use a different number.` }, 409);
     }
-    const note = `[Billing #${id}]`;
+    const note = `${t.remarks ? `${trim(t.remarks)} ` : ''}[Billing #${id}]`;
     const periodMonth = t.period_from ? normalizePeriod(t.period_from) : null;
 
     const entryId = await transaction(async (client) => {

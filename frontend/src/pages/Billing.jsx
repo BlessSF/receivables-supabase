@@ -12,7 +12,7 @@ function todayLocal() {
 
 const blank = () => ({
   id: null, txn_date: todayLocal(), period_from: '', period_to: '', soa_number: '', amount: '',
-  hmo_id: '', company_id: '', bill_to: 'HMO',
+  hmo_id: '', company_id: '', bill_to: 'HMO', remarks: '',
 });
 
 const STATUS_BADGE = { OPEN: 'badge-warning', POSTED: 'badge-success', VOID: 'badge-secondary' };
@@ -98,7 +98,7 @@ export default function Billing() {
     setFlash(null);
     setForm({
       id: r.id, txn_date: r.txn_date || todayLocal(), period_from: r.period_from || '', period_to: r.period_to || '',
-      soa_number: r.soa_number || '', amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO',
+      soa_number: r.soa_number || '', amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO', remarks: r.remarks || '',
     });
   }
 
@@ -155,6 +155,10 @@ export default function Billing() {
                 No HMO accounts yet. Open Companies, edit each partner HMO and set "Company or HMO?" to HMO.
               </div>
             )}
+            <div className="form-group" style={{ marginTop: 14 }}>
+              <label>Remarks</label>
+              <textarea rows={2} value={form.remarks} onChange={set('remarks')} />
+            </div>
             <div className="form-actions">
               <button className="btn" type="button" disabled={busy} onClick={() => save(true)}>Save &amp; Post to Ledger</button>
               <button className="btn btn-secondary" type="submit" disabled={busy}>Save (keep open)</button>
