@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, AGING_BADGE, isExecutive } from '../utils';
+import { peso, fdate, AGING_BADGE, isExecutive, MONTHS } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BUCKET_OPTIONS = [
@@ -50,6 +50,8 @@ export default function Summary() {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
+  const [view, setView] = useState('entry'); // 'entry' = every entry, 'month' = totals for January - December
+  const [year, setYear] = useState('');
 
   useEffect(() => { api.getCompanies().then((r) => setCompanies(r.data)); }, []);
 
@@ -61,6 +63,35 @@ export default function Summary() {
     }, 250);
     return () => clearTimeout(t);
   }, [companyId, aging, showAll, q]);
+
+  // ---- Summary by month: the entries on screen (same filters) grouped by billing month ----
+  const yearOf = (r) => { const m = String(r.billing_date || '').match(/^(\d{4})-(\d{2})/); return m ? { y: +m[1], m: +m[2] } : null; };
+  const years = useMemo(() => {
+    const ys = new Set((rows || []).map((r) => yearOf(r)?.y).filter(Boolean));
+    ys.add(new Date().getFullYear());
+    return [...ys].sort((a, b) => b - a);
+  }, [rows]);
+  useEffect(() => {
+    if (!rows || year) return;
+    const now = new Date().getFullYear();
+    const withData = rows.some((r) => yearOf(r)?.y === now);
+    setYear(String(withData ? now : (years.find((y) => rows.some((r) => yearOf(r)?.y === y)) ?? now)));
+  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthRows = useMemo(() => {
+    const out = MONTHS.map((name) => ({ name, entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 }));
+    (rows || []).forEach((r) => {
+      const p = yearOf(r);
+      if (!p || String(p.y) !== String(year)) return;
+      const t = out[p.m - 1];
+      t.entries += 1;
+      if (r.is_overdue) t.overdue += 1;
+      t.billed += Number(r.amount || 0);
+      t.paid += Number(r.paid_amount || 0);
+      t.owed += Number(r.deduction ?? r.balance ?? 0);
+    });
+    return out;
+  }, [rows, year]);
+  const monthTotal = monthRows.reduce((a, m) => ({ entries: a.entries + m.entries, overdue: a.overdue + m.overdue, billed: a.billed + m.billed, paid: a.paid + m.paid, owed: a.owed + m.owed }), { entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 });
 
   const filtersActive = companyId || aging || showAll || q.trim() !== '';
   const selectedCompany = companies.find((c) => String(c.id) === String(companyId));
@@ -84,6 +115,10 @@ export default function Summary() {
               ? `Every past-due entry${selectedCompany ? '' : ' across all companies'} — what was billed, what was paid, what is still owed, and how late it is.`
               : `${showAll ? 'Every entry' : 'Every unpaid entry'}${selectedCompany ? '' : ' across all companies'} — billed, paid, deduction, and how long it's been outstanding.`}
           </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className={view === 'entry' ? 'btn' : 'btn btn-secondary'} onClick={() => setView('entry')}>By Entry</button>
+          <button type="button" className={view === 'month' ? 'btn' : 'btn btn-secondary'} onClick={() => setView('month')}>Summary by Month</button>
         </div>
       </div>
 
@@ -112,12 +147,21 @@ export default function Summary() {
               Include fully paid entries
             </label>
           )}
+          {view === 'month' && (
+            <div className="form-group">
+              <label>Year</label>
+              <select className="select-inline" value={year} onChange={(e) => setYear(e.target.value)}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          )}
           {filtersActive && <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Clear filters</button>}
         </div>
       </div>
 
       {err && <div className="flash flash-error">{err}</div>}
 
+      {view === 'entry' && (
       <div className="kpi-grid">
         <div className="kpi-card accent-red">
           <div className="kpi-label">Past Due Entries</div>
@@ -141,7 +185,53 @@ export default function Summary() {
           <div className="kpi-value">{peso(totalDeduction)}</div>
         </div>
       </div>
+      )}
 
+      {view === 'month' && (
+        <div className="panel">
+          <h2 style={{ marginTop: 0 }}>Summary by Month — {year}</h2>
+          <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '-4px 0 14px' }}>
+            Entries grouped by billing month{showAll || readOnly ? '' : ', unpaid entries only (tick "Include fully paid entries" to count paid ones too)'}. The company, status and search filters above apply.
+          </p>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Month</th><th className="text-right">Entries</th><th className="text-right">Past Due</th>
+                  <th className="text-right">Billed</th><th className="text-right">Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!rows && <tr><td colSpan={6} className="empty-state">Loading…</td></tr>}
+                {rows && monthRows.map((m) => (
+                  <tr key={m.name} style={m.entries === 0 ? { color: 'var(--slate)', opacity: 0.6 } : undefined}>
+                    <td style={{ fontWeight: 600 }}>{m.name}</td>
+                    <td className="text-right num">{m.entries}</td>
+                    <td className="text-right num">{m.overdue}</td>
+                    <td className="text-right num">{peso(m.billed)}</td>
+                    <td className="text-right num">{peso(m.paid)}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(m.owed)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {rows && (
+                <tfoot>
+                  <tr>
+                    <td style={{ fontWeight: 700 }}>TOTAL {year}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{monthTotal.entries}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{monthTotal.overdue}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.billed)}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.paid)}</td>
+                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.owed)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {view === 'entry' && (
       <div className="panel">
         <div className="table-wrap">
           <table className="data-table">
@@ -195,6 +285,7 @@ export default function Summary() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
