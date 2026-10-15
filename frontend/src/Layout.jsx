@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -35,6 +35,12 @@ const NAV_GROUPS = [
     ],
   },
 ];
+
+// Admin accounts also get Settings
+const SETTINGS_GROUP = {
+  label: 'System',
+  items: [{ to: '/settings', label: 'Settings', Icon: IconSettings }],
+};
 
 // Owner / accounting accounts: reports only
 const EXEC_NAV_GROUPS = [
@@ -111,7 +117,7 @@ export default function Layout() {
           </div>
         )}
         <nav className="sidebar-nav">
-          {(isExecutive(user) ? EXEC_NAV_GROUPS : NAV_GROUPS).map((group, i) => (
+          {(isExecutive(user) ? EXEC_NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS).map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
               {group.label && <div className="nav-group-label">{group.label}</div>}
               {group.items.map(({ to, label, end, Icon }) => (

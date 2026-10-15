@@ -14,6 +14,7 @@ import SoaTracker from './pages/SoaTracker';
 import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
 import MonthlyReport from './pages/MonthlyReport';
+import Settings from './pages/Settings';
 import { isExecutive } from './utils';
 
 function Gate() {
@@ -56,6 +57,7 @@ function Gate() {
         <Route path="/past-due" element={<PastDue />} />
         <Route path="/soa-tracker" element={<SoaTracker />} />
         <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

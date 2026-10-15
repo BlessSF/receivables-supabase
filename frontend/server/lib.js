@@ -3,7 +3,7 @@ import { all, one, scalar, column, exec } from './db.js';
 import { daysOverdue, addDaysYmd } from './dates.js';
 import { toInt, toFloat, trim } from './php.js';
 
-export const DEFAULT_DUE_DAYS = 90;
+export const DEFAULT_DUE_DAYS = 30; // grace days offered when the grace period is switched on in Settings
 export { daysOverdue };
 
 // ---------------------------------------------------------------- settings
@@ -23,8 +23,19 @@ export async function setSetting(key, value, client = null) {
 }
 
 /** Grace period (days after billing) before an entry starts aging. */
+// Settings page: the grace period can be switched off. Off = aging counts from the billing date.
+export async function agingGraceEnabled() {
+  return (await getSetting('aging_grace_enabled', '0')) === '1';
+}
+
+/** The number of grace days saved in Settings (kept even while the grace period is switched off). */
+export async function agingGraceSavedDays() {
+  return Math.max(0, toInt(await getSetting('aging_grace_days', String(DEFAULT_DUE_DAYS))));
+}
+
+/** Grace days actually applied to aging: 0 when the grace period is off. */
 export async function agingGraceDays() {
-  return toInt(await getSetting('aging_grace_days', String(DEFAULT_DUE_DAYS)));
+  return (await agingGraceEnabled()) ? agingGraceSavedDays() : 0;
 }
 
 /** "Less Taxes Withheld" auto-fill percentage. */

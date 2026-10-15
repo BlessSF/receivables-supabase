@@ -66,7 +66,7 @@ export default function Aging() {
       <div className="page-header">
         <div>
           <h1>Aging Report</h1>
-          <div className="subtitle">Outstanding receivables grouped by days overdue (due date = explicit due date, or billing date + {data.grace_days} days)</div>
+          <div className="subtitle">Outstanding receivables grouped by days overdue (due date = explicit due date, or billing date{data.grace_days > 0 ? ` + ${data.grace_days} days (grace period)` : ', no grace period'})</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a className="btn btn-secondary" href={`/export_csv.php?type=aging${exportQs}`}>Export CSV</a>

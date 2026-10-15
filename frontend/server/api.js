@@ -11,7 +11,7 @@ import { todayYmd, todayMs, parseDate, normalizePeriod } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
+  agingGraceDays, agingGraceEnabled, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -754,13 +754,26 @@ const actions = {
   },
 
   async get_settings() {
-    return { ok: true, data: { aging_grace_days: await agingGraceDays(), tax_withheld_percent: await taxWithheldPercent() } };
+    return { ok: true, data: {
+      aging_grace_enabled: await agingGraceEnabled(),
+      aging_grace_days: await agingGraceSavedDays(),
+      tax_withheld_percent: await taxWithheldPercent(),
+    } };
   },
 
-  async save_aging_setting(input) {
+  async save_aging_setting(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change settings.' }, 403);
+    const enabled = truthy(input.aging_grace_enabled);
     const days = Math.max(0, toInt(input.aging_grace_days));
+    if (enabled && days < 1) jsonExit({ ok: false, error: 'Enter at least 1 grace day, or switch the grace period off.' }, 400);
+    await setSetting('aging_grace_enabled', enabled ? '1' : '0');
     await setSetting('aging_grace_days', String(days));
-    return { ok: true, message: `Aging now starts ${days} day${days === 1 ? '' : 's'} after billing.` };
+    return {
+      ok: true,
+      message: enabled
+        ? `Grace period ON: aging starts ${days} day${days === 1 ? '' : 's'} after the billing date.`
+        : 'Grace period OFF: aging counts from the billing date.',
+    };
   },
 
   async save_tax_setting(input, auth) {
