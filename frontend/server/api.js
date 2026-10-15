@@ -294,6 +294,8 @@ const actions = {
     const id = toInt(input.id);
     await requireCompanyAccess(auth, id);
     const name = await scalar('SELECT name FROM companies WHERE id=?', [id]);
+    // Billing transactions already posted into this company's ledger go with its entries.
+    await exec('DELETE FROM billing_transactions WHERE ledger_entry_id IN (SELECT id FROM ledger_entries WHERE company_id = ?)', [id]);
     await exec('DELETE FROM companies WHERE id=?', [id]);
     return { ok: true, message: `Company "${name ?? ''}" and its ledger entries were deleted.` };
   },
@@ -522,6 +524,8 @@ const actions = {
     await requireCompanyAccess(auth, toInt(cid));
     // Free the SOA number first; otherwise the tracker row stays USED forever and blocks the number.
     await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ?", [id]);
+    // The Billing transaction that was posted into this entry goes too, so it doesn't stay "POSTED" with nothing behind it.
+    await exec('DELETE FROM billing_transactions WHERE ledger_entry_id = ?', [id]);
     await exec('DELETE FROM ledger_entries WHERE id=?', [id]);
     return { ok: true, message: 'Ledger entry deleted.' };
   },
