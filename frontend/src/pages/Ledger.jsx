@@ -150,7 +150,8 @@ export default function Ledger() {
       DATE,                                                   // Payment Date
       // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
       Math.min(Math.max(widest('check_ref', undefined, 'Check'), tw('0'.repeat(14))), tw('0'.repeat(26))) + INPUT,
-      widest('paid_amount', undefined, '0.00') + INPUT,
+      // Paid always has room for an 8-digit amount with centavos (12,345,678.00 typed as 12345678.00) and grows past that if a bigger one is saved
+      Math.min(Math.max(widest('paid_amount', undefined, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT,
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,

@@ -11,7 +11,7 @@ import { todayYmd, todayMs, parseDate, normalizePeriod } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, taxWithheldPercent, setSetting, soaNumberConflicts, recordSoaNumberUsed,
+  agingGraceDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -460,8 +460,11 @@ const actions = {
       value = elvis(trim(value), null);
     }
 
-    if (field === 'soa_number' && value && (await soaNumberConflicts(value, id))) {
-      jsonExit({ ok: false, error: `SOA number "${value}" is already in use. Add a letter like A or B for a supplementary copy, or use a different number.` }, 409);
+    if (field === 'soa_number' && value) {
+      const holder = await soaNumberHolder(value, id);
+      if (holder) {
+        jsonExit({ ok: false, error: `SOA number "${value}" is already in use — ${holder.text}. Add a letter like A or B for a supplementary copy, or use a different number.` }, 409);
+      }
     }
 
     row[field] = value;
@@ -496,6 +499,8 @@ const actions = {
     const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id=?', [id]);
     if (!cid) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
     await requireCompanyAccess(auth, toInt(cid));
+    // Free the SOA number first; otherwise the tracker row stays USED forever and blocks the number.
+    await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ?", [id]);
     await exec('DELETE FROM ledger_entries WHERE id=?', [id]);
     return { ok: true, message: 'Ledger entry deleted.' };
   },
@@ -568,6 +573,13 @@ const actions = {
     if ((periodFrom && !periodTo) || (!periodFrom && periodTo)) jsonExit({ ok: false, error: 'Enter both dates for the covered period.' }, 400);
     if (periodFrom && periodTo && periodFrom > periodTo) jsonExit({ ok: false, error: 'The covered period "to" date cannot be before the "from" date.' }, 400);
 
+    if (soa) {
+      const holder = await soaNumberHolder(soa);
+      if (holder) {
+        jsonExit({ ok: false, error: `SOA number \"${soa}\" is already in use — ${holder.text}. Use a different number (or add A/B for a supplementary copy).` }, 409);
+      }
+    }
+
     if (hmoId) {
       const t = await scalar('SELECT account_type FROM companies WHERE id=?', [hmoId]);
       if (t !== 'HMO') jsonExit({ ok: false, error: 'The HMO you chose is not an HMO account.' }, 400);
@@ -613,8 +625,11 @@ const actions = {
     const hmoName = t.hmo_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.hmo_id)]) : null;
     const coName = t.company_id ? await scalar('SELECT name FROM companies WHERE id=?', [toInt(t.company_id)]) : null;
     const chargeName = t.bill_to === 'COMPANY' ? coName : hmoName;
-    if (t.soa_number && (await soaNumberConflicts(t.soa_number))) {
-      jsonExit({ ok: false, error: `SOA number "${t.soa_number}" is already in use. Edit the transaction and use a different number.` }, 409);
+    if (t.soa_number) {
+      const holder = await soaNumberHolder(t.soa_number);
+      if (holder) {
+        jsonExit({ ok: false, error: `Can't post: SOA number "${t.soa_number}" is already in use — ${holder.text}. Edit the transaction and use a different number (or add A/B for a supplementary copy).` }, 409);
+      }
     }
     const note = `${t.remarks ? `${trim(t.remarks)} ` : ''}[Billing #${id}]`;
     const periodMonth = t.period_from ? normalizePeriod(t.period_from) : null;

@@ -86,23 +86,56 @@ export function soaHasSupplementarySuffix(soa) {
 }
 
 /**
+ * Finds what is holding an SOA number: a ledger entry, or a tracker row marked
+ * USED. Returns null when the number is free (or exempt through the A/B suffix
+ * rule), otherwise { where, text } describing the holder.
+ */
+export async function soaNumberHolder(soa, excludeLedgerId = null, excludeTrackerId = null) {
+  soa = trim(soa);
+  if (soa === '' || soaHasSupplementarySuffix(soa)) return null;
+
+  const lp = [soa];
+  if (excludeLedgerId) lp.push(excludeLedgerId);
+  const ledger = await one(
+    `SELECT l.id, l.billing_date, COALESCE(c.name, l.company_name) AS company
+       FROM ledger_entries l LEFT JOIN companies c ON c.id = l.company_id
+      WHERE UPPER(l.soa_number) = UPPER(?)${excludeLedgerId ? ' AND l.id <> ?' : ''}
+      ORDER BY l.id LIMIT 1`,
+    lp
+  );
+  if (ledger) {
+    return {
+      where: 'ledger',
+      text: `it is already on a ledger entry (#${ledger.id}${ledger.company ? `, ${ledger.company}` : ''})`,
+    };
+  }
+
+  const tp = [soa];
+  if (excludeTrackerId) tp.push(excludeTrackerId);
+  const tracker = await one(
+    `SELECT t.id, t.ledger_entry_id, c.name AS company
+       FROM soa_tracker t LEFT JOIN companies c ON c.id = t.company_id
+      WHERE UPPER(t.soa_number) = UPPER(?) AND t.status = 'USED'${excludeTrackerId ? ' AND t.id <> ?' : ''}
+      ORDER BY t.id LIMIT 1`,
+    tp
+  );
+  if (tracker) {
+    return {
+      where: 'tracker',
+      text: tracker.ledger_entry_id
+        ? `it is marked USED in the SOA Tracker (linked to ledger entry #${tracker.ledger_entry_id})`
+        : `it is marked USED in the SOA Tracker${tracker.company ? ` for ${tracker.company}` : ''} but isn't attached to any ledger entry — open SOA Tracker and set it to Unused if that's a leftover`,
+    };
+  }
+  return null;
+}
+
+/**
  * True if the SOA number is already USED somewhere else (a ledger entry or a
  * tracker row marked USED) and isn't exempt through the A/B suffix rule.
  */
 export async function soaNumberConflicts(soa, excludeLedgerId = null, excludeTrackerId = null) {
-  soa = trim(soa);
-  if (soa === '' || soaHasSupplementarySuffix(soa)) return false;
-  let sql =
-    'SELECT (SELECT COUNT(*) FROM ledger_entries WHERE UPPER(soa_number) = UPPER(?)' +
-    (excludeLedgerId ? ' AND id <> ?' : '') +
-    ") + (SELECT COUNT(*) FROM soa_tracker WHERE UPPER(soa_number) = UPPER(?) AND status = 'USED'" +
-    (excludeTrackerId ? ' AND id <> ?' : '') +
-    ')';
-  const params = [soa];
-  if (excludeLedgerId) params.push(excludeLedgerId);
-  params.push(soa);
-  if (excludeTrackerId) params.push(excludeTrackerId);
-  return toInt(await scalar(sql, params)) > 0;
+  return (await soaNumberHolder(soa, excludeLedgerId, excludeTrackerId)) !== null;
 }
 
 /**
