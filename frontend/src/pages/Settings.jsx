@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
+import LongDateInput from '../LongDateInput';
 import { coveredPeriodForBilling, DEFAULT_COVERED_RULES, formatLongDate } from '../utils';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -160,7 +161,7 @@ export default function Settings() {
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 13.5 }}>
           <span>Try a billing date:</span>
-          <input type="date" value={tryDate} onChange={(e) => setTryDate(e.target.value)} />
+          <LongDateInput value={tryDate} ariaLabel="Try a billing date" onChange={setTryDate} />
           {tryDate && (() => {
             const cp = coveredPeriodForBilling(tryDate, rules.map((x) => ({ ...x, month: +x.month, day_from: +x.day_from, day_to: +x.day_to, from_offset: +x.from_offset, from_day: +x.from_day, to_offset: +x.to_offset, to_day: +x.to_day })));
             return <strong>{cp ? `→ ${formatLongDate(cp.from)} to ${formatLongDate(cp.to)}` : '→ no rule matches (left blank)'}</strong>;

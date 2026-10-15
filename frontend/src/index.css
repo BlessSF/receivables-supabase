@@ -912,3 +912,20 @@ button { font-family: inherit; }
   color: var(--teal-strong);
   outline: none;
 }
+
+/* Long date field for forms: "October 15, 2026" + calendar button (the real date picker is hidden behind it) */
+.long-date { position: relative; display: block; min-width: 150px; }
+.long-date > input[type="text"] {
+  width: 100%; box-sizing: border-box; padding-right: 36px; text-overflow: ellipsis;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff; color: var(--ink);
+  padding-left: 12px; height: 38px; font: inherit; font-size: 14px;
+}
+.long-date > input[type="text"]:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.long-date > input[type="text"]::placeholder { color: #aab4c1; }
+.long-date-btn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 6px; background: transparent;
+  color: var(--slate); cursor: pointer; display: grid; place-items: center;
+}
+.long-date-btn:hover { background: var(--slate-soft); }
+.long-date > input.long-date-native { position: absolute; right: 6px; top: 0; width: 26px; height: 100%; padding: 0; border: 0; opacity: 0; pointer-events: none; }

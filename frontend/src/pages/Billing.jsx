@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import LongDateInput from '../LongDateInput';
 import { peso, fdate, coveredLabel, coveredPeriodForBilling, DEFAULT_COVERED_RULES } from '../utils';
 
 function todayLocal() {
@@ -304,12 +305,12 @@ export default function Billing() {
                               </select>
                               {it.hmo_id && it.hmo_match === 'close' && <div style={{ fontSize: 12, color: 'var(--amber)' }}>Close match for "{it.company_name}"</div>}
                             </td>
-                            <td><input type="date" value={it.txn_date} onChange={(e) => patchItem(it.key, { txn_date: e.target.value, ...(autoPeriod ? periodFor(e.target.value, true, periodRules) : {}) })} /></td>
+                            <td><LongDateInput value={it.txn_date} ariaLabel="Billing date" onChange={(v) => patchItem(it.key, { txn_date: v, ...(autoPeriod ? periodFor(v, true, periodRules) : {}) })} /></td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <input type="date" value={it.period_from} onChange={(e) => patchItem(it.key, { period_from: e.target.value })} aria-label="Covered from" />
+                                <LongDateInput value={it.period_from} ariaLabel="Covered from" onChange={(v) => patchItem(it.key, { period_from: v })} />
                                 <span style={{ color: 'var(--slate)', fontSize: 12 }}>to</span>
-                                <input type="date" value={it.period_to} min={it.period_from || undefined} onChange={(e) => patchItem(it.key, { period_to: e.target.value })} aria-label="Covered to" />
+                                <LongDateInput value={it.period_to} min={it.period_from} ariaLabel="Covered to" onChange={(v) => patchItem(it.key, { period_to: v })} />
                               </div>
                             </td>
                             <td className="text-right"><input type="number" step="0.01" min="0" style={{ width: 120, textAlign: 'right' }} value={it.amount} onChange={(e) => patchItem(it.key, { amount: e.target.value })} /></td>
@@ -345,14 +346,14 @@ export default function Billing() {
             <div className="form-grid">
               <div className="form-group">
                 <label>Billing Date</label>
-                <input type="date" value={form.txn_date} onChange={(e) => setForm((f) => ({ ...f, txn_date: e.target.value, ...(autoPeriod ? periodFor(e.target.value, true, periodRules) : {}) }))} />
+                <LongDateInput value={form.txn_date} ariaLabel="Billing date" onChange={(v) => setForm((f) => ({ ...f, txn_date: v, ...(autoPeriod ? periodFor(v, true, periodRules) : {}) }))} />
               </div>
               <div className="form-group">
                 <label>Covered Period</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input style={{ flex: 1, minWidth: 0 }} type="date" value={form.period_from} onChange={set('period_from')} aria-label="Covered from" />
+                  <LongDateInput style={{ flex: 1, minWidth: 0 }} value={form.period_from} ariaLabel="Covered from" onChange={(v) => setForm((f) => ({ ...f, period_from: v }))} />
                   <span style={{ color: 'var(--slate)', fontSize: 13 }}>to</span>
-                  <input style={{ flex: 1, minWidth: 0 }} type="date" value={form.period_to} min={form.period_from || undefined} onChange={set('period_to')} aria-label="Covered to" />
+                  <LongDateInput style={{ flex: 1, minWidth: 0 }} value={form.period_to} min={form.period_from} ariaLabel="Covered to" onChange={(v) => setForm((f) => ({ ...f, period_to: v }))} />
                 </div>
               </div>
               <div className="form-group">
