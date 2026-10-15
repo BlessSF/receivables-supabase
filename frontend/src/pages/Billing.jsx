@@ -348,12 +348,12 @@ export default function Billing() {
                 <label>Billing Date</label>
                 <LongDateInput value={form.txn_date} ariaLabel="Billing date" onChange={(v) => setForm((f) => ({ ...f, txn_date: v, ...(autoPeriod ? periodFor(v, true, periodRules) : {}) }))} />
               </div>
-              <div className="form-group">
+              <div className="form-group span-2">
                 <label>Covered Period</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <LongDateInput style={{ flex: 1, minWidth: 0 }} value={form.period_from} ariaLabel="Covered from" onChange={(v) => setForm((f) => ({ ...f, period_from: v }))} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <LongDateInput style={{ flex: '1 1 210px' }} value={form.period_from} ariaLabel="Covered from" onChange={(v) => setForm((f) => ({ ...f, period_from: v }))} />
                   <span style={{ color: 'var(--slate)', fontSize: 13 }}>to</span>
-                  <LongDateInput style={{ flex: 1, minWidth: 0 }} value={form.period_to} min={form.period_from} ariaLabel="Covered to" onChange={(v) => setForm((f) => ({ ...f, period_to: v }))} />
+                  <LongDateInput style={{ flex: '1 1 210px' }} value={form.period_to} min={form.period_from} ariaLabel="Covered to" onChange={(v) => setForm((f) => ({ ...f, period_to: v }))} />
                 </div>
               </div>
               <div className="form-group">

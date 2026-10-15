@@ -914,7 +914,7 @@ button { font-family: inherit; }
 }
 
 /* Long date field for forms: "October 15, 2026" + calendar button (the real date picker is hidden behind it) */
-.long-date { position: relative; display: block; min-width: 150px; }
+.long-date { position: relative; display: block; min-width: 205px; } /* wide enough for "September 30, 2026" at 100% zoom */
 .long-date > input[type="text"] {
   width: 100%; box-sizing: border-box; padding-right: 36px; text-overflow: ellipsis;
   border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff; color: var(--ink);
@@ -929,3 +929,5 @@ button { font-family: inherit; }
 }
 .long-date-btn:hover { background: var(--slate-soft); }
 .long-date > input.long-date-native { position: absolute; right: 6px; top: 0; width: 26px; height: 100%; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+/* Covered Period takes two columns of the form grid when there's room, so both dates show in full at any zoom */
+@media (min-width: 900px) { .form-grid .span-2 { grid-column: span 2; } }
