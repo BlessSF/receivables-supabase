@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, coveredLabel } from '../utils';
+import { peso, fdate, coveredLabel, isStaff } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BLANK = { name: '', code: '', account_type: 'HMO', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
@@ -11,6 +11,7 @@ const n = (v) => Number(v) || 0;
 export default function Hmos() {
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
+  const staff = isStaff(user); // staff can look but not add / edit
   const [hmos, setHmos] = useState(null);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');
@@ -131,7 +132,7 @@ export default function Hmos() {
           <h1>HMOs</h1>
           <div className="subtitle">Partner HMO providers and the clinic charges billed to them or their partner companies</div>
         </div>
-        <button className="btn" onClick={() => { setFlash(null); setForm({ ...BLANK }); }}>+ Add HMO</button>
+        {!staff && <button className="btn" onClick={() => { setFlash(null); setForm({ ...BLANK }); }}>+ Add HMO</button>}
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
@@ -193,8 +194,8 @@ export default function Hmos() {
                   <td className="text-right num" title={`Charged ${peso(h.billed_partners)}, still unpaid ${peso(h.unpaid_partners)}`}>{peso(h.unpaid_partners)}</td>
                   <td className="text-right num"><Link to={`/ledger?company_id=${h.id}`}>{peso(h.account_balance)}</Link></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setSelectedId(h.id); }}>Open</button>{' '}
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}>Edit</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setSelectedId(h.id); }}>Open</button>{!staff && <>{' '}
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}>Edit</button></>}
                   </td>
                 </tr>
               ))}
@@ -207,6 +208,8 @@ export default function Hmos() {
 }
 
 function HmoDetail({ id, onBack, onEdit }) {
+  const { user } = useAuth();
+  const staff = isStaff(user);
   const [data, setData] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [addId, setAddId] = useState('');
@@ -282,8 +285,8 @@ function HmoDetail({ id, onBack, onEdit }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="btn" to={`/billing?hmo_id=${hmo.id}`}>+ New Charge</Link>
-          <button className="btn btn-secondary" onClick={() => onEdit(hmo)}>Edit HMO</button>
+          {!staff && <Link className="btn" to={`/billing?hmo_id=${hmo.id}`}>+ New Charge</Link>}
+          {!staff && <button className="btn btn-secondary" onClick={() => onEdit(hmo)}>Edit HMO</button>}
           <button className="btn btn-secondary btn-sm back-link" onClick={onBack}>← Back to HMOs</button>
         </div>
       </div>
@@ -309,18 +312,18 @@ function HmoDetail({ id, onBack, onEdit }) {
 
       <div className="panel">
         <h2>Partner companies</h2>
-        <div className="table-toolbar" style={{ gap: 8, flexWrap: 'wrap' }}>
+        {!staff && <div className="table-toolbar" style={{ gap: 8, flexWrap: 'wrap' }}>
           <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ minWidth: 240 }}>
             <option value="">Add a partner company…</option>
             {available.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button className="btn btn-sm" disabled={!addId} onClick={addPartner}>Add partner</button>
-        </div>
+        </div>}
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Company</th><th className="text-right">Charges</th><th className="text-right">Billed to company</th><th className="text-right">Unpaid</th><th></th></tr></thead>
             <tbody>
-              {data.partners.length === 0 && <tr><td colSpan={5} className="empty-state">No partner companies yet. Add the companies whose employees use this HMO.</td></tr>}
+              {data.partners.length === 0 && <tr><td colSpan={5} className="empty-state">No partner companies yet.{staff ? '' : ' Add the companies whose employees use this HMO.'}</td></tr>}
               {data.partners.map((p) => (
                 <tr key={p.id}>
                   <td><Link to={`/ledger?company_id=${p.id}`}>{p.name}</Link>{!p.is_partner && <span className="badge badge-secondary" style={{ marginLeft: 8 }} title="Billed with this HMO but not added as a partner">not listed</span>}</td>
@@ -328,9 +331,9 @@ function HmoDetail({ id, onBack, onEdit }) {
                   <td className="text-right num">{peso(p.billed_to_company)}</td>
                   <td className="text-right num">{peso(p.unpaid)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {p.is_partner
+                    {!staff && (p.is_partner
                       ? <button className="btn btn-danger btn-sm" onClick={() => removePartner(p)}>Remove</button>
-                      : <button className="btn btn-secondary btn-sm" onClick={() => api.addHmoPartner(id, p.id).then(load)}>Add as partner</button>}
+                      : <button className="btn btn-secondary btn-sm" onClick={() => api.addHmoPartner(id, p.id).then(load)}>Add as partner</button>)}
                   </td>
                 </tr>
               ))}
@@ -355,7 +358,7 @@ function HmoDetail({ id, onBack, onEdit }) {
               <tr><th>#</th><th>Billing Date</th><th>Covered Period</th><th>SOA #</th><th>Billed to</th><th className="text-right">Amount</th><th className="text-right">Unpaid</th><th>Status</th></tr>
             </thead>
             <tbody>
-              {txns.length === 0 && <tr><td colSpan={8} className="empty-state">No charges here. Use "+ New Charge" to open one.</td></tr>}
+              {txns.length === 0 && <tr><td colSpan={8} className="empty-state">No charges here.{staff ? '' : ' Use "+ New Charge" to open one.'}</td></tr>}
               {txns.map((t) => (
                 <tr key={t.id}>
                   <td className="num">{t.id}</td>

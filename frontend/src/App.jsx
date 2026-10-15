@@ -50,6 +50,8 @@ function Gate() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/companies" element={<Companies />} />
+          <Route path="/hmos" element={<Hmos />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="*" element={<Navigate to="/" replace />} />

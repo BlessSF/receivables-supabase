@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso } from '../utils';
+import { peso, isStaff } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BLANK = { name: '', code: '', account_type: 'COMPANY', linked_company_id: '', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
 
 export default function Companies() {
   const { user } = useAuth();
+  const staff = isStaff(user); // staff can look but not add / edit / delete
   const [companies, setCompanies] = useState(null);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');
@@ -172,10 +173,10 @@ export default function Companies() {
           <h1>Companies / HMOs</h1>
           <div className="subtitle">
             {companies ? companies.length : '…'} corporate accounts on file
-            {user?.is_admin ? ' (all branches)' : ` — ${user?.full_name || user?.username} branch only`}
+            {user?.is_admin || staff ? ' (all branches)' : ` — ${user?.full_name || user?.username} branch only`}
           </div>
         </div>
-        <button className="btn" onClick={startAdd}>+ Add Company</button>
+        {!staff && <button className="btn" onClick={startAdd}>+ Add Company</button>}
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
@@ -200,7 +201,7 @@ export default function Companies() {
             <tbody>
               {!companies && <tr><td colSpan={11} className="empty-state">Loading…</td></tr>}
               {companies && filtered.length === 0 && (
-                <tr><td colSpan={11} className="empty-state">No companies yet. <a onClick={startAdd} style={{ cursor: 'pointer' }}>Add one</a>.</td></tr>
+                <tr><td colSpan={11} className="empty-state">No companies yet.{!staff && <> <a onClick={startAdd} style={{ cursor: 'pointer' }}>Add one</a>.</>}</td></tr>
               )}
               {filtered.map((c, idx) => (
                 <tr key={c.id}>
@@ -212,23 +213,27 @@ export default function Companies() {
                     {linkedLabel(c) || '—'}
                   </td>
                   <td>
-                    <select
-                      className="status-select"
-                      value={c.status}
-                      onChange={(e) => changeStatus(c, e.target.value)}
-                    >
-                      <option value="ACTIVE">ACTIVE</option>
-                      <option value="INACTIVE">INACTIVE</option>
-                      <option value="BANKRUPT">BANKRUPT</option>
-                    </select>
+                    {staff ? <span className={`badge ${c.status === 'ACTIVE' ? 'badge-success' : 'badge-secondary'}`}>{c.status}</span> : (
+                      <select
+                        className="status-select"
+                        value={c.status}
+                        onChange={(e) => changeStatus(c, e.target.value)}
+                      >
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="INACTIVE">INACTIVE</option>
+                        <option value="BANKRUPT">BANKRUPT</option>
+                      </select>
+                    )}
                   </td>
                   {user?.is_admin && <td>{c.branch || '— shared —'}</td>}
                   <td className="text-right num">{c.entry_count}</td>
                   <td className="text-right num">{peso(c.outstanding)}</td>
                   <td>{c.contact_person || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => startEdit(c)}>Edit</button>{' '}
-                    <button className="btn btn-danger btn-sm" onClick={() => remove(c)}>Delete</button>
+                    {!staff && <>
+                      <button className="btn btn-secondary btn-sm" onClick={() => startEdit(c)}>Edit</button>{' '}
+                      <button className="btn btn-danger btn-sm" onClick={() => remove(c)}>Delete</button>
+                    </>}
                   </td>
                 </tr>
               ))}

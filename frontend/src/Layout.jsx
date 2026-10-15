@@ -45,13 +45,20 @@ const SETTINGS_GROUP = {
   ],
 };
 
-// Staff accounts: dashboard, ledger (all companies) and the monthly report
+// Staff accounts: dashboard, monthly report, companies + HMOs (view only) and the ledger (all companies)
 const STAFF_NAV_GROUPS = [
   {
     items: [
       { to: '/', label: 'Dashboard', end: true, Icon: IconDashboard },
-      { to: '/ledger', label: 'Ledger', Icon: IconTable },
       { to: '/reports-by-month', label: 'Reports by Month', Icon: IconCalendar },
+    ],
+  },
+  {
+    label: 'Accounts',
+    items: [
+      { to: '/companies', label: 'Companies', Icon: IconBuilding },
+      { to: '/hmos', label: 'HMOs', Icon: IconHeart },
+      { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
   },
 ];

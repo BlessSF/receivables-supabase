@@ -37,6 +37,7 @@ function userPayload(u) {
 // and edit only the three payment fields of a ledger row.
 const STAFF_ACTIONS = new Set([
   'get_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
+  'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
