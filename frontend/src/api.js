@@ -83,6 +83,12 @@ export const api = {
   soaUpdateEntry: (body) => call('soa_update_entry', { method: 'POST', body }),
   soaCheck: (number) => call('soa_check', { params: { number } }),
 
+  // users (admin only)
+  getUsers: () => call('get_users'),
+  createUser: (body) => call('create_user', { method: 'POST', body }),
+  updateUser: (body) => call('update_user', { method: 'POST', body }),
+  deleteUser: (id) => call('delete_user', { method: 'POST', body: { id } }),
+
   // monitoring
   getMonitoring: () => call('get_monitoring'),
   createMonitoring: (body) => call('create_monitoring', { method: 'POST', body }),

@@ -3,6 +3,7 @@
 // pages work unchanged. All requests hit /api.php?action=xxx (the
 // vercel.json rewrite sends that path to this code).
 
+import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
@@ -28,8 +29,16 @@ function userPayload(u) {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     is_admin: u.role === 'admin',
     is_executive: u.role === 'executive',
+    is_staff: u.role === 'staff',
   };
 }
+
+// What a staff account may call: view companies + ledger + dashboard + monthly report,
+// and edit only the three payment fields of a ledger row.
+const STAFF_ACTIONS = new Set([
+  'get_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
+]);
+const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
 // What an executive (owner / accounting) account may call: reports only, no editing.
 const EXECUTIVE_ACTIONS = new Set([
@@ -417,6 +426,9 @@ const actions = {
     let value = input.value ?? null;
 
     if (!id || !allowed.includes(field)) jsonExit({ ok: false, error: 'Invalid field.' }, 400);
+    if (auth.isStaff() && !STAFF_EDITABLE_FIELDS.includes(field)) {
+      jsonExit({ ok: false, error: 'Staff accounts can only edit Payment Date, Check Ref and Paid.' }, 403);
+    }
 
     const row = await one('SELECT * FROM ledger_entries WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
@@ -939,6 +951,59 @@ const actions = {
     return { ok: true, data: { tracker, ledger } };
   },
 
+  // ---------------------------------------------------------------- USERS (admin only)
+  // Admins create and manage Staff accounts. Admin / branch / executive accounts
+  // are listed for reference but can't be edited or deleted from here.
+  async get_users(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    const data = await all('SELECT id, username, full_name, role, created_at FROM users ORDER BY (role = \'staff\') DESC, UPPER(username) COLLATE "C" ASC');
+    return { ok: true, data };
+  },
+
+  async create_user(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    const username = trim(input.username ?? '');
+    const password = String(input.password ?? '');
+    const fullName = elvis(trim(input.full_name ?? ''), username);
+    if (!/^[A-Za-z0-9._-]{3,50}$/.test(username)) {
+      jsonExit({ ok: false, error: 'Username must be 3-50 characters: letters, numbers, dot, dash or underscore.' }, 400);
+    }
+    if (password.length < 6) jsonExit({ ok: false, error: 'Password must be at least 6 characters.' }, 400);
+    if (await scalar('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [username])) {
+      jsonExit({ ok: false, error: `The username "${username}" is already taken.` }, 409);
+    }
+    const hash = await bcrypt.hash(password, 10);
+    const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, 'staff']);
+    return { ok: true, id, message: `Staff account "${username}" created.` };
+  },
+
+  async update_user(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    const id = toInt(input.id);
+    const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
+    if (row.role !== 'staff') jsonExit({ ok: false, error: 'Only Staff accounts can be edited here.' }, 403);
+    const fullName = elvis(trim(input.full_name ?? ''), row.username);
+    const password = String(input.password ?? '');
+    if (password !== '') {
+      if (password.length < 6) jsonExit({ ok: false, error: 'Password must be at least 6 characters.' }, 400);
+      await exec('UPDATE users SET full_name = ?, password_hash = ? WHERE id = ?', [fullName, await bcrypt.hash(password, 10), id]);
+    } else {
+      await exec('UPDATE users SET full_name = ? WHERE id = ?', [fullName, id]);
+    }
+    return { ok: true, message: `Staff account "${row.username}" updated.` };
+  },
+
+  async delete_user(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    const id = toInt(input.id);
+    const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
+    if (row.role !== 'staff') jsonExit({ ok: false, error: 'Only Staff accounts can be deleted here.' }, 403);
+    await exec('DELETE FROM users WHERE id = ?', [id]);
+    return { ok: true, message: `Staff account "${row.username}" deleted.` };
+  },
+
   // ---------------------------------------------------------------- MONITORING
   async get_monitoring(input, auth) {
     const [bw, bp] = branchWhere(auth, 'c');
@@ -1056,7 +1121,13 @@ export default async function handleApi(req, res) {
       if (u) return sendJson(res, 200, { ok: true, user: userPayload(u) }, { 'Set-Cookie': sessionCookie(req, u) });
       return sendJson(res, 401, { ok: false, error: 'Invalid username or password.' });
     }
-    if (action === 'me') return sendJson(res, 200, { ok: true, user: userPayload(user) });
+    if (action === 'me') {
+      // A deleted staff account must not stay logged in from an old cookie.
+      if (user?.role === 'staff' && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, 'staff'])) === '0') {
+        return sendJson(res, 200, { ok: true, user: null }, { 'Set-Cookie': clearCookie(req) });
+      }
+      return sendJson(res, 200, { ok: true, user: userPayload(user) });
+    }
     if (action === 'logout') return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie(req) });
 
     // ---- everything else needs a login
@@ -1064,6 +1135,17 @@ export default async function handleApi(req, res) {
 
     if (user.role === 'executive' && !EXECUTIVE_ACTIONS.has(action)) {
       return sendJson(res, 403, { ok: false, error: 'Your account can view reports only.' });
+    }
+    // Staff: re-check the account still exists as Staff (so deleting a user locks them out at once),
+    // then allow only the staff actions.
+    if (user.role === 'staff') {
+      const current = await one('SELECT role FROM users WHERE id = ?', [user.id]);
+      if (!current || current.role !== 'staff') {
+        return sendJson(res, 401, { ok: false, error: 'Not logged in.' }, { 'Set-Cookie': clearCookie(req) });
+      }
+      if (!STAFF_ACTIONS.has(action)) {
+        return sendJson(res, 403, { ok: false, error: 'Your staff account cannot do that.' });
+      }
     }
     // The executive dashboard is for owner / accounting accounts only.
     if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin') {

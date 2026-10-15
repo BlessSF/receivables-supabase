@@ -61,6 +61,10 @@ export function numClass(n, extra = '') {
 export function isExecutive(user) {
   return user?.role === 'executive';
 }
+/** Staff accounts: see every company's ledger, edit only Payment Date, Check Ref and Paid. */
+export function isStaff(user) {
+  return user?.role === 'staff';
+}
 
 // ---------------------------------------------------------------- long dates & periods
 // Dates are stored as "YYYY-MM-DD" text. In the Ledger they are shown (and can be

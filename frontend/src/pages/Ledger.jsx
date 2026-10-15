@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate } from '../utils';
+import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate, isStaff } from '../utils';
+import { useAuth } from '../AuthContext';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell } from '../gridCells';
 
 let measureCtx = null;
@@ -59,6 +60,8 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
 }
 
 export default function Ledger() {
+  const { user } = useAuth();
+  const staff = isStaff(user); // staff can edit only the highlighted Payment Date / Check Ref / Paid cells
   const [params, setParams] = useSearchParams();
   const companyId = params.get('company_id') || '';
   const entryParam = params.get('entry');
@@ -226,7 +229,7 @@ export default function Ledger() {
         <div>
           {company && <Link to="/ledger" className="btn btn-secondary btn-sm back-link">← Back to All Companies</Link>}
           <h1>Receivable Ledger{company ? ` — ${company.name}` : ''}</h1>
-          <div className="subtitle">{company ? 'Click any cell to edit — it saves automatically. Use arrow keys or Enter to move between cells, like a spreadsheet.' : 'All companies — pick one below to focus, or filter with search'}</div>
+          <div className="subtitle">{company ? (staff ? 'You can edit the highlighted columns only: Payment Date, Check Ref and Paid. Changes save automatically.' : 'Click any cell to edit — it saves automatically. Use arrow keys or Enter to move between cells, like a spreadsheet.') : 'All companies — pick one below to focus, or filter with search'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <select className="select-inline" value={companyId} onChange={(e) => setParams(e.target.value ? { company_id: e.target.value } : {})}>
@@ -235,7 +238,7 @@ export default function Ledger() {
           </select>
           <a className="btn btn-secondary" href={`/export_csv.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export CSV</a>
           <a className="btn btn-secondary" href={`/export_xlsx.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export XLSX</a>
-          {companyId && <button className="btn" onClick={addRow}>+ New Entry</button>}
+          {companyId && !staff && <button className="btn" onClick={addRow}>+ New Entry</button>}
         </div>
       </div>
 
@@ -378,7 +381,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={14} className="empty-state">No ledger entries — click "+ New Entry" to add one.</td></tr>
+                  <tr><td colSpan={14} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -404,7 +407,7 @@ export default function Ledger() {
                       {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
-                    <td><RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} /></td>
+                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                   </tr>
                 ))}
               </tbody>

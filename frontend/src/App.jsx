@@ -15,7 +15,8 @@ import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
 import MonthlyReport from './pages/MonthlyReport';
 import Settings from './pages/Settings';
-import { isExecutive } from './utils';
+import Users from './pages/Users';
+import { isExecutive, isStaff } from './utils';
 
 function Gate() {
   const { user } = useAuth();
@@ -43,6 +44,20 @@ function Gate() {
     );
   }
 
+  // Staff accounts: dashboard, every company's ledger, reports by month
+  if (isStaff(user)) {
+    return (
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/ledger" element={<Ledger />} />
+          <Route path="/reports-by-month" element={<MonthlyReport />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
+
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -58,6 +73,7 @@ function Gate() {
         <Route path="/soa-tracker" element={<SoaTracker />} />
         <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/users" element={<Users />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

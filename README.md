@@ -110,7 +110,26 @@ Accounting data is important. In Supabase, **Database → Backups** holds
 the automatic backups. You can also export any table as CSV from the Table
 Editor, or use the app's own Excel export, for example once a week.
 
-## Managing users
+## Staff accounts (Users page)
+
+Admins get a **Users** page in the sidebar (System -> Users) to create **Staff** accounts:
+full name, username, password, role. No database change is needed; `role` is just text.
+
+A Staff account logs in at the same page and sees only:
+- **Dashboard**
+- **Ledger** for all companies (every branch)
+- **Reports by Month**
+
+In the Ledger a staff user can edit only the three highlighted columns,
+**Payment Date**, **Check Ref** and **Paid**. Everything else is read-only, and
+there is no New Entry button. This is enforced on the server too (`server/api.js`),
+not just hidden in the screen. Staff can export the Ledger only.
+
+On the Users page an admin can rename a staff user, reset their password or delete
+them (a deleted user is logged out on their next click). Admin, branch and executive
+accounts are listed but not editable there; see "Managing users" below for those.
+
+## Managing users (admin / branch accounts, SQL)
 
 There's no user admin page (same as before). To add a user, first make a
 bcrypt hash of the password on your PC:

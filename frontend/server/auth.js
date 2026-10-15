@@ -89,7 +89,10 @@ export function makeAuth(user) {
     // "executive" = owner / accounting: sees every branch, but read-only
     // and only the report pages (dashboard, summary, aging, past due).
     isExecutive: () => role === 'executive',
-    // Admins and executives see every branch; a branch account only its own (username).
-    branch: () => (!user ? null : role === 'admin' || role === 'executive' ? null : user.username),
+    // "staff" = office staff: sees every company's ledger, but may only edit
+    // Payment Date, Check Ref and Paid (enforced in api.js).
+    isStaff: () => role === 'staff',
+    // Admins, executives and staff see every branch; a branch account only its own (username).
+    branch: () => (!user ? null : role === 'admin' || role === 'executive' || role === 'staff' ? null : user.username),
   };
 }

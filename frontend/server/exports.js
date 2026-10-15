@@ -93,6 +93,7 @@ export async function handleCsv(req, res) {
   const query = getQuery(req);
   const type = query.type ?? 'ledger';
   if (blockedForExecutive(user, type)) return sendText(res, 403, 'Your account can download reports only.');
+  if (user.role === 'staff' && type !== 'ledger') return sendText(res, 403, 'Staff accounts can only download the ledger.');
   const companyId = await resolveCompanyId(auth, query, false);
   const send = (name, text) => sendFile(res, Buffer.from(text, 'utf8'), 'text/csv; charset=utf-8', name);
 
@@ -336,6 +337,7 @@ export async function handleXlsx(req, res) {
   const type = query.type ?? 'ledger';
   // (the Excel export has no separate past-due sheet, so only "aging" is allowed here)
   if (user.role === 'executive' && type !== 'aging' && type !== 'monthly') return sendText(res, 403, 'Your account can download reports only.');
+  if (user.role === 'staff' && type !== 'ledger' && type !== 'monthly') return sendText(res, 403, 'Staff accounts can only download the ledger and monthly report.');
   const companyId = await resolveCompanyId(auth, query, true);
   const wb = new ExcelJS.Workbook();
   const send = async (name) => {

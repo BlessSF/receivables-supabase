@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, numClass } from '../utils';
 import { useAuth } from '../AuthContext';
+import { isStaff } from '../utils';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -24,10 +25,12 @@ export default function Dashboard() {
           <h1>Dashboard</h1>
           <div className="subtitle">
             Overview of receivables across {data.total_companies} companies
-            {user?.is_admin ? ' (all branches)' : ` — ${user?.full_name || user?.username} branch only`}
+            {user?.is_admin || isStaff(user) ? ' (all branches)' : ` — ${user?.full_name || user?.username} branch only`}
           </div>
         </div>
-        <Link to="/ledger" className="btn">+ New ledger entry</Link>
+        {isStaff(user)
+          ? <Link to="/ledger" className="btn">Open ledger</Link>
+          : <Link to="/ledger" className="btn">+ New ledger entry</Link>}
       </div>
 
       <div className="kpi-dark-grid">
