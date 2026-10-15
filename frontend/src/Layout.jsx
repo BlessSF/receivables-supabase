@@ -79,6 +79,12 @@ const EXEC_NAV_GROUPS = [
       { to: '/reports-by-month', label: 'Reports by Month', Icon: IconCalendar },
     ],
   },
+  {
+    label: 'Accounts',
+    items: [
+      { to: '/ledger', label: 'Ledger', Icon: IconTable },
+    ],
+  },
 ];
 
 export default function Layout() {
@@ -165,7 +171,7 @@ export default function Layout() {
             <div className="avatar" aria-hidden="true">{displayName.charAt(0).toUpperCase()}</div>
             <div>
               <div className="sidebar-user">{displayName}</div>
-              <div className="sidebar-role">{isExecutive(user) ? 'Reports · view only' : isStaff(user) ? 'Staff' : user?.is_admin ? 'Admin · all branches' : `${user?.username} branch`}</div>
+              <div className="sidebar-role">{isExecutive(user) ? 'Executive · view only' : isStaff(user) ? 'Staff' : user?.is_admin ? 'Admin · all branches' : `${user?.username} branch`}</div>
             </div>
           </div>
           <button className="logout-btn" onClick={logout} title="Log out"><IconLogout /> Log out</button>

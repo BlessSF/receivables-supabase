@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate, isStaff } from '../utils';
+import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell } from '../gridCells';
 
@@ -62,6 +62,8 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
 export default function Ledger() {
   const { user } = useAuth();
   const staff = isStaff(user); // staff can edit only the highlighted Payment Date / Check Ref / Paid cells
+  const exec = isExecutive(user); // executives see the ledger read-only (but can delete entries)
+  const canDelete = !!user?.is_admin || exec; // only Admin and Executive can delete; Staff and Branch cannot
   const [params, setParams] = useSearchParams();
   const companyId = params.get('company_id') || '';
   const entryParam = params.get('entry');
@@ -150,7 +152,7 @@ export default function Ledger() {
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks'];
+      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
@@ -170,8 +172,9 @@ export default function Ledger() {
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
+      ...(canDelete ? [tw('Delete') + 44] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
-  }, [entries]);
+  }, [entries, canDelete]);
   const MIN_FONT = 10.5;
   const colWidths = useMemo(() => {
     const total = colPx.reduce((a, b) => a + b, 0);
@@ -209,6 +212,18 @@ export default function Ledger() {
     }));
   }
 
+  async function deleteRow(r) {
+    const label = `${r.soa_number ? `SOA ${r.soa_number}` : 'this entry'} (${peso(r.amount)})`;
+    if (!confirm(`Delete ${label} from the ledger? This cannot be undone.`)) return;
+    try {
+      await api.deleteLedger(r.id);
+      setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== r.id) }));
+      if (companyId) reload(); // refresh the Billed / Paid / Outstanding totals
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
   async function addRow() {
     if (!companyId) { alert('Choose a company first.'); return; }
     const res = await api.quickAddLedger(companyId);
@@ -229,16 +244,16 @@ export default function Ledger() {
         <div>
           {company && <Link to="/ledger" className="btn btn-secondary btn-sm back-link">← Back to All Companies</Link>}
           <h1>Receivable Ledger{company ? ` — ${company.name}` : ''}</h1>
-          <div className="subtitle">{company ? (staff ? 'You can edit the highlighted columns only: Payment Date, Check Ref and Paid. Changes save automatically.' : 'Click any cell to edit — it saves automatically. Use arrow keys or Enter to move between cells, like a spreadsheet.') : 'All companies — pick one below to focus, or filter with search'}</div>
+          <div className="subtitle">{company ? (exec ? 'Read-only view. You can delete an entry with the Delete button on its row.' : staff ? 'You can edit the highlighted columns only: Payment Date, Check Ref and Paid. Changes save automatically.' : 'Click any cell to edit — it saves automatically. Use arrow keys or Enter to move between cells, like a spreadsheet.') : 'All companies — pick one below to focus, or filter with search'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <select className="select-inline" value={companyId} onChange={(e) => setParams(e.target.value ? { company_id: e.target.value } : {})}>
             <option value="">All companies…</option>
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <a className="btn btn-secondary" href={`/export_csv.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export CSV</a>
-          <a className="btn btn-secondary" href={`/export_xlsx.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export XLSX</a>
-          {companyId && !staff && <button className="btn" onClick={addRow}>+ New Entry</button>}
+          {!exec && <a className="btn btn-secondary" href={`/export_csv.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export CSV</a>}
+          {!exec && <a className="btn btn-secondary" href={`/export_xlsx.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export XLSX</a>}
+          {companyId && !staff && !exec && <button className="btn" onClick={addRow}>+ New Entry</button>}
         </div>
       </div>
 
@@ -377,11 +392,12 @@ export default function Ledger() {
                   <th className="text-right">Paid</th><th className="text-right">Balance</th>
                   <th>Aging</th>
                   <th>Remarks</th>
+                  {canDelete && <th className="text-center">Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={14} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 15 : 14} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -398,16 +414,27 @@ export default function Ledger() {
                     <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
                     <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
-                    <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                    <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                    <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                    {exec ? (
+                      <>
+                        <td><div className="ro-cell">{formatLongDate(r.payment_date) || '—'}</div></td>
+                        <td><div className="ro-cell">{r.check_ref || '—'}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.paid_amount)}</div></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                      </>
+                    )}
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span className="badge badge-success">Paid</span>}
                       {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
-                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
+                    <td>{staff || exec ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
+                    {canDelete && <td className="text-center"><button type="button" className="btn btn-danger btn-sm" onClick={() => deleteRow(r)}>Delete</button></td>}
                   </tr>
                 ))}
               </tbody>

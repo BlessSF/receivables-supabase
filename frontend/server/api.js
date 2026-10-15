@@ -42,10 +42,11 @@ const STAFF_ACTIONS = new Set([
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
-// What an executive (owner / accounting) account may call: reports only, no editing.
+// What an executive (owner / accounting) account may call: reports, a read-only ledger,
+// and deleting ledger entries (no other editing).
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
-  'get_monthly_report',
+  'get_monthly_report', 'get_ledger', 'delete_ledger',
 ]);
 
 function recalcRow(d) {
@@ -509,6 +510,10 @@ const actions = {
   },
 
   async delete_ledger(input, auth) {
+    // Only Admin and Executive accounts may delete ledger data. Staff and Branch accounts may not.
+    if (!auth.isAdmin() && !auth.isExecutive()) {
+      jsonExit({ ok: false, error: 'Only Admin and Executive accounts can delete ledger entries.' }, 403);
+    }
     const id = toInt(input.id);
     const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id=?', [id]);
     if (!cid) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
