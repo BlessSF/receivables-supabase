@@ -10,6 +10,7 @@ import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from 
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
+import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   agingGraceDays, agingGraceEnabled, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
@@ -621,6 +622,28 @@ const actions = {
       [txnDate, patient, service, amount, hmoId, companyId, billTo, remarks, periodFrom, periodTo, soa, id]
     );
     return { ok: true, id, message: 'Transaction updated.' };
+  },
+
+  // Reads an uploaded SOA .xlsx (sent as base64) and returns what Billing needs to open a
+  // transaction: the HMO it matches, billing date, SOA number, amounts and covered period.
+  // It only reads the file; nothing is saved until the person confirms the import.
+  async parse_soa(input, auth) {
+    const name = trim(input.file_name ?? '') || 'SOA.xlsx';
+    const b64 = String(input.data ?? '').replace(/^data:[^,]*,/, '');
+    if (!b64) jsonExit({ ok: false, error: 'No file received.' }, 400);
+    if (b64.length > 6_000_000) jsonExit({ ok: false, error: 'That file is too large (limit about 4 MB).' }, 413);
+    const parsed = await parseSoa(Buffer.from(b64, 'base64'), name);
+    if (parsed.error) return { ok: true, data: parsed };
+
+    const [bw, bp] = branchWhere(auth, 'h');
+    const hmos = await all(`SELECT h.id, h.name, h.code FROM companies h WHERE h.account_type = 'HMO' ${bw} ORDER BY UPPER(h.name) COLLATE "C" ASC`, bp);
+    const { hmo, how } = matchHmo(parsed.company_name, hmos);
+    let duplicate = null;
+    if (parsed.soa_number) {
+      const holder = await soaNumberHolder(parsed.soa_number);
+      if (holder) duplicate = holder.text;
+    }
+    return { ok: true, data: { ...parsed, hmo_id: hmo ? String(hmo.id) : '', hmo_name: hmo ? hmo.name : '', hmo_match: how, duplicate } };
   },
 
   async post_billing(input, auth) {

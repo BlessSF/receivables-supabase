@@ -57,6 +57,7 @@ export const api = {
   // billing
   getBilling: () => call('get_billing'),
   saveBilling: (body) => call('save_billing', { method: 'POST', body }),
+  parseSoa: (file_name, data) => call('parse_soa', { method: 'POST', body: { file_name, data } }),
   postBilling: (id) => call('post_billing', { method: 'POST', body: { id } }),
   voidBilling: (id) => call('void_billing', { method: 'POST', body: { id } }),
 

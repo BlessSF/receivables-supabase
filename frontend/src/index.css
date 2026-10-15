@@ -894,3 +894,21 @@ button { font-family: inherit; }
 .ledger-table td.cell-glow .editable-cell input:focus { background: #fffbe8; border-color: #d9a406; box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.45), 0 0 14px rgba(250, 204, 21, 0.7); }
 .ledger-table td.cell-glow .editable-cell.saving input { background: var(--amber-soft); }
 .ledger-table td.cell-glow .editable-cell.saved input { background: var(--teal-soft); }
+/* SOA import drop area (Billing) */
+.dropzone {
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-tint);
+  color: var(--slate);
+  text-align: center;
+  padding: 26px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.dropzone:hover, .dropzone.over, .dropzone:focus-visible {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal-strong);
+  outline: none;
+}
