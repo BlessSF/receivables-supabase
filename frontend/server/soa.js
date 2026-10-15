@@ -231,27 +231,6 @@ function billingDateForPeriodEnd(to) {
 
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/**
- * Covered period of an SOA, worked out from its transaction dates.
- * The business bills in half-months (1st-15th and 16th-end), so when every line falls in one
- * half-month the whole half-month is returned (lines on 7/2-7/4 -> July 1-15); lines that
- * spread over more than one half-month give the first-to-last transaction date.
- */
-function periodFromDates(dates) {
-  if (!dates.length) return { from: null, to: null };
-  const first = dates[0];
-  const last = dates[dates.length - 1];
-  const f = first.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const l = last.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (f && l && f[1] === l[1] && f[2] === l[2] && (+f[3] <= 15) === (+l[3] <= 15)) {
-    const y = +f[1], mo = +f[2];
-    return +f[3] <= 15
-      ? { from: `${y}-${pad(mo)}-01`, to: `${y}-${pad(mo)}-15` }
-      : { from: `${y}-${pad(mo)}-16`, to: `${y}-${pad(mo)}-${pad(new Date(Date.UTC(y, mo, 0)).getUTCDate())}` };
-  }
-  return { from: first, to: last };
-}
-
 /** Parse one SOA workbook buffer. Never throws on a odd layout: it returns what it found plus warnings. */
 export async function parseSoa(buffer, fileName = '') {
   let cells;
@@ -322,8 +301,8 @@ export async function parseSoa(buffer, fileName = '') {
     discount: discountText,
     line_count: table.rows.length,
     lines_total: rowTotal,
-    period_from: filePeriod ? filePeriod.from : periodFromDates(dates).from,
-    period_to: filePeriod ? filePeriod.to : periodFromDates(dates).to,
+    period_from: filePeriod ? filePeriod.from : dates[0] || null,
+    period_to: filePeriod ? filePeriod.to : dates[dates.length - 1] || null,
     warnings,
   };
 }
