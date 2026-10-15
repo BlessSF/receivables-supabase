@@ -15,7 +15,17 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
   const [state, setState] = useState(''); // '', 'saving', 'saved', 'error'
   useEffect(() => setVal(value ?? ''), [value]);
 
+  const isNum = type === 'number';
+  const isZero = (v) => v === '' || v === null || v === undefined || Number(v) === 0;
+
+  // A 0.00 amount is cleared when you click in, so you can type straight away
+  // without erasing it first. Left empty, it goes back to showing 0.00.
+  function onFocus() {
+    if (isNum && isZero(val)) setVal('');
+  }
+
   async function commit() {
+    if (isNum && isZero(val) && isZero(value)) { setVal(value ?? ''); return; } // still zero: nothing to save
     if ((val || '') === (value ?? '')) return;
     setState('saving');
     try {
@@ -38,7 +48,9 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
         className={type === 'number' ? 'num' : ''}
         style={align ? { textAlign: align } : undefined}
         value={val}
+        placeholder={isNum ? '0.00' : undefined}
         onChange={(e) => setVal(e.target.value)}
+        onFocus={onFocus}
         onBlur={commit}
         onKeyDown={onKeyDown}
       />
