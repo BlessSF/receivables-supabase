@@ -38,6 +38,65 @@ const EXEC_BUCKET_OPTIONS = [
   ['over90', 'Over 90 days late'],
 ];
 
+const billingYm = (r) => { const m = String(r.billing_date || '').match(/^(\d{4})-(\d{2})/); return m ? { y: +m[1], m: +m[2] } : null; };
+
+/** January - December totals for a list of entries, for one year. */
+function buildMonths(list, year) {
+  const out = MONTHS.map((name) => ({ name, entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 }));
+  (list || []).forEach((r) => {
+    const p = billingYm(r);
+    if (!p || String(p.y) !== String(year)) return;
+    const t = out[p.m - 1];
+    t.entries += 1;
+    if (r.is_overdue) t.overdue += 1;
+    t.billed += Number(r.amount || 0);
+    t.paid += Number(r.paid_amount || 0);
+    t.owed += Number(r.deduction ?? r.balance ?? 0);
+  });
+  return out;
+}
+const sumMonths = (months) => months.reduce((a, m) => ({ entries: a.entries + m.entries, overdue: a.overdue + m.overdue, billed: a.billed + m.billed, paid: a.paid + m.paid, owed: a.owed + m.owed }), { entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 });
+
+// One January - December table (used for all companies combined, and for each company)
+function MonthTable({ months, totalLabel, owedLabel }) {
+  const total = sumMonths(months);
+  const bold = { fontWeight: 700 };
+  return (
+    <div className="table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Month</th><th className="text-right">Entries</th><th className="text-right">Past Due</th>
+            <th className="text-right">Billed</th><th className="text-right">Paid</th><th className="text-right">{owedLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {months.map((m) => (
+            <tr key={m.name} style={m.entries === 0 ? { color: 'var(--slate)', opacity: 0.6 } : undefined}>
+              <td style={{ fontWeight: 600 }}>{m.name}</td>
+              <td className="text-right num">{m.entries}</td>
+              <td className="text-right num">{m.overdue}</td>
+              <td className="text-right num">{peso(m.billed)}</td>
+              <td className="text-right num">{peso(m.paid)}</td>
+              <td className="text-right num" style={bold}>{peso(m.owed)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style={bold}>{totalLabel}</td>
+            <td className="text-right num" style={bold}>{total.entries}</td>
+            <td className="text-right num" style={bold}>{total.overdue}</td>
+            <td className="text-right num" style={bold}>{peso(total.billed)}</td>
+            <td className="text-right num" style={bold}>{peso(total.paid)}</td>
+            <td className="text-right num" style={bold}>{peso(total.owed)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 export default function Summary() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -52,6 +111,7 @@ export default function Summary() {
   const [err, setErr] = useState('');
   const [view, setView] = useState('entry'); // 'entry' = every entry, 'month' = totals for January - December
   const [year, setYear] = useState('');
+  const [grouping, setGrouping] = useState('all'); // month view: 'all' = every company combined, 'company' = one block per company
 
   useEffect(() => { api.getCompanies().then((r) => setCompanies(r.data)); }, []);
 
@@ -65,7 +125,7 @@ export default function Summary() {
   }, [companyId, aging, showAll, q]);
 
   // ---- Summary by month: the entries on screen (same filters) grouped by billing month ----
-  const yearOf = (r) => { const m = String(r.billing_date || '').match(/^(\d{4})-(\d{2})/); return m ? { y: +m[1], m: +m[2] } : null; };
+  const yearOf = billingYm;
   const years = useMemo(() => {
     const ys = new Set((rows || []).map((r) => yearOf(r)?.y).filter(Boolean));
     ys.add(new Date().getFullYear());
@@ -77,21 +137,20 @@ export default function Summary() {
     const withData = rows.some((r) => yearOf(r)?.y === now);
     setYear(String(withData ? now : (years.find((y) => rows.some((r) => yearOf(r)?.y === y)) ?? now)));
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monthRows = useMemo(() => {
-    const out = MONTHS.map((name) => ({ name, entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 }));
+  const monthRows = useMemo(() => buildMonths(rows, year), [rows, year]);
+  // one block per company (only companies that have entries in the chosen year)
+  const companyBlocks = useMemo(() => {
+    const byCo = new Map();
     (rows || []).forEach((r) => {
-      const p = yearOf(r);
-      if (!p || String(p.y) !== String(year)) return;
-      const t = out[p.m - 1];
-      t.entries += 1;
-      if (r.is_overdue) t.overdue += 1;
-      t.billed += Number(r.amount || 0);
-      t.paid += Number(r.paid_amount || 0);
-      t.owed += Number(r.deduction ?? r.balance ?? 0);
+      const key = r.company_id;
+      if (!byCo.has(key)) byCo.set(key, { id: key, name: r.company_name || '—', list: [] });
+      byCo.get(key).list.push(r);
     });
-    return out;
+    return [...byCo.values()]
+      .map((c) => ({ ...c, months: buildMonths(c.list, year) }))
+      .filter((c) => c.months.some((m) => m.entries > 0))
+      .sort((x, y) => x.name.localeCompare(y.name));
   }, [rows, year]);
-  const monthTotal = monthRows.reduce((a, m) => ({ entries: a.entries + m.entries, overdue: a.overdue + m.overdue, billed: a.billed + m.billed, paid: a.paid + m.paid, owed: a.owed + m.owed }), { entries: 0, overdue: 0, billed: 0, paid: 0, owed: 0 });
 
   const filtersActive = companyId || aging || showAll || q.trim() !== '';
   const selectedCompany = companies.find((c) => String(c.id) === String(companyId));
@@ -189,45 +248,38 @@ export default function Summary() {
 
       {view === 'month' && (
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Summary by Month — {year}</h2>
-          <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '-4px 0 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+            <h2 style={{ margin: 0 }}>Summary by Month — {year}</h2>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className={grouping === 'all' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('all')}>All companies combined</button>
+              <button type="button" className={grouping === 'company' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('company')}>Each company</button>
+            </div>
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '0 0 14px' }}>
             Entries grouped by billing month{showAll || readOnly ? '' : ', unpaid entries only (tick "Include fully paid entries" to count paid ones too)'}. The company, status and search filters above apply.
           </p>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Month</th><th className="text-right">Entries</th><th className="text-right">Past Due</th>
-                  <th className="text-right">Billed</th><th className="text-right">Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!rows && <tr><td colSpan={6} className="empty-state">Loading…</td></tr>}
-                {rows && monthRows.map((m) => (
-                  <tr key={m.name} style={m.entries === 0 ? { color: 'var(--slate)', opacity: 0.6 } : undefined}>
-                    <td style={{ fontWeight: 600 }}>{m.name}</td>
-                    <td className="text-right num">{m.entries}</td>
-                    <td className="text-right num">{m.overdue}</td>
-                    <td className="text-right num">{peso(m.billed)}</td>
-                    <td className="text-right num">{peso(m.paid)}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(m.owed)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              {rows && (
-                <tfoot>
-                  <tr>
-                    <td style={{ fontWeight: 700 }}>TOTAL {year}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{monthTotal.entries}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{monthTotal.overdue}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.billed)}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.paid)}</td>
-                    <td className="text-right num" style={{ fontWeight: 700 }}>{peso(monthTotal.owed)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+          {!rows && <div className="empty-state">Loading…</div>}
+          {rows && grouping === 'all' && (
+            <MonthTable months={monthRows} totalLabel={`TOTAL ${year}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
+          )}
+          {rows && grouping === 'company' && (
+            companyBlocks.length === 0
+              ? <div className="empty-state">No entries in {year}.</div>
+              : companyBlocks.map((c) => {
+                const t = sumMonths(c.months);
+                return (
+                  <details key={c.id} open style={{ marginBottom: 16 }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15, padding: '8px 0', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                      <span style={{ color: 'var(--teal)' }}>{c.name}</span>
+                      <span style={{ fontWeight: 500, fontSize: 12.5, color: 'var(--slate)' }}>
+                        {t.entries} entr{t.entries === 1 ? 'y' : 'ies'} · billed {peso(t.billed)} · {readOnly ? 'still owed' : 'deduction'} {peso(t.owed)}
+                      </span>
+                    </summary>
+                    <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
+                  </details>
+                );
+              })
+          )}
         </div>
       )}
 
