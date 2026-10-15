@@ -231,6 +231,33 @@ function billingDateForPeriodEnd(to) {
 
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+const lastDayOf = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
+
+/**
+ * Covered period of an imported SOA. The SOA's Date is the LAST day of the period it covers,
+ * and the business bills in half-months (1st-15th and 16th-end of month):
+ *   Date July 15  -> July 1 - July 15        Date July 31 -> July 16 - July 31
+ * If the Date is some other day, the half-month the Tran. Dates fall in is used instead
+ * (lines on 7/2-7/4 -> July 1-15); lines spread over several half-months give first-to-last date.
+ * The Tran. Dates themselves are never copied in as the period.
+ */
+function periodForSoa(date, dates) {
+  const half = (y, mo, firstHalf) => (firstHalf
+    ? { from: `${y}-${pad(mo)}-01`, to: `${y}-${pad(mo)}-15` }
+    : { from: `${y}-${pad(mo)}-16`, to: `${y}-${pad(mo)}-${pad(lastDayOf(y, mo))}` });
+  const d = date && date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (d) {
+    const y = +d[1], mo = +d[2], day = +d[3];
+    if (day === 15) return half(y, mo, true);
+    if (day === lastDayOf(y, mo)) return half(y, mo, false);
+  }
+  if (!dates.length) return { from: null, to: null };
+  const f = dates[0].match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const l = dates[dates.length - 1].match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (f && l && f[1] === l[1] && f[2] === l[2] && (+f[3] <= 15) === (+l[3] <= 15)) return half(+f[1], +f[2], +f[3] <= 15);
+  return { from: dates[0], to: dates[dates.length - 1] };
+}
+
 /** Parse one SOA workbook buffer. Never throws on a odd layout: it returns what it found plus warnings. */
 export async function parseSoa(buffer, fileName = '') {
   let cells;
@@ -273,6 +300,12 @@ export async function parseSoa(buffer, fileName = '') {
   const rowTotal = r2(table.rows.reduce((t, r) => t + r.amount, 0));
   const dates = table.rows.map((r) => r.date).sort();
 
+  // Covered period: an explicit "Period" in the file wins, otherwise it ends on the SOA Date (see periodForSoa).
+  const covered = filePeriod || periodForSoa(date, dates);
+  const coveredFrom = covered.from;
+  const coveredTo = covered.to;
+  const outside = dates.filter((x) => coveredFrom && coveredTo && (x < coveredFrom || x > coveredTo)).length;
+  if (outside) warnings.push(`${outside} transaction ${outside === 1 ? 'date falls' : 'dates fall'} outside the covered period ${coveredFrom} to ${coveredTo}.`);
   if (!soaNumber) warnings.push('No Series No. / SOA No. found.');
   if (seriesNo && soaNo && seriesNo !== soaNo) warnings.push(`This file has two numbers: Series No. ${seriesNo} and SOA No. ${soaNo}. Using the Series No. - change it if the other one is right.`);
   if (!company) warnings.push('No Company Name found.');
@@ -301,8 +334,8 @@ export async function parseSoa(buffer, fileName = '') {
     discount: discountText,
     line_count: table.rows.length,
     lines_total: rowTotal,
-    period_from: filePeriod ? filePeriod.from : dates[0] || null,
-    period_to: filePeriod ? filePeriod.to : dates[dates.length - 1] || null,
+    period_from: coveredFrom,
+    period_to: coveredTo,
     warnings,
   };
 }

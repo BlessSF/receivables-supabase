@@ -153,9 +153,11 @@ export default function Billing() {
           key, file: f.name, error: '', selected: true, warnings: d.warnings || [],
           soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
           duplicate: d.duplicate || '', txn_date: d.date || todayLocal(),
-          // Covered period follows the billing date (Settings rule: July 15 -> June 16 to June 30).
-          // Only when that Settings switch is off does it fall back to the dates found in the file.
-          ...(autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: d.period_from || '', period_to: d.period_to || '' }),
+          // Imported SOAs: the file's Date is the last day of the covered period (July 15 -> July 1 to July 15),
+          // read from the Tran. Dates. The billing-date rule only fills in when the file gives nothing to go on.
+          ...(d.period_from && d.period_to
+            ? { period_from: d.period_from, period_to: d.period_to }
+            : autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: '', period_to: '' }),
           total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
           amount: pickAmount(d, basis),
         });
@@ -248,7 +250,7 @@ export default function Billing() {
             <button className="btn btn-secondary btn-sm" disabled={imp.importing} onClick={() => setImp(null)}>Close</button>
           </div>
           <div className="subtitle" style={{ margin: '6px 0 14px' }}>
-            Drop one or many SOA Excel files. The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the covered period follows the Billing Date (e.g. July 15 covers June 16 to June 30).
+            Drop one or many SOA Excel files. The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the Date is the last day of the covered period (e.g. Date July 15 covers July 1 to July 15).
           </div>
           <div
             className={`dropzone${dragOver ? ' over' : ''}`}
