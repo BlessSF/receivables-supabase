@@ -134,7 +134,8 @@ const actions = {
     const todayKey = todayYmd();
     const nowYear = toInt(todayKey.slice(0, 4));
     const nowMonth = toInt(todayKey.slice(5, 7));
-    const view = input.view === 'year' ? 'year' : 'month';
+    const view = input.view === 'year' ? 'year' : input.view === 'all' ? 'all' : 'month';
+    const type = input.type === 'HMO' ? 'HMO' : input.type === 'COMPANY' ? 'COMPANY' : null; // null = everything
     let year = toInt(input.year);
     if (year < 2000 || year > 2100) year = nowYear;
     let month = toInt(input.month);
@@ -142,11 +143,12 @@ const actions = {
 
     const [bw, bp] = branchWhere(auth, 'c');
     let sql = `SELECT l.id, l.company_id, l.billing_date, l.due_date, l.payment_date, l.soa_number,
-                      l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status
+                      l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status, c.account_type
                FROM ledger_entries l JOIN companies c ON c.id = l.company_id
                WHERE 1=1 ${bw}`;
     let params = bp;
-    if (companyId) { sql += ' AND l.company_id = ?'; params = [...bp, companyId]; }
+    if (type) { sql += ' AND c.account_type = ?'; params = [...params, type]; }
+    if (companyId) { sql += ' AND l.company_id = ?'; params = [...params, companyId]; }
     const rows = await all(sql, params);
     const due = await makeImplicitDue();
 
@@ -157,7 +159,7 @@ const actions = {
       const d = new Date(ms);
       return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
     };
-    const inPeriod = (ym) => !!ym && ym.y === year && (view === 'year' || ym.m === month);
+    const inPeriod = (ym) => view === 'all' || (!!ym && ym.y === year && (view === 'year' || ym.m === month));
 
     const yearAgg = new Map();
     const monthAgg = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, ...blank() }));
@@ -169,10 +171,11 @@ const actions = {
     const companies = new Map();
     const periodEntries = [];
     const undated = { billed_count: 0, billed_total: 0, collected_total: 0 };
+    const byType = { COMPANY: blank(), HMO: blank() };
 
     const co = (r) => {
       let c = companies.get(r.company_id);
-      if (!c) { c = { id: toInt(r.company_id), name: r.company_name, status: r.company_status, billed: 0, collected: 0, outstanding: 0, past_due: 0 }; companies.set(r.company_id, c); }
+      if (!c) { c = { id: toInt(r.company_id), name: r.company_name, status: r.company_status, account_type: r.account_type, billed: 0, collected: 0, outstanding: 0, past_due: 0 }; companies.set(r.company_id, c); }
       return c;
     };
 
@@ -186,6 +189,7 @@ const actions = {
 
       // placed by billing date
       const b = ymOf(r.billing_date);
+      const tt = byType[r.account_type === 'HMO' ? 'HMO' : 'COMPANY'];
       if (!b) {
         undated.billed_count++; undated.billed_total += amount;
       } else {
@@ -199,20 +203,21 @@ const actions = {
           if (open) { ma.outstanding += bal; ma.open_count++; }
           if (late) { ma.past_due += bal; ma.past_due_count++; }
         }
-        if (inPeriod(b)) {
-          period.billed += amount; period.entries++;
-          const c = co(r); c.billed += amount;
-          if (open) {
-            period.outstanding += bal; period.open_count++; c.outstanding += bal;
-            aging[agingBucket(d)].count++; aging[agingBucket(d)].total += bal;
-          }
-          if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; }
-          periodEntries.push({
-            id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name,
-            billing_date: r.billing_date, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
-            overdue_days: late ? d : 0, _t: parseDate(r.billing_date),
-          });
+      }
+      if (inPeriod(b)) {
+        period.billed += amount; period.entries++;
+        tt.billed += amount; tt.entries++;
+        const c = co(r); c.billed += amount;
+        if (open) {
+          period.outstanding += bal; period.open_count++; c.outstanding += bal; tt.outstanding += bal; tt.open_count++;
+          aging[agingBucket(d)].count++; aging[agingBucket(d)].total += bal;
         }
+        if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; tt.past_due += bal; tt.past_due_count++; }
+        periodEntries.push({
+          id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
+          billing_date: r.billing_date, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
+          overdue_days: late ? d : 0, _t: b ? parseDate(r.billing_date) : null,
+        });
       }
 
       // placed by payment date
@@ -223,9 +228,9 @@ const actions = {
         } else {
           yAgg(p.y).collected += paid;
           if (p.y === year) monthAgg[p.m - 1].collected += paid;
-          if (inPeriod(p)) { period.collected += paid; co(r).collected += paid; }
         }
       }
+      if (paid > 0 && inPeriod(ymOf(r.payment_date))) { period.collected += paid; co(r).collected += paid; tt.collected += paid; }
     }
 
     // make sure the selected / current year is always in the list
@@ -240,8 +245,10 @@ const actions = {
     return { ok: true, data: {
       today: todayKey,
       company_id: companyId,
+      type,
       view, year, month,
       period: withRate(period),
+      by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),
       aging,

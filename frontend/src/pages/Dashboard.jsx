@@ -5,8 +5,8 @@ import { peso, fdate, numClass } from '../utils';
 import { useAuth } from '../AuthContext';
 import { isStaff } from '../utils';
 
-// Evolving dashboard: pick a company (or all of them), then watch it
-// month by month or year by year. Clicking a bar, a month, a year or a
+// Evolving dashboard: pick Overall / Companies / HMOs, optionally one account,
+// then watch it month by month, year by year, or all time. Clicking a bar, a month, a year or a
 // company in the lists below drills the whole page into it.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -30,10 +30,10 @@ function delta(cur, prev, prevLabel) {
 
 /** Billed / collected bars with the unpaid balance drawn as a line over them. */
 function EvolutionChart({ items, selected, onSelect, label }) {
-  const W = 720, H = 250, PAD_L = 8, PAD_B = 28, PAD_T = 14;
+  const W = 1100, H = 270, PAD_L = 8, PAD_B = 28, PAD_T = 14;
   const max = Math.max(1, ...items.flatMap((t) => [t.billed, t.collected, t.outstanding]));
   const slot = (W - PAD_L) / items.length;
-  const barW = Math.min(20, slot / 3);
+  const barW = Math.min(26, slot / 3);
   const y = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - v / max);
   const cx = (i) => PAD_L + slot * i + slot / 2;
   const line = items.map((t, i) => `${i ? 'L' : 'M'}${cx(i).toFixed(1)},${y(t.outstanding).toFixed(1)}`).join(' ');
@@ -73,6 +73,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
+  const [scope, setScope] = useState(''); // '' = overall (everything) | 'COMPANY' | 'HMO'
   const [companyId, setCompanyId] = useState('');
   const [view, setView] = useState('month');
   const [year, setYear] = useState('');
@@ -89,7 +90,7 @@ export default function Dashboard() {
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
-    api.getCompanyDashboard({ company_id: companyId, view, year, month })
+    api.getCompanyDashboard({ company_id: companyId, type: scope, view, year, month })
       .then((r) => {
         if (id !== reqId.current) return;
         setData(r.data);
@@ -97,29 +98,40 @@ export default function Dashboard() {
       })
       .catch((e) => { if (id === reqId.current) setErr(e.message); })
       .finally(() => { if (id === reqId.current) setLoading(false); });
-  }, [companyId, view, year, month]);
+  }, [companyId, scope, view, year, month]);
 
   if (err && !data) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading dashboard…</div>;
 
   const company = companyId ? companies.find((c) => String(c.id) === String(companyId)) : null;
-  const scopeName = company ? company.name : 'All companies';
+  const scopeAll = scope === 'HMO' ? 'All HMOs' : scope === 'COMPANY' ? 'All companies' : 'All companies & HMOs';
+  const scopeName = company ? company.name : scopeAll;
+  const noun = scope === 'HMO' ? 'HMOs' : scope === 'COMPANY' ? 'companies' : 'accounts';
   const p = data.period;
   const isMonth = data.view === 'month';
-  const periodName = isMonth ? `${MONTHS_LONG[data.month - 1]} ${data.year}` : String(data.year);
+  const isAllTime = data.view === 'all';
+  const periodName = isAllTime ? 'All time' : isMonth ? `${MONTHS_LONG[data.month - 1]} ${data.year}` : String(data.year);
+  const pickable = companies.filter((c) => !scope || c.account_type === scope);
 
   // previous period, for the "vs" notes on the cards
   let prev = null, prevLabel = '';
   if (isMonth && data.month > 1) { prev = data.months[data.month - 2]; prevLabel = MONTHS[data.month - 2]; }
-  else if (!isMonth) { prev = data.years.find((y) => y.year === data.year - 1) || null; prevLabel = String(data.year - 1); }
+  else if (data.view === 'year') { prev = data.years.find((y) => y.year === data.year - 1) || null; prevLabel = String(data.year - 1); }
 
-  const items = isMonth
+  const useMonths = isMonth;
+  const items = useMonths
     ? data.months.map((m) => ({ ...m, key: m.month, name: `${MONTHS_LONG[m.month - 1]} ${data.year}`, short: MONTHS[m.month - 1] }))
     : data.years.map((yr) => ({ ...yr, key: yr.year, name: String(yr.year), short: String(yr.year) }));
 
   const pickCategory = (key) => {
     if (isMonth) setMonth(key);
-    else { setYear(key); }
+    else drillYear(key);
+  };
+  const changeScope = (next) => { setScope(next); setCompanyId(''); };
+  const pickAccount = (id) => {
+    const acc = companies.find((c) => String(c.id) === String(id));
+    if (acc) setScope(acc.account_type === 'HMO' ? 'HMO' : 'COMPANY');
+    setCompanyId(id ? String(id) : '');
   };
   const drillYear = (yr) => { setYear(yr); setMonth(''); setView('month'); };
 
@@ -150,32 +162,50 @@ export default function Dashboard() {
 
       {err && <div className="flash flash-error">{err}</div>}
 
+      <div className="dash-scope" role="tablist" aria-label="Show">
+        {[['', 'Overall'], ['COMPANY', 'Companies'], ['HMO', 'HMOs']].map(([k, label]) => (
+          <button key={k || 'all'} type="button" role="tab" aria-selected={scope === k} className={scope === k ? 'on' : ''} onClick={() => changeScope(k)}>{label}</button>
+        ))}
+      </div>
+
       <div className="panel dash-controls">
         <div className="dash-control">
-          <label htmlFor="dash-company">Company</label>
-          <select id="dash-company" className="select-inline" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-            <option value="">All companies ({companies.length})</option>
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <label htmlFor="dash-company">{scope === 'HMO' ? 'HMO' : scope === 'COMPANY' ? 'Company' : 'Account'}</label>
+          <select id="dash-company" className="select-inline" value={companyId} onChange={(e) => pickAccount(e.target.value)}>
+            <option value="">{scopeAll} ({pickable.length})</option>
+            {scope ? pickable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : (
+              <>
+                <optgroup label="Companies">
+                  {companies.filter((c) => c.account_type !== 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+                <optgroup label="HMOs">
+                  {companies.filter((c) => c.account_type === 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              </>
+            )}
           </select>
         </div>
         <div className="dash-control">
           <label>View</label>
           <div className="seg" role="tablist">
             <button type="button" role="tab" aria-selected={isMonth} className={isMonth ? 'on' : ''} onClick={() => setView('month')}>Monthly</button>
-            <button type="button" role="tab" aria-selected={!isMonth} className={!isMonth ? 'on' : ''} onClick={() => setView('year')}>Yearly</button>
+            <button type="button" role="tab" aria-selected={data.view === 'year'} className={data.view === 'year' ? 'on' : ''} onClick={() => setView('year')}>Yearly</button>
+            <button type="button" role="tab" aria-selected={isAllTime} className={isAllTime ? 'on' : ''} onClick={() => setView('all')}>All time</button>
           </div>
         </div>
-        <div className="dash-control">
-          <label htmlFor="dash-year">Year</label>
-          <select id="dash-year" className="select-inline" value={data.year} onChange={(e) => { setYear(Number(e.target.value)); if (isMonth) setMonth(''); }}>
-            {data.years.map((yr) => <option key={yr.year} value={yr.year}>{yr.year}</option>)}
-          </select>
-        </div>
+        {!isAllTime && (
+          <div className="dash-control">
+            <label htmlFor="dash-year">Year</label>
+            <select id="dash-year" className="select-inline" value={data.year} onChange={(e) => { setYear(Number(e.target.value)); if (isMonth) setMonth(''); }}>
+              {data.years.map((yr) => <option key={yr.year} value={yr.year}>{yr.year}</option>)}
+            </select>
+          </div>
+        )}
         {company && (
           <div className="dash-control dash-control-end">
             {company.status !== 'ACTIVE' && <span className={`badge ${company.status === 'BANKRUPT' ? 'badge-danger' : 'badge-secondary'}`}>{company.status}</span>}
             <Link to={`/ledger?company_id=${company.id}`} className="btn btn-secondary btn-sm">Open ledger</Link>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCompanyId('')}>All companies</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCompanyId('')}>Back to {scope === 'HMO' ? 'all HMOs' : scope === 'COMPANY' ? 'all companies' : 'overall'}</button>
           </div>
         )}
       </div>
@@ -220,7 +250,7 @@ export default function Dashboard() {
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.billed ? Math.min(100, (p.outstanding / p.billed) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
             <span className="kpi-dark-left">{p.open_count} unpaid {p.open_count === 1 ? 'entry' : 'entries'}</span>
-            <span className="kpi-dark-right">billed in {periodName}</span>
+            <span className="kpi-dark-right">{isAllTime ? 'across all periods' : `billed in ${periodName}`}</span>
           </div>
         </div>
         <div className="kpi-dark-card accent-amber">
@@ -236,16 +266,16 @@ export default function Dashboard() {
 
       <div className="panel">
         <div className="dash-panel-head">
-          <h2>{isMonth ? `Month by month — ${data.year}` : 'Year by year'}</h2>
+          <h2>{isMonth ? `Month by month — ${data.year}` : isAllTime ? 'Overall — year by year' : 'Year by year'}</h2>
           <div className="exec-chart-key">
             <span><i style={{ background: '#c9d3df' }} />Billed</span>
             <span><i style={{ background: '#12756a' }} />Collected</span>
             <span><i style={{ background: '#e2a03a', borderRadius: 999 }} />Unpaid balance</span>
           </div>
         </div>
-        <EvolutionChart items={items} selected={isMonth ? data.month : data.year} onSelect={pickCategory}
+        <EvolutionChart items={items} selected={isMonth ? data.month : isAllTime ? null : data.year} onSelect={pickCategory}
           label={isMonth ? `Billed, collected and unpaid by month, ${data.year}` : 'Billed, collected and unpaid by year'} />
-        <div className="dash-hint">{isMonth ? 'Click a month to focus on it.' : 'Click a year to focus on it, or use “Monthly” to see its months.'}</div>
+        <div className="dash-hint">{isMonth ? 'Click a month to focus on it.' : 'Click a year to open it month by month.'}</div>
       </div>
 
       <div className="panel">
@@ -266,7 +296,7 @@ export default function Dashboard() {
             <tbody>
               {rowsForTable.length === 0 && <tr><td colSpan={7} className="empty-state">Nothing recorded for {scopeName} yet.</td></tr>}
               {rowsForTable.map((t) => {
-                const active = t.key === (isMonth ? data.month : data.year);
+                const active = !isAllTime && t.key === (isMonth ? data.month : data.year);
                 return (
                   <tr key={t.key} className={`clickable-row ${active ? 'row-active' : ''}`}
                     onClick={() => (isMonth ? setMonth(t.key) : drillYear(t.key))}
@@ -286,26 +316,46 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {data.undated.billed_count > 0 && (
+      {!isAllTime && data.undated.billed_count > 0 && (
         <div className="flash flash-warning">
           {data.undated.billed_count} ledger {data.undated.billed_count === 1 ? 'entry' : 'entries'} ({peso(data.undated.billed_total)}) have a billing date the dashboard can’t place in a month
           (for example a free-text range), so they’re left out of the months and years above.
         </div>
       )}
 
+      {!company && !scope && (
+        <div className="panel">
+          <h2>Companies vs HMOs <span className="dash-sub">· {periodName}</span></h2>
+          <div className="split-grid">
+            {[['COMPANY', 'Companies'], ['HMO', 'HMOs']].map(([k, label]) => {
+              const t = data.by_type[k];
+              return (
+                <button key={k} type="button" className="split-card" onClick={() => changeScope(k)} title={`Open the ${label} dashboard`}>
+                  <span className="split-title">{label}</span>
+                  <span className="split-value num">{peso(t.outstanding)}</span>
+                  <span className="split-sub">unpaid · {peso(t.past_due)} past due</span>
+                  <span className="split-sub">Billed {peso(t.billed)} · Collected {peso(t.collected)} ({t.collection_rate}%)</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {!company ? (
         <div className="panel">
-          <h2>Companies in {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
+          <h2>{noun.charAt(0).toUpperCase() + noun.slice(1)} · {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
           {data.companies.length === 0 ? (
-            <div className="empty-state">No activity in {periodName}.</div>
+            <div className="empty-state">No activity for {periodName}.</div>
           ) : (
             <ol className="rank-list">
               {data.companies.map((c, i) => (
                 <li key={c.id}>
-                  <button type="button" className="rank-row rank-button" onClick={() => setCompanyId(String(c.id))} title={`Show ${c.name}'s dashboard`}>
+                  <button type="button" className="rank-row rank-button" onClick={() => pickAccount(c.id)} title={`Show ${c.name}'s dashboard`}>
                     <span className="rank-pos">{i + 1}</span>
                     <span className="rank-name">
                       <span>{c.name}</span>
+                      {!scope && c.account_type === 'HMO' && <span className="badge badge-secondary">HMO</span>}
                       {c.status !== 'ACTIVE' && <span className={`badge ${c.status === 'BANKRUPT' ? 'badge-danger' : 'badge-secondary'}`}>{c.status}</span>}
                     </span>
                     <span className="rank-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, (c.outstanding / maxCompany) * 100)}%` }} /></span>
@@ -316,14 +366,14 @@ export default function Dashboard() {
             </ol>
           )}
           {data.companies_total > data.companies.length && (
-            <div className="dash-hint">Showing the top {data.companies.length} of {data.companies_total} companies by unpaid balance.</div>
+            <div className="dash-hint">Showing the top {data.companies.length} of {data.companies_total} {noun} by unpaid balance.</div>
           )}
         </div>
       ) : (
         <div className="panel">
           <h2>How old is the unpaid balance? <span className="dash-sub">· {periodName}</span></h2>
           {p.outstanding <= 0 ? (
-            <div className="empty-state">Nothing unpaid for {company.name} in {periodName}.</div>
+            <div className="empty-state">Nothing unpaid for {company.name}{isAllTime ? '.' : ` in ${periodName}.`}</div>
           ) : (
             <>
               <div className="aging-strip" aria-hidden="true">
@@ -349,7 +399,7 @@ export default function Dashboard() {
       )}
 
       <div className="panel">
-        <h2>Entries billed in {periodName} <span className="dash-sub">· {scopeName}</span></h2>
+        <h2>{isAllTime ? 'Latest ledger entries' : `Entries billed in ${periodName}`} <span className="dash-sub">· {scopeName}</span></h2>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -360,7 +410,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {data.entries.length === 0 && <tr><td colSpan={company ? 6 : 7} className="empty-state">No ledger entries billed in {periodName}.</td></tr>}
+              {data.entries.length === 0 && <tr><td colSpan={company ? 6 : 7} className="empty-state">No ledger entries for {periodName}.</td></tr>}
               {data.entries.map((r) => (
                 <tr key={r.id} className="clickable-row" title="Open this entry in the Ledger"
                   onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}>
