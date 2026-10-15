@@ -1,6 +1,6 @@
 // Business rules -- port of backend/includes/functions.php
 import { all, one, scalar, column, exec } from './db.js';
-import { daysOverdue, addDaysYmd } from './dates.js';
+import { daysOverdue, addDaysYmd, DEFAULT_COVERED_RULES, normalizeCoveredRules } from './dates.js';
 import { toInt, toFloat, trim } from './php.js';
 
 export const DEFAULT_DUE_DAYS = 30; // grace days offered when the grace period is switched on in Settings
@@ -41,6 +41,13 @@ export async function agingGraceDays() {
 /** Settings page: when ON (default), the covered period is worked out from the billing date automatically. */
 export async function autoCoveredPeriodEnabled() {
   return (await getSetting('auto_covered_period', '1')) === '1';
+}
+
+/** The covered-period rules saved in Settings (falls back to the default semi-monthly rules). */
+export async function coveredPeriodRules() {
+  const raw = await getSetting('covered_period_rules', null);
+  if (!raw) return DEFAULT_COVERED_RULES;
+  try { return normalizeCoveredRules(JSON.parse(raw)); } catch { return DEFAULT_COVERED_RULES; }
 }
 
 /** "Less Taxes Withheld" auto-fill percentage. */

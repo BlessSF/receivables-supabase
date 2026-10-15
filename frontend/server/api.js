@@ -8,12 +8,12 @@ import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling } from './dates.js';
+import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
+  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -415,7 +415,7 @@ const actions = {
     await requireCompanyAccess(auth, cid);
     const cName = await scalar('SELECT name FROM companies WHERE id = ?', [cid]);
     const billingDate = todayYmd();
-    const cp = (await autoCoveredPeriodEnabled()) ? coveredPeriodForBilling(billingDate) : null; // follows the billing date when the Settings switch is ON
+    const cp = (await autoCoveredPeriodEnabled()) ? coveredPeriodForBilling(billingDate, await coveredPeriodRules()) : null; // follows the billing date when the Settings switch is ON
     const id = await insertId(
       `INSERT INTO ledger_entries (company_id, company_name, billing_date, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0)`,
@@ -591,7 +591,7 @@ const actions = {
     let periodTo = trim(input.period_to ?? '') || null;
     if (!periodFrom && !periodTo && (await autoCoveredPeriodEnabled())) {
       // No covered period given: work it out from the billing date (Settings switch).
-      const cp = coveredPeriodForBilling(txnDate);
+      const cp = coveredPeriodForBilling(txnDate, await coveredPeriodRules());
       if (cp) { periodFrom = cp.from; periodTo = cp.to; }
     }
     const soa = trim(input.soa_number ?? '').toUpperCase() || null;
@@ -811,6 +811,8 @@ const actions = {
       aging_grace_days: await agingGraceSavedDays(),
       tax_withheld_percent: await taxWithheldPercent(),
       auto_covered_period_enabled: await autoCoveredPeriodEnabled(),
+      covered_period_rules: await coveredPeriodRules(),
+      covered_period_default_rules: DEFAULT_COVERED_RULES,
     } };
   },
 
@@ -839,6 +841,14 @@ const actions = {
         ? 'Automatic covered period ON: it follows the billing date.'
         : 'Automatic covered period OFF: enter the covered period yourself.',
     };
+  },
+
+  async save_covered_period_rules(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change settings.' }, 403);
+    let rules;
+    try { rules = normalizeCoveredRules(input.rules); } catch (e) { jsonExit({ ok: false, error: e.message }, 400); }
+    await setSetting('covered_period_rules', JSON.stringify(rules));
+    return { ok: true, message: `Covered-period rules saved (${rules.length} rule${rules.length === 1 ? '' : 's'}).` };
   },
 
   async save_tax_setting(input, auth) {

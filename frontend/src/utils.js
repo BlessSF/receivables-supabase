@@ -62,23 +62,58 @@ export function isExecutive(user) {
   return user?.role === 'executive';
 }
 /**
- * Covered period that goes with a billing date.
- *   billed 16th-31st -> 1st-15th of the same month   (Jan 30 -> Jan 1 - Jan 15)
- *   billed 1st-15th  -> 16th-end of the previous month (Feb 15 -> Jan 16 - Jan 31)
- * Returns { from, to } ("YYYY-MM-DD") or null for a blank / invalid date.
+ * Covered-period rules (editable in Settings). Each rule says: when the billing date is in `month`
+ * (0 = every month) and its day is day_from..day_to, the covered period runs from
+ * (from_offset months away, from_day) to (to_offset months away, to_day). Offsets: -1 previous month,
+ * 0 same month, 1 next month. A day of 0 means "last day of that month". A rule for one month wins over an
+ * "every month" rule.
  */
-export function coveredPeriodForBilling(billingDate) {
-  const m = String(billingDate || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+export const DEFAULT_COVERED_RULES = [
+  { month: 0, day_from: 16, day_to: 31, from_offset: 0, from_day: 1, to_offset: 0, to_day: 15 },
+  { month: 0, day_from: 1, day_to: 15, from_offset: -1, from_day: 16, to_offset: -1, to_day: 0 },
+];
+
+/** Checks a rules list from Settings; returns the cleaned list or throws an Error with a plain message. */
+export function normalizeCoveredRules(raw) {
+  if (!Array.isArray(raw)) throw new Error('Rules must be a list.');
+  if (raw.length > 60) throw new Error('Too many rules (limit 60).');
+  const int = (v) => (Number.isInteger(Number(v)) && String(v).trim() !== '' ? Number(v) : NaN);
+  return raw.map((r, i) => {
+    const n = i + 1;
+    const x = {
+      month: int(r?.month ?? 0), day_from: int(r?.day_from), day_to: int(r?.day_to),
+      from_offset: int(r?.from_offset), from_day: int(r?.from_day), to_offset: int(r?.to_offset), to_day: int(r?.to_day),
+    };
+    if (!(x.month >= 0 && x.month <= 12)) throw new Error(`Rule ${n}: pick a month.`);
+    if (!(x.day_from >= 1 && x.day_from <= 31 && x.day_to >= 1 && x.day_to <= 31)) throw new Error(`Rule ${n}: billing days must be between 1 and 31.`);
+    if (x.day_from > x.day_to) throw new Error(`Rule ${n}: the first billing day is after the last one.`);
+    if (![-1, 0, 1].includes(x.from_offset) || ![-1, 0, 1].includes(x.to_offset)) throw new Error(`Rule ${n}: pick the month of the covered period.`);
+    if (!(x.from_day >= 0 && x.from_day <= 31 && x.to_day >= 0 && x.to_day <= 31)) throw new Error(`Rule ${n}: covered days must be between 1 and 31 (or the last day).`);
+    return x;
+  });
+}
+
+/**
+ * Covered period for a billing date under the rules (default: the two semi-monthly rules).
+ * Default: billed 16th-31st -> 1st-15th of the same month; billed 1st-15th -> 16th-end of the previous month.
+ * Returns { from, to } as "YYYY-MM-DD", or null when the date is invalid or no rule matches.
+ */
+export function coveredPeriodForBilling(billingDate, rules = DEFAULT_COVERED_RULES) {
+  const m = String(billingDate ?? '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (!m) return null;
-  let y = +m[1], mo = +m[2];
-  const d = +m[3];
+  const y = +m[1], mo = +m[2], d = +m[3];
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const hits = (rules || []).filter((r) => d >= r.day_from && d <= r.day_to && (!r.month || r.month === mo));
+  const rule = hits.find((r) => r.month === mo) || hits[0];
+  if (!rule) return null;
   const p2 = (n) => String(n).padStart(2, '0');
-  if (d >= 16) return { from: `${y}-${p2(mo)}-01`, to: `${y}-${p2(mo)}-15` };
-  mo -= 1;
-  if (mo === 0) { mo = 12; y -= 1; }
-  const last = new Date(y, mo, 0).getDate();
-  return { from: `${y}-${p2(mo)}-16`, to: `${y}-${p2(mo)}-${p2(last)}` };
+  const at = (offset, day) => {
+    let yy = y, mm = mo + offset;
+    if (mm < 1) { mm = 12; yy -= 1; } else if (mm > 12) { mm = 1; yy += 1; }
+    const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    return `${yy}-${p2(mm)}-${p2(day === 0 ? last : Math.min(day, last))}`;
+  };
+  return { from: at(rule.from_offset, rule.from_day), to: at(rule.to_offset, rule.to_day) };
 }
 /** Staff accounts: see every company's ledger, edit only Payment Date, Check Ref and Paid. */
 export function isStaff(user) {
