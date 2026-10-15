@@ -153,7 +153,10 @@ export default function Billing() {
           key, file: f.name, error: '', selected: true, warnings: d.warnings || [],
           soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
           duplicate: d.duplicate || '', txn_date: d.date || todayLocal(),
-          ...(autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: d.period_from || '', period_to: d.period_to || '' }),
+          // The covered period written in the file (or its transaction dates) wins; the billing-date rule is only the fallback.
+          ...(d.period_from && d.period_to
+            ? { period_from: d.period_from, period_to: d.period_to }
+            : autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: '', period_to: '' }),
           total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
           amount: pickAmount(d, basis),
         });
@@ -246,7 +249,7 @@ export default function Billing() {
             <button className="btn btn-secondary btn-sm" disabled={imp.importing} onClick={() => setImp(null)}>Close</button>
           </div>
           <div className="subtitle" style={{ margin: '6px 0 14px' }}>
-            Drop one or many SOA Excel files. The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the covered period comes from the transaction dates.
+            Drop one or many SOA Excel files. The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the covered period comes from the period or transaction dates in the file.
           </div>
           <div
             className={`dropzone${dragOver ? ' over' : ''}`}
