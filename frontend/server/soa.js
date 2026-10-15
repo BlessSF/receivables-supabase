@@ -215,15 +215,16 @@ function readTable(cells) {
 }
 
 /**
- * Billing date that goes with a covered period's end date (the reverse of the billing-date rule):
- * a period ending on the 1st-15th is billed on the last day of that month (Sept 1-15 -> Sept 30);
- * one ending on the 16th-31st is billed on the 15th of the next month (Sept 16-30 -> Oct 15).
+ * Billing date that goes with a covered period's end date. Billing runs on a 15th / 30th cycle:
+ * a period ending on the 1st-15th is billed on the 30th of that month (July 1-15 -> July 30; in
+ * February, which has no 30th, the last day); one ending on the 16th-31st is billed on the 15th
+ * of the next month (Sept 16-30 -> Oct 15).
  */
 function billingDateForPeriodEnd(to) {
   const m = to.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return to;
   let y = +m[1], mo = +m[2];
-  if (+m[3] <= 15) return `${y}-${pad(mo)}-${pad(new Date(Date.UTC(y, mo, 0)).getUTCDate())}`;
+  if (+m[3] <= 15) return `${y}-${pad(mo)}-${pad(Math.min(30, new Date(Date.UTC(y, mo, 0)).getUTCDate()))}`;
   mo += 1;
   if (mo === 13) { mo = 1; y += 1; }
   return `${y}-${pad(mo)}-15`;
@@ -234,9 +235,9 @@ const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const lastDayOf = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
 
 /**
- * Covered period of an imported SOA. The SOA's Date is the LAST day of the period it covers,
- * and the business bills in half-months (1st-15th and 16th-end of month):
- *   Date July 15  -> July 1 - July 15        Date July 31 -> July 16 - July 31
+ * Covered period of an imported SOA. The SOA's Date is the LAST day of the period it covers
+ * (it is NOT the billing date - that is worked out from the period, see billingDateForPeriodEnd):
+ *   Date July 15 -> July 1 - July 15        Date July 31 -> July 16 - July 31
  * If the Date is some other day, the half-month the Tran. Dates fall in is used instead
  * (lines on 7/2-7/4 -> July 1-15); lines spread over several half-months give first-to-last date.
  * The Tran. Dates themselves are never copied in as the period.
@@ -278,12 +279,11 @@ export async function parseSoa(buffer, fileName = '') {
   const soaNumber = seriesNo || soaNo;
   const company = text(/^company\s*name\s*:?$/i) || text(/^company\s*\/\s*hmo\s*:?$/i) || text(/^hmo\s*:?$/i);
   const dateCell = valueFor(cells, /^date\s*:?$/i);
-  let date = dateCell ? parseDateYmd(dateCell.value) : null;
-  // Newer SOAs have no "Date", only "Period  2026-09-01 to 2026-09-15": work the billing date out from the period.
+  const soaDate = dateCell ? parseDateYmd(dateCell.value) : null; // printed on the SOA = last day of the covered period
+  // Newer SOAs may have a "Period  2026-09-01 to 2026-09-15" instead of (or as well as) a "Date".
   const periodText = text(/^period\s*:?$/i);
   const pm = [...periodText.matchAll(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/g)].map((m) => parseDateYmd(m[0])).filter(Boolean);
   const filePeriod = pm.length >= 2 ? { from: pm[0], to: pm[pm.length - 1] } : null;
-  if (!date && filePeriod) date = billingDateForPeriodEnd(filePeriod.to);
   const terms = text(/^terms\s*:?$/i);
 
   const money = (re) => {
@@ -301,15 +301,17 @@ export async function parseSoa(buffer, fileName = '') {
   const dates = table.rows.map((r) => r.date).sort();
 
   // Covered period: an explicit "Period" in the file wins, otherwise it ends on the SOA Date (see periodForSoa).
-  const covered = filePeriod || periodForSoa(date, dates);
+  const covered = filePeriod || periodForSoa(soaDate, dates);
   const coveredFrom = covered.from;
   const coveredTo = covered.to;
+  // Billing date follows from the covered period: 1st-15th -> the 30th, 16th-end -> the 15th of next month.
+  const date = coveredTo ? billingDateForPeriodEnd(coveredTo) : soaDate;
   const outside = dates.filter((x) => coveredFrom && coveredTo && (x < coveredFrom || x > coveredTo)).length;
   if (outside) warnings.push(`${outside} transaction ${outside === 1 ? 'date falls' : 'dates fall'} outside the covered period ${coveredFrom} to ${coveredTo}.`);
   if (!soaNumber) warnings.push('No Series No. / SOA No. found.');
   if (seriesNo && soaNo && seriesNo !== soaNo) warnings.push(`This file has two numbers: Series No. ${seriesNo} and SOA No. ${soaNo}. Using the Series No. - change it if the other one is right.`);
   if (!company) warnings.push('No Company Name found.');
-  if (!date) warnings.push('No valid Date found.');
+  if (!soaDate && !filePeriod) warnings.push('No valid Date found.');
   if (totalDue === null) warnings.push('No Total Amount Due found.');
   if (!table.found) warnings.push('Could not find the patient table.');
   else if (table.rows.length === 0) warnings.push('The patient table has no rows.');
@@ -326,7 +328,8 @@ export async function parseSoa(buffer, fileName = '') {
     file: fileName,
     soa_number: soaNumber,
     company_name: company,
-    date,
+    date, // billing date (worked out from the covered period)
+    soa_date: soaDate, // the Date printed on the SOA
     terms,
     total_due: totalDue,
     current_due: currentDue ?? (table.rows.length ? rowTotal : null),
