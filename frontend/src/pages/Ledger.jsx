@@ -11,6 +11,18 @@ function getMeasureCtx() {
   return measureCtx;
 }
 
+// Trash-can icon (outline style) for the Delete button
+function TrashIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.5 6a2.5 2.5 0 0 1 5 0" />
+      <path d="M4 6h16" />
+      <path d="M6 6v11a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V6" />
+      <path d="M10 10v6M14 10v6" />
+    </svg>
+  );
+}
+
 function EditableText({ value, onSave, type = 'text', align, row, col }) {
   const [val, setVal] = useState(value ?? '');
   const [state, setState] = useState(''); // '', 'saving', 'saved', 'error'
@@ -172,7 +184,7 @@ export default function Ledger() {
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
-      ...(canDelete ? [tw('Delete') + 44] : []),             // Delete button (Admin / Executive only)
+      ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
   }, [entries, canDelete]);
   const MIN_FONT = 10.5;
@@ -434,7 +446,7 @@ export default function Ledger() {
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td>{staff || exec ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
-                    {canDelete && <td className="text-center"><button type="button" className="btn btn-danger btn-sm" onClick={() => deleteRow(r)}>Delete</button></td>}
+                    {canDelete && <td className="text-center"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
                 ))}
               </tbody>
