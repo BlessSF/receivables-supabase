@@ -249,10 +249,22 @@ export default function Summary() {
       {view === 'month' && (
         <div className="panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
-            <h2 style={{ margin: 0 }}>Summary by Month — {year}</h2>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className={grouping === 'all' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('all')}>All companies combined</button>
-              <button type="button" className={grouping === 'company' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('company')}>Each company</button>
+            <h2 style={{ margin: 0 }}>Summary by Month{selectedCompany ? ` — ${selectedCompany.name}` : ''} — {year}</h2>
+            <div className="form-group" style={{ minWidth: 240 }}>
+              <label>Company to summarize</label>
+              <select
+                className="select-inline"
+                value={companyId || (grouping === 'company' ? '__each' : '')}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '__each') { setCompanyId(''); setGrouping('company'); }
+                  else { setCompanyId(v); setGrouping('all'); }
+                }}
+              >
+                <option value="">All companies (combined)</option>
+                <option value="__each">Each company (separate blocks)</option>
+                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '0 0 14px' }}>
