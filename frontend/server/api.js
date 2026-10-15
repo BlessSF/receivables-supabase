@@ -37,7 +37,7 @@ function userPayload(u) {
 // What a staff account may call: view companies + ledger + dashboard + monthly report,
 // and edit only the three payment fields of a ledger row.
 const STAFF_ACTIONS = new Set([
-  'get_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
+  'get_dashboard', 'get_company_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
@@ -118,6 +118,138 @@ const actions = {
       past_due_count: pastDueCount,
       top_outstanding: topOutstanding,
       recent,
+    } };
+  },
+
+  // ---------------------------------------------------------------- COMPANY DASHBOARD
+  // The evolving dashboard: one company (or all of them), viewed per month or per year.
+  //   billed      = amounts billed, placed by billing date
+  //   collected   = payments received, placed by payment date
+  //   outstanding = unpaid balance of the entries billed in that period
+  //   past_due    = the part of that balance that is already past its due date
+  async get_company_dashboard(input, auth) {
+    const companyId = isSet(input.company_id) && input.company_id !== '' ? toInt(input.company_id) : null;
+    if (companyId) await requireCompanyAccess(auth, companyId);
+
+    const todayKey = todayYmd();
+    const nowYear = toInt(todayKey.slice(0, 4));
+    const nowMonth = toInt(todayKey.slice(5, 7));
+    const view = input.view === 'year' ? 'year' : 'month';
+    let year = toInt(input.year);
+    if (year < 2000 || year > 2100) year = nowYear;
+    let month = toInt(input.month);
+    if (month < 1 || month > 12) month = year === nowYear ? nowMonth : 12;
+
+    const [bw, bp] = branchWhere(auth, 'c');
+    let sql = `SELECT l.id, l.company_id, l.billing_date, l.due_date, l.payment_date, l.soa_number,
+                      l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status
+               FROM ledger_entries l JOIN companies c ON c.id = l.company_id
+               WHERE 1=1 ${bw}`;
+    let params = bp;
+    if (companyId) { sql += ' AND l.company_id = ?'; params = [...bp, companyId]; }
+    const rows = await all(sql, params);
+    const due = await makeImplicitDue();
+
+    const blank = () => ({ billed: 0, collected: 0, outstanding: 0, past_due: 0, past_due_count: 0, entries: 0, open_count: 0 });
+    const ymOf = (v) => {
+      const ms = parseDate(v);
+      if (ms === null) return null;
+      const d = new Date(ms);
+      return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
+    };
+    const inPeriod = (ym) => !!ym && ym.y === year && (view === 'year' || ym.m === month);
+
+    const yearAgg = new Map();
+    const monthAgg = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, ...blank() }));
+    const yAgg = (y) => { if (!yearAgg.has(y)) yearAgg.set(y, { year: y, ...blank() }); return yearAgg.get(y); };
+
+    const period = blank();
+    const bucketLabels = ['Not Yet Due', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'N/A'];
+    const aging = Object.fromEntries(bucketLabels.map((l) => [l, { count: 0, total: 0 }]));
+    const companies = new Map();
+    const periodEntries = [];
+    const undated = { billed_count: 0, billed_total: 0, collected_total: 0 };
+
+    const co = (r) => {
+      let c = companies.get(r.company_id);
+      if (!c) { c = { id: toInt(r.company_id), name: r.company_name, status: r.company_status, billed: 0, collected: 0, outstanding: 0, past_due: 0 }; companies.set(r.company_id, c); }
+      return c;
+    };
+
+    for (const r of rows) {
+      const amount = toFloat(r.amount);
+      const paid = toFloat(r.paid_amount);
+      const bal = toFloat(r.balance);
+      const open = bal > 0.009;
+      const d = open ? daysOverdue(dueOf(r, due)) : null;
+      const late = open && d !== null && d > 0;
+
+      // placed by billing date
+      const b = ymOf(r.billing_date);
+      if (!b) {
+        undated.billed_count++; undated.billed_total += amount;
+      } else {
+        const ya = yAgg(b.y);
+        ya.billed += amount; ya.entries++;
+        if (open) { ya.outstanding += bal; ya.open_count++; }
+        if (late) { ya.past_due += bal; ya.past_due_count++; }
+        if (b.y === year) {
+          const ma = monthAgg[b.m - 1];
+          ma.billed += amount; ma.entries++;
+          if (open) { ma.outstanding += bal; ma.open_count++; }
+          if (late) { ma.past_due += bal; ma.past_due_count++; }
+        }
+        if (inPeriod(b)) {
+          period.billed += amount; period.entries++;
+          const c = co(r); c.billed += amount;
+          if (open) {
+            period.outstanding += bal; period.open_count++; c.outstanding += bal;
+            aging[agingBucket(d)].count++; aging[agingBucket(d)].total += bal;
+          }
+          if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; }
+          periodEntries.push({
+            id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name,
+            billing_date: r.billing_date, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
+            overdue_days: late ? d : 0, _t: parseDate(r.billing_date),
+          });
+        }
+      }
+
+      // placed by payment date
+      if (paid > 0) {
+        const p = ymOf(r.payment_date);
+        if (!p) {
+          undated.collected_total += paid;
+        } else {
+          yAgg(p.y).collected += paid;
+          if (p.y === year) monthAgg[p.m - 1].collected += paid;
+          if (inPeriod(p)) { period.collected += paid; co(r).collected += paid; }
+        }
+      }
+    }
+
+    // make sure the selected / current year is always in the list
+    yAgg(year); yAgg(nowYear);
+    const withRate = (o) => ({ ...o, collection_rate: o.billed > 0 ? round((o.collected / o.billed) * 100, 1) : 0 });
+
+    periodEntries.sort((a, b) => (b._t ?? 0) - (a._t ?? 0) || b.id - a.id);
+    const companyList = [...companies.values()]
+      .filter((c) => c.billed > 0 || c.collected > 0 || c.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding || b.billed - a.billed);
+
+    return { ok: true, data: {
+      today: todayKey,
+      company_id: companyId,
+      view, year, month,
+      period: withRate(period),
+      years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
+      months: monthAgg.map(withRate),
+      aging,
+      companies: companyList.slice(0, 15),
+      companies_total: companyList.length,
+      entries: periodEntries.slice(0, 100).map(({ _t, ...e }) => e),
+      entries_total: periodEntries.length,
+      undated,
     } };
   },
 

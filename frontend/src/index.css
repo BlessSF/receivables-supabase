@@ -931,3 +931,41 @@ button { font-family: inherit; }
 .long-date > input.long-date-native { position: absolute; right: 6px; top: 0; width: 26px; height: 100%; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 /* Covered Period takes two columns of the form grid when there's room, so both dates show in full at any zoom */
 @media (min-width: 900px) { .form-grid .span-2 { grid-column: span 2; } }
+/* ---------- Evolving dashboard (per company · monthly · yearly) ---------- */
+.dash { transition: opacity 0.15s ease; }
+.dash.is-loading { opacity: 0.6; pointer-events: none; }
+.dash-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; margin-bottom: 14px; padding: 16px 20px; }
+.dash-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dash-control label { font-size: 12px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.04em; }
+.dash-control .select-inline { min-width: 120px; }
+.dash-control #dash-company { min-width: 260px; max-width: 100%; }
+.dash-control-end { margin-left: auto; flex-direction: row; align-items: center; gap: 8px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--slate-soft); border-radius: var(--radius-sm); height: 38px; }
+.seg button { border: none; background: transparent; padding: 0 16px; border-radius: 6px; font-size: 14px; font-weight: 600; color: var(--slate); cursor: pointer; }
+.seg button:hover { color: var(--ink); }
+.seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(19, 32, 58, 0.12); }
+.month-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+.month-chips button {
+  min-width: 52px; height: 32px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: #fff; color: var(--ink-soft); font-size: 13px; font-weight: 600;
+}
+.month-chips button:hover { border-color: #b3bec7; background: var(--panel-tint); }
+.month-chips button.empty { color: #a3aebb; font-weight: 500; }
+.month-chips button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.dash-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.dash-panel-head h2 { margin: 0; }
+.dash-sub { font-weight: 400; color: var(--slate); font-size: 13.5px; }
+.dash-hint { margin-top: 8px; font-size: 12.5px; color: var(--slate); }
+.dash-chart-slot:hover rect:first-child { fill: #f0f4f5; }
+.row-active { background: var(--teal-soft); }
+.row-active td { font-weight: 600; }
+button.rank-button { width: 100%; background: none; border: none; border-bottom: 1px solid var(--line); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.rank-list li:last-child button.rank-button { border-bottom: none; }
+.aging-strip { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--slate-soft); margin-bottom: 4px; }
+.aging-strip i { display: block; height: 100%; }
+.flash-warning { background: var(--amber-soft); color: var(--amber); border-color: #efd9ae; border-left-color: #e2a03a; }
+@media (max-width: 720px) {
+  .dash-control-end { margin-left: 0; }
+  .dash-control #dash-company { min-width: 0; width: 100%; }
+  .dash-control:first-child { flex: 1 1 100%; }
+}
