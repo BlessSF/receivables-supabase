@@ -215,15 +215,16 @@ function readTable(cells) {
 }
 
 /**
- * Billing date that goes with a covered period's end date (the reverse of the billing-date rule):
- * a period ending on the 1st-15th is billed on the last day of that month (Sept 1-15 -> Sept 30);
- * one ending on the 16th-31st is billed on the 15th of the next month (Sept 16-30 -> Oct 15).
+ * Billing date that goes with a covered period's end date. Billing runs on a 15th / 30th cycle:
+ * a period ending on the 1st-15th is billed on the 30th of that month (July 1-15 -> July 30; in
+ * February, which has no 30th, the last day); one ending on the 16th-31st is billed on the 15th
+ * of the next month (Sept 16-30 -> Oct 15).
  */
 function billingDateForPeriodEnd(to) {
   const m = to.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return to;
   let y = +m[1], mo = +m[2];
-  if (+m[3] <= 15) return `${y}-${pad(mo)}-${pad(new Date(Date.UTC(y, mo, 0)).getUTCDate())}`;
+  if (+m[3] <= 15) return `${y}-${pad(mo)}-${pad(Math.min(30, new Date(Date.UTC(y, mo, 0)).getUTCDate()))}`;
   mo += 1;
   if (mo === 13) { mo = 1; y += 1; }
   return `${y}-${pad(mo)}-15`;
@@ -234,9 +235,9 @@ const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const lastDayOf = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
 
 /**
- * Covered period of an imported SOA. The SOA's Date is the LAST day of the period it covers,
- * and the business bills in half-months (1st-15th and 16th-end of month):
- *   Date July 15  -> July 1 - July 15        Date July 31 -> July 16 - July 31
+ * Covered period of an imported SOA. The SOA's Date is the BILLING date, on the 15th / 30th cycle:
+ *   Date July 30 -> July 1 - July 15        Date July 15 -> June 16 - June 30
+ * (in February, which has no 30th, the last day counts as the 30th).
  * If the Date is some other day, the half-month the Tran. Dates fall in is used instead
  * (lines on 7/2-7/4 -> July 1-15); lines spread over several half-months give first-to-last date.
  * The Tran. Dates themselves are never copied in as the period.
@@ -248,8 +249,11 @@ function periodForSoa(date, dates) {
   const d = date && date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (d) {
     const y = +d[1], mo = +d[2], day = +d[3];
-    if (day === 15) return half(y, mo, true);
-    if (day === lastDayOf(y, mo)) return half(y, mo, false);
+    if (day === Math.min(30, lastDayOf(y, mo))) return half(y, mo, true); // billed on the 30th -> 1st-15th
+    if (day === 15) { // billed on the 15th -> 16th-end of the previous month
+      const py = mo === 1 ? y - 1 : y, pm = mo === 1 ? 12 : mo - 1;
+      return half(py, pm, false);
+    }
   }
   if (!dates.length) return { from: null, to: null };
   const f = dates[0].match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -300,7 +304,7 @@ export async function parseSoa(buffer, fileName = '') {
   const rowTotal = r2(table.rows.reduce((t, r) => t + r.amount, 0));
   const dates = table.rows.map((r) => r.date).sort();
 
-  // Covered period: an explicit "Period" in the file wins, otherwise it ends on the SOA Date (see periodForSoa).
+  // Covered period: an explicit "Period" in the file wins, otherwise it is worked out from the SOA's billing Date (see periodForSoa).
   const covered = filePeriod || periodForSoa(date, dates);
   const coveredFrom = covered.from;
   const coveredTo = covered.to;
