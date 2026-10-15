@@ -38,6 +38,11 @@ export async function agingGraceDays() {
   return (await agingGraceEnabled()) ? agingGraceSavedDays() : 0;
 }
 
+/** Settings page: when ON (default), the covered period is worked out from the billing date automatically. */
+export async function autoCoveredPeriodEnabled() {
+  return (await getSetting('auto_covered_period', '1')) === '1';
+}
+
 /** "Less Taxes Withheld" auto-fill percentage. */
 export async function taxWithheldPercent() {
   return toFloat(await getSetting('tax_withheld_percent', '2'));

@@ -214,6 +214,21 @@ function readTable(cells) {
   return { rows: out, found: true };
 }
 
+/**
+ * Billing date that goes with a covered period's end date (the reverse of the billing-date rule):
+ * a period ending on the 1st-15th is billed on the last day of that month (Sept 1-15 -> Sept 30);
+ * one ending on the 16th-31st is billed on the 15th of the next month (Sept 16-30 -> Oct 15).
+ */
+function billingDateForPeriodEnd(to) {
+  const m = to.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return to;
+  let y = +m[1], mo = +m[2];
+  if (+m[3] <= 15) return `${y}-${pad(mo)}-${pad(new Date(Date.UTC(y, mo, 0)).getUTCDate())}`;
+  mo += 1;
+  if (mo === 13) { mo = 1; y += 1; }
+  return `${y}-${pad(mo)}-15`;
+}
+
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /** Parse one SOA workbook buffer. Never throws on a odd layout: it returns what it found plus warnings. */
@@ -234,7 +249,12 @@ export async function parseSoa(buffer, fileName = '') {
   const soaNumber = (text(/^series\s*no\.?\s*:?$/i) || text(/^soa\s*(no\.?|number|#)\s*:?$/i)).toUpperCase();
   const company = text(/^company\s*name\s*:?$/i) || text(/^company\s*\/\s*hmo\s*:?$/i) || text(/^hmo\s*:?$/i);
   const dateCell = valueFor(cells, /^date\s*:?$/i);
-  const date = dateCell ? parseDateYmd(dateCell.value) : null;
+  let date = dateCell ? parseDateYmd(dateCell.value) : null;
+  // Newer SOAs have no "Date", only "Period  2026-09-01 to 2026-09-15": work the billing date out from the period.
+  const periodText = text(/^period\s*:?$/i);
+  const pm = [...periodText.matchAll(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/g)].map((m) => parseDateYmd(m[0])).filter(Boolean);
+  const filePeriod = pm.length >= 2 ? { from: pm[0], to: pm[pm.length - 1] } : null;
+  if (!date && filePeriod) date = billingDateForPeriodEnd(filePeriod.to);
   const terms = text(/^terms\s*:?$/i);
 
   const money = (re) => {
@@ -278,8 +298,8 @@ export async function parseSoa(buffer, fileName = '') {
     discount: discountText,
     line_count: table.rows.length,
     lines_total: rowTotal,
-    period_from: dates[0] || null,
-    period_to: dates[dates.length - 1] || null,
+    period_from: filePeriod ? filePeriod.from : dates[0] || null,
+    period_to: filePeriod ? filePeriod.to : dates[dates.length - 1] || null,
     warnings,
   };
 }

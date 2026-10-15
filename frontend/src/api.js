@@ -69,6 +69,7 @@ export const api = {
   returnEntryToHmo: (id) => call('return_entry_to_hmo', { method: 'POST', body: { id } }),
   deleteLedger: (id) => call('delete_ledger', { method: 'POST', body: { id } }),
   getSettings: () => call('get_settings'),
+  saveCoveredPeriodSetting: (enabled) => call('save_covered_period_setting', { method: 'POST', body: { auto_covered_period: enabled } }),
   saveAgingSetting: (enabled, days) => call('save_aging_setting', { method: 'POST', body: { aging_grace_enabled: enabled, aging_grace_days: days } }),
   saveTaxSetting: (percent, companyId, recalc) =>
     call('save_tax_setting', { method: 'POST', body: { tax_withheld_percent: percent, company_id: companyId, recalc_existing: recalc ? 1 : 0 } }),

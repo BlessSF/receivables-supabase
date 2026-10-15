@@ -13,7 +13,7 @@ import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, agingGraceEnabled, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
+  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -413,7 +413,7 @@ const actions = {
     await requireCompanyAccess(auth, cid);
     const cName = await scalar('SELECT name FROM companies WHERE id = ?', [cid]);
     const billingDate = todayYmd();
-    const cp = coveredPeriodForBilling(billingDate); // covered period follows the billing date automatically
+    const cp = (await autoCoveredPeriodEnabled()) ? coveredPeriodForBilling(billingDate) : null; // follows the billing date when the Settings switch is ON
     const id = await insertId(
       `INSERT INTO ledger_entries (company_id, company_name, billing_date, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0)`,
@@ -585,8 +585,8 @@ const actions = {
     const txnDate = elvis(trim(input.txn_date ?? ''), todayYmd());
     let periodFrom = trim(input.period_from ?? '') || null;
     let periodTo = trim(input.period_to ?? '') || null;
-    if (!periodFrom && !periodTo) {
-      // No covered period given: work it out from the billing date.
+    if (!periodFrom && !periodTo && (await autoCoveredPeriodEnabled())) {
+      // No covered period given: work it out from the billing date (Settings switch).
       const cp = coveredPeriodForBilling(txnDate);
       if (cp) { periodFrom = cp.from; periodTo = cp.to; }
     }
@@ -806,6 +806,7 @@ const actions = {
       aging_grace_enabled: await agingGraceEnabled(),
       aging_grace_days: await agingGraceSavedDays(),
       tax_withheld_percent: await taxWithheldPercent(),
+      auto_covered_period_enabled: await autoCoveredPeriodEnabled(),
     } };
   },
 
@@ -821,6 +822,18 @@ const actions = {
       message: enabled
         ? `Grace period ON: aging starts ${days} day${days === 1 ? '' : 's'} after the billing date.`
         : 'Grace period OFF: aging counts from the billing date.',
+    };
+  },
+
+  async save_covered_period_setting(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change settings.' }, 403);
+    const enabled = truthy(input.auto_covered_period);
+    await setSetting('auto_covered_period', enabled ? '1' : '0');
+    return {
+      ok: true,
+      message: enabled
+        ? 'Automatic covered period ON: it follows the billing date.'
+        : 'Automatic covered period OFF: enter the covered period yourself.',
     };
   },
 

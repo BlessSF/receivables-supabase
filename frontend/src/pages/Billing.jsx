@@ -11,13 +11,13 @@ function todayLocal() {
 }
 
 // Covered period always follows the billing date (see coveredPeriodForBilling)
-const periodFor = (date) => {
-  const cp = coveredPeriodForBilling(date);
+const periodFor = (date, auto = true) => {
+  const cp = auto ? coveredPeriodForBilling(date) : null;
   return { period_from: cp ? cp.from : '', period_to: cp ? cp.to : '' };
 };
 
-const blank = () => ({
-  id: null, txn_date: todayLocal(), ...periodFor(todayLocal()), soa_number: '', amount: '',
+const blank = (auto = true) => ({
+  id: null, txn_date: todayLocal(), ...periodFor(todayLocal(), auto), soa_number: '', amount: '',
   hmo_id: '', company_id: '', bill_to: 'HMO', remarks: '',
 });
 
@@ -51,16 +51,18 @@ export default function Billing() {
   // SOA import: null = closed, otherwise { items, basis, reading, importing }
   const [imp, setImp] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [autoPeriod, setAutoPeriod] = useState(true); // Settings switch: covered period follows the billing date
   const fileInput = useRef(null);
 
   function load() { api.getBilling().then((r) => setRows(r.data)).catch((e) => setFlash({ type: 'error', msg: e.message })); }
   useEffect(() => {
     load();
     api.getCompanies().then((r) => setAccounts(r.data));
+    api.getSettings().then((r) => setAutoPeriod(r.data.auto_covered_period_enabled !== false)).catch(() => {});
     // Arrived from the HMOs page ("+ New Charge"): open a transaction with that HMO already chosen.
     const pre = params.get('hmo_id');
     if (pre) {
-      setForm({ ...blank(), hmo_id: pre });
+      setForm({ ...blank(autoPeriod), hmo_id: pre });
       setParams({}, { replace: true });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,7 +136,7 @@ export default function Billing() {
     const files = Array.from(fileList || []);
     if (!files.length) return;
     setFlash(null);
-    const basis = imp?.basis || 'total';
+    const basis = imp?.basis || 'current';
     setImp((cur) => ({ items: cur?.items || [], basis, reading: true, importing: false }));
     const added = [];
     for (const f of files) {
@@ -148,7 +150,8 @@ export default function Billing() {
         added.push({
           key, file: f.name, error: '', selected: true, warnings: d.warnings || [],
           soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
-          duplicate: d.duplicate || '', txn_date: d.date || todayLocal(), ...periodFor(d.date || todayLocal()),
+          duplicate: d.duplicate || '', txn_date: d.date || todayLocal(),
+          ...(autoPeriod ? periodFor(d.date || todayLocal()) : { period_from: d.period_from || '', period_to: d.period_to || '' }),
           total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
           amount: pickAmount(d, basis),
         });
@@ -227,7 +230,7 @@ export default function Billing() {
           <div className="subtitle">Open a transaction, pick the HMO, then post it to that HMO's ledger</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" onClick={() => { setFlash(null); setImp((cur) => cur || { items: [], basis: 'total', reading: false, importing: false }); }}>Import SOA</button>
+          <button className="btn btn-secondary" onClick={() => { setFlash(null); setImp((cur) => cur || { items: [], basis: 'current', reading: false, importing: false }); }}>Import SOA</button>
           <button className="btn" onClick={() => { setFlash(null); setForm(blank()); }}>+ New Transaction</button>
         </div>
       </div>
@@ -260,12 +263,12 @@ export default function Billing() {
           {imp.items.length > 0 && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '16px 0 8px' }}>
-                <strong style={{ fontSize: 13 }}>Amount to bill</strong>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13.5 }}>
-                  <input type="radio" name="soa-basis" checked={imp.basis === 'total'} onChange={() => setBasis('total')} /> Total Amount Due
+                <strong style={{ fontSize: 16 }}>Amount to bill</strong>
+                <label style={{ display: 'flex', gap: 9, alignItems: 'center', fontSize: 16, cursor: 'pointer' }}>
+                  <input type="radio" name="soa-basis" style={{ width: 20, height: 20, margin: 0, cursor: 'pointer' }} checked={imp.basis === 'total'} onChange={() => setBasis('total')} /> Total Amount Due
                 </label>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13.5 }}>
-                  <input type="radio" name="soa-basis" checked={imp.basis === 'current'} onChange={() => setBasis('current')} /> Current Amount Due only
+                <label style={{ display: 'flex', gap: 9, alignItems: 'center', fontSize: 16, cursor: 'pointer' }}>
+                  <input type="radio" name="soa-basis" style={{ width: 20, height: 20, margin: 0, cursor: 'pointer' }} checked={imp.basis === 'current'} onChange={() => setBasis('current')} /> Current Amount Due only
                 </label>
               </div>
               <div className="table-wrap">
@@ -300,7 +303,7 @@ export default function Billing() {
                               </select>
                               {it.hmo_id && it.hmo_match === 'close' && <div style={{ fontSize: 12, color: 'var(--amber)' }}>Close match for "{it.company_name}"</div>}
                             </td>
-                            <td><input type="date" value={it.txn_date} onChange={(e) => patchItem(it.key, { txn_date: e.target.value, ...periodFor(e.target.value) })} /></td>
+                            <td><input type="date" value={it.txn_date} onChange={(e) => patchItem(it.key, { txn_date: e.target.value, ...(autoPeriod ? periodFor(e.target.value) : {}) })} /></td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <input type="date" value={it.period_from} onChange={(e) => patchItem(it.key, { period_from: e.target.value })} aria-label="Covered from" />
@@ -341,7 +344,7 @@ export default function Billing() {
             <div className="form-grid">
               <div className="form-group">
                 <label>Billing Date</label>
-                <input type="date" value={form.txn_date} onChange={(e) => setForm((f) => ({ ...f, txn_date: e.target.value, ...periodFor(e.target.value) }))} />
+                <input type="date" value={form.txn_date} onChange={(e) => setForm((f) => ({ ...f, txn_date: e.target.value, ...(autoPeriod ? periodFor(e.target.value) : {}) }))} />
               </div>
               <div className="form-group">
                 <label>Covered Period</label>

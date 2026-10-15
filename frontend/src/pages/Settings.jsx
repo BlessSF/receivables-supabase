@@ -10,12 +10,15 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [graceOn, setGraceOn] = useState(false);
   const [graceDays, setGraceDays] = useState('30');
+  const [autoPeriod, setAutoPeriod] = useState(true);
+  const [periodBusy, setPeriodBusy] = useState(false);
 
   useEffect(() => {
     api.getSettings()
       .then((r) => {
         setGraceOn(!!r.data.aging_grace_enabled);
         setGraceDays(String(r.data.aging_grace_days > 0 ? r.data.aging_grace_days : 30));
+        setAutoPeriod(r.data.auto_covered_period_enabled !== false);
         setLoaded(true);
       })
       .catch((e) => setErr(e.message));
@@ -34,6 +37,20 @@ export default function Settings() {
     setBusy(false);
   }
 
+  async function savePeriod(next) {
+    setAutoPeriod(next);
+    setPeriodBusy(true);
+    setFlash(null);
+    try {
+      const r = await api.saveCoveredPeriodSetting(next);
+      setFlash({ type: 'success', msg: r.message });
+    } catch (ex) {
+      setAutoPeriod(!next);
+      setFlash({ type: 'error', msg: ex.message });
+    }
+    setPeriodBusy(false);
+  }
+
   if (!user?.is_admin) return <div className="flash flash-error">Only an admin can open Settings.</div>;
   if (err) return <div className="flash flash-error">{err}</div>;
   if (!loaded) return <div className="loading-state">Loading…</div>;
@@ -50,6 +67,22 @@ export default function Settings() {
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
+
+      <div className="panel">
+        <h2>Automatic Covered Period</h2>
+        <p style={{ fontSize: 13, color: 'var(--slate)', margin: '-6px 0 16px', maxWidth: 640 }}>
+          When <strong>on</strong>, the covered period is filled in from the billing date: imports, new Billing transactions and new Ledger entries.
+          You can still change it by hand. When <strong>off</strong>, the covered period is left for you to enter (imports use the period written on the SOA file).
+        </p>
+        <label className="check">
+          <input type="checkbox" checked={autoPeriod} disabled={periodBusy} onChange={(e) => savePeriod(e.target.checked)} />
+          Fill the covered period automatically from the billing date
+        </label>
+        <p style={{ fontSize: 12.5, color: 'var(--slate)', marginTop: 14 }}>
+          Billed on the 16th–31st → the 1st–15th of the same month (Jan 30 → Jan 1 – Jan 15).<br />
+          Billed on the 1st–15th → the 16th–end of the previous month (Feb 15 → Jan 16 – Jan 31).
+        </p>
+      </div>
 
       <div className="panel">
         <h2>Aging &amp; Grace Period</h2>
