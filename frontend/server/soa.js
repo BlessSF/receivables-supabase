@@ -231,8 +231,8 @@ export async function parseSoa(buffer, fileName = '') {
     return c ? c.text : '';
   };
 
-  const soaNumber = text(/^series\s*no\.?\s*:?$/i).toUpperCase();
-  const company = text(/^company\s*name\s*:?$/i);
+  const soaNumber = (text(/^series\s*no\.?\s*:?$/i) || text(/^soa\s*(no\.?|number|#)\s*:?$/i)).toUpperCase();
+  const company = text(/^company\s*name\s*:?$/i) || text(/^company\s*\/\s*hmo\s*:?$/i) || text(/^hmo\s*:?$/i);
   const dateCell = valueFor(cells, /^date\s*:?$/i);
   const date = dateCell ? parseDateYmd(dateCell.value) : null;
   const terms = text(/^terms\s*:?$/i);
@@ -251,7 +251,7 @@ export async function parseSoa(buffer, fileName = '') {
   const rowTotal = r2(table.rows.reduce((t, r) => t + r.amount, 0));
   const dates = table.rows.map((r) => r.date).sort();
 
-  if (!soaNumber) warnings.push('No Series No. found.');
+  if (!soaNumber) warnings.push('No Series No. / SOA No. found.');
   if (!company) warnings.push('No Company Name found.');
   if (!date) warnings.push('No valid Date found.');
   if (totalDue === null) warnings.push('No Total Amount Due found.');

@@ -164,3 +164,22 @@ export function normalizePeriod(value) {
   const m = String(value ?? '').trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:-\d{1,2})?$/);
   return m ? `${m[1]}-${m[2]}-01` : null;
 }
+/**
+ * Covered period that goes with a billing date (billing dates are the 15th or the 30th/31st):
+ *   billed on the 16th-31st  -> 1st-15th of the SAME month   (Jan 30  -> Jan 1 - Jan 15)
+ *   billed on the 1st-15th   -> 16th-end of the PREVIOUS month (Feb 15 -> Jan 16 - Jan 31)
+ * Returns { from, to } as "YYYY-MM-DD", or null when the date isn't a valid YYYY-MM-DD.
+ */
+export function coveredPeriodForBilling(billingDate) {
+  const m = String(billingDate ?? '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return null;
+  let y = +m[1], mo = +m[2];
+  const d = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const p2 = (n) => String(n).padStart(2, '0');
+  if (d >= 16) return { from: `${y}-${p2(mo)}-01`, to: `${y}-${p2(mo)}-15` };
+  mo -= 1;
+  if (mo === 0) { mo = 12; y -= 1; }
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate(); // day 0 of next month = last day of this one
+  return { from: `${y}-${p2(mo)}-16`, to: `${y}-${p2(mo)}-${p2(last)}` };
+}

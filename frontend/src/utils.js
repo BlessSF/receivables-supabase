@@ -61,6 +61,25 @@ export function numClass(n, extra = '') {
 export function isExecutive(user) {
   return user?.role === 'executive';
 }
+/**
+ * Covered period that goes with a billing date.
+ *   billed 16th-31st -> 1st-15th of the same month   (Jan 30 -> Jan 1 - Jan 15)
+ *   billed 1st-15th  -> 16th-end of the previous month (Feb 15 -> Jan 16 - Jan 31)
+ * Returns { from, to } ("YYYY-MM-DD") or null for a blank / invalid date.
+ */
+export function coveredPeriodForBilling(billingDate) {
+  const m = String(billingDate || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return null;
+  let y = +m[1], mo = +m[2];
+  const d = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const p2 = (n) => String(n).padStart(2, '0');
+  if (d >= 16) return { from: `${y}-${p2(mo)}-01`, to: `${y}-${p2(mo)}-15` };
+  mo -= 1;
+  if (mo === 0) { mo = 12; y -= 1; }
+  const last = new Date(y, mo, 0).getDate();
+  return { from: `${y}-${p2(mo)}-16`, to: `${y}-${p2(mo)}-${p2(last)}` };
+}
 /** Staff accounts: see every company's ledger, edit only Payment Date, Check Ref and Paid. */
 export function isStaff(user) {
   return user?.role === 'staff';

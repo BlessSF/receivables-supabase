@@ -8,7 +8,7 @@ import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { todayYmd, todayMs, parseDate, normalizePeriod } from './dates.js';
+import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
@@ -412,10 +412,12 @@ const actions = {
     const cid = toInt(input.company_id);
     await requireCompanyAccess(auth, cid);
     const cName = await scalar('SELECT name FROM companies WHERE id = ?', [cid]);
+    const billingDate = todayYmd();
+    const cp = coveredPeriodForBilling(billingDate); // covered period follows the billing date automatically
     const id = await insertId(
-      `INSERT INTO ledger_entries (company_id, company_name, billing_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance)
-       VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0)`,
-      [cid, cName || null, todayYmd()]
+      `INSERT INTO ledger_entries (company_id, company_name, billing_date, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0)`,
+      [cid, cName || null, billingDate, cp?.from ?? null, cp?.to ?? null, cp ? normalizePeriod(cp.from) : null]
     );
     return { ok: true, id };
   },
@@ -581,8 +583,13 @@ const actions = {
     const service = trim(input.service ?? '');
     const remarks = elvis(trim(input.remarks ?? ''), null);
     const txnDate = elvis(trim(input.txn_date ?? ''), todayYmd());
-    const periodFrom = trim(input.period_from ?? '') || null;
-    const periodTo = trim(input.period_to ?? '') || null;
+    let periodFrom = trim(input.period_from ?? '') || null;
+    let periodTo = trim(input.period_to ?? '') || null;
+    if (!periodFrom && !periodTo) {
+      // No covered period given: work it out from the billing date.
+      const cp = coveredPeriodForBilling(txnDate);
+      if (cp) { periodFrom = cp.from; periodTo = cp.to; }
+    }
     const soa = trim(input.soa_number ?? '').toUpperCase() || null;
 
     if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);

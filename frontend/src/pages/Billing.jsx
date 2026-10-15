@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, coveredLabel } from '../utils';
+import { peso, fdate, coveredLabel, coveredPeriodForBilling } from '../utils';
 
 function todayLocal() {
   const d = new Date();
@@ -10,8 +10,14 @@ function todayLocal() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// Covered period always follows the billing date (see coveredPeriodForBilling)
+const periodFor = (date) => {
+  const cp = coveredPeriodForBilling(date);
+  return { period_from: cp ? cp.from : '', period_to: cp ? cp.to : '' };
+};
+
 const blank = () => ({
-  id: null, txn_date: todayLocal(), period_from: '', period_to: '', soa_number: '', amount: '',
+  id: null, txn_date: todayLocal(), ...periodFor(todayLocal()), soa_number: '', amount: '',
   hmo_id: '', company_id: '', bill_to: 'HMO', remarks: '',
 });
 
@@ -142,7 +148,7 @@ export default function Billing() {
         added.push({
           key, file: f.name, error: '', selected: true, warnings: d.warnings || [],
           soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
-          duplicate: d.duplicate || '', txn_date: d.date || todayLocal(), period_from: d.period_from || '', period_to: d.period_to || '',
+          duplicate: d.duplicate || '', txn_date: d.date || todayLocal(), ...periodFor(d.date || todayLocal()),
           total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
           amount: pickAmount(d, basis),
         });
@@ -294,7 +300,7 @@ export default function Billing() {
                               </select>
                               {it.hmo_id && it.hmo_match === 'close' && <div style={{ fontSize: 12, color: 'var(--amber)' }}>Close match for "{it.company_name}"</div>}
                             </td>
-                            <td><input type="date" value={it.txn_date} onChange={(e) => patchItem(it.key, { txn_date: e.target.value })} /></td>
+                            <td><input type="date" value={it.txn_date} onChange={(e) => patchItem(it.key, { txn_date: e.target.value, ...periodFor(e.target.value) })} /></td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <input type="date" value={it.period_from} onChange={(e) => patchItem(it.key, { period_from: e.target.value })} aria-label="Covered from" />
@@ -335,7 +341,7 @@ export default function Billing() {
             <div className="form-grid">
               <div className="form-group">
                 <label>Billing Date</label>
-                <input type="date" value={form.txn_date} onChange={set('txn_date')} />
+                <input type="date" value={form.txn_date} onChange={(e) => setForm((f) => ({ ...f, txn_date: e.target.value, ...periodFor(e.target.value) }))} />
               </div>
               <div className="form-group">
                 <label>Covered Period</label>
