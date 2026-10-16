@@ -3,7 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
-import { GRID_ID, gridKeyDown, DateCell, RemarksCell } from '../gridCells';
+import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -236,6 +236,17 @@ export default function Ledger() {
     }
   }
 
+  async function saveCovered(id, v) {
+    const r = await api.inlineUpdateLedger(id, 'covered_period', v);
+    const [pf, pt] = v ? v.split('|') : [null, null];
+    setData((d) => ({
+      ...d,
+      entries: d.entries.map((e) =>
+        e.id === id ? { ...e, period_from: pf, period_to: pt, period_date: pf ? `${pf.slice(0, 7)}-01` : null, receivable_amount: r.receivable_amount, balance: r.balance } : e
+      ),
+    }));
+  }
+
   async function addRow() {
     if (!companyId) { alert('Choose a company first.'); return; }
     const res = await api.quickAddLedger(companyId);
@@ -418,13 +429,27 @@ export default function Ledger() {
                     className={highlightId === String(r.id) ? 'row-focus' : ''}
                     onClick={() => { if (highlightId && highlightId !== String(r.id)) setHighlightId(null); }}
                   >
-                    <td><div className="ro-cell ro-first">{formatLongDate(r.billing_date) || '—'}</div></td>
-                    <td><div className="ro-cell">{coveredLabel(r.period_from, r.period_to, r.period_date) || '—'}</div></td>
-                    <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
-                    <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
-                    <td><div className="ro-cell ro-num">{money(r.tax_withheld)}</div></td>
-                    <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
-                    <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
+                    {staff ? (
+                      <>
+                        <td><div className="ro-cell ro-first">{formatLongDate(r.billing_date) || '—'}</div></td>
+                        <td><div className="ro-cell">{coveredLabel(r.period_from, r.period_to, r.period_date) || '—'}</div></td>
+                        <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.tax_withheld)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
+                      </>
+                    ) : (
+                      <>
+                        <td><DateCell row={rowIdx} col={0} value={r.billing_date} onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
+                        <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
+                        <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
+                        <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
+                        <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
+                        <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
+                        <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                      </>
+                    )}
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
                     {(
                       <>
