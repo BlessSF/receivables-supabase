@@ -46,6 +46,7 @@ const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
+  'get_users', 'create_user', 'update_user', 'delete_user',
 ]);
 
 function recalcRow(d) {
@@ -134,7 +135,7 @@ const actions = {
     const nowYear = toInt(todayKey.slice(0, 4));
     const nowMonth = toInt(todayKey.slice(5, 7));
     const view = input.view === 'year' ? 'year' : input.view === 'all' ? 'all' : 'month';
-    const type = input.type === 'HMO' ? 'HMO' : input.type === 'COMPANY' ? 'COMPANY' : null; // null = everything
+    const type = ['HMO', 'COMPANY', 'CHARGE'].includes(input.type) ? input.type : null; // null = everything (CHARGE = Company Charges accounts)
     let year = toInt(input.year);
     if (year < 2000 || year > 2100) year = nowYear;
     let month = toInt(input.month);
@@ -170,7 +171,7 @@ const actions = {
     const companies = new Map();
     const periodEntries = [];
     const undated = { billed_count: 0, billed_total: 0, collected_total: 0 };
-    const byType = { COMPANY: blank(), HMO: blank() };
+    const byType = { COMPANY: blank(), HMO: blank(), CHARGE: blank() };
 
     const co = (r) => {
       let c = companies.get(r.company_id);
@@ -189,7 +190,7 @@ const actions = {
       // placed by the covered period (its end date), falling back to the billing date when none is set
       const coverDate = r.period_to || r.period_from || r.billing_date;
       const b = ymOf(coverDate);
-      const tt = byType[r.account_type === 'HMO' ? 'HMO' : 'COMPANY'];
+      const tt = byType[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'];
       if (!b) {
         undated.billed_count++; undated.billed_total += amount;
       } else {
@@ -248,11 +249,11 @@ const actions = {
       type,
       view, year, month,
       period: withRate(period),
-      by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO) },
+      by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),
       aging,
-      companies: companyList.slice(0, 15),
+      companies: companyList.slice(0, 300), // the page shows the top 15 when combined, all of them in separate blocks
       companies_total: companyList.length,
       entries: periodEntries.slice(0, 100).map(({ _t, ...e }) => e),
       entries_total: periodEntries.length,
@@ -268,7 +269,7 @@ const actions = {
     const due = await makeImplicitDue();
     const rows = await all(
       `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.amount, l.paid_amount, l.balance,
-              l.soa_number, c.name AS company_name
+              l.soa_number, c.name AS company_name, c.account_type
        FROM ledger_entries l JOIN companies c ON c.id = l.company_id
        WHERE 1=1 ${bw}`, bp);
 
@@ -277,6 +278,8 @@ const actions = {
     let billed = 0, collected = 0, outstanding = 0, pastDueTotal = 0, pastDueCount = 0, openCount = 0;
     let overpaidTotal = 0, overpaidCount = 0;
     const byCompany = new Map();
+    const typeOf = (t) => (t === 'HMO' ? 'HMO' : t === 'CHARGE' ? 'CHARGE' : 'COMPANY');
+    const byType = Object.fromEntries(['HMO', 'CHARGE', 'COMPANY'].map((k) => [k, { billed: 0, collected: 0, outstanding: 0, past_due: 0, past_due_count: 0, open_count: 0, accounts: new Set() }]));
 
     // Month keys for the last 12 months (Manila time), oldest first
     const today = new Date(todayMs());
@@ -300,6 +303,8 @@ const actions = {
       const bal = toFloat(r.balance);
       billed += amount;
       collected += paid;
+      const tg = byType[typeOf(r.account_type)];
+      tg.billed += amount; tg.collected += paid; tg.accounts.add(r.company_id);
       const bm = monthOf(r.period_to || r.period_from || r.billing_date); // covered period month
       if (bm && trend[bm]) trend[bm].billed += amount;
       if (paid > 0) {
@@ -315,6 +320,7 @@ const actions = {
 
       outstanding += bal;
       openCount++;
+      tg.outstanding += bal; tg.open_count++;
       const d = daysOverdue(dueOf(r, due));
       const bucket = agingBucket(d);
       buckets[bucket].count++;
@@ -322,7 +328,8 @@ const actions = {
       if (d !== null && d > 0) {
         pastDueTotal += bal;
         pastDueCount++;
-        const c = byCompany.get(r.company_id) || { id: toInt(r.company_id), name: r.company_name, past_due: 0, entries: 0, oldest_days: 0 };
+        tg.past_due += bal; tg.past_due_count++;
+        const c = byCompany.get(r.company_id) || { id: toInt(r.company_id), name: r.company_name, account_type: typeOf(r.account_type), past_due: 0, entries: 0, oldest_days: 0 };
         c.past_due += bal;
         c.entries++;
         c.oldest_days = Math.max(c.oldest_days, d);
@@ -344,6 +351,8 @@ const actions = {
       },
       buckets,
       top_past_due: [...byCompany.values()].sort((a, b) => b.past_due - a.past_due).slice(0, 8),
+      past_due_accounts: [...byCompany.values()].sort((a, b) => b.past_due - a.past_due).slice(0, 300),
+      by_type: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, { ...v, accounts: v.accounts.size, collection_rate: v.billed > 0 ? round((v.collected / v.billed) * 100, 1) : 0 }])),
       trend: Object.values(trend),
       recent_payments: recentPayments.slice(0, 8).map(({ _t, ...p }) => p),
     } };
@@ -361,7 +370,7 @@ const actions = {
     const showAll = truthy(input.show_all) && !auth.isExecutive();
     const searchQuery = trim(input.q ?? '');
 
-    let sql = 'SELECT l.*, c.name as company_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id';
+    let sql = 'SELECT l.*, c.name as company_name, c.account_type FROM ledger_entries l JOIN companies c ON c.id = l.company_id';
     const where = [];
     let params = [];
     if (!showAll) where.push('l.balance > 0.009');
@@ -1159,16 +1168,17 @@ const actions = {
   // Admins create and manage Staff accounts. Admin / branch / executive accounts
   // are listed for reference but can't be edited or deleted from here.
   async get_users(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const data = await all('SELECT id, username, full_name, role, created_at FROM users ORDER BY (role = \'staff\') DESC, UPPER(username) COLLATE "C" ASC');
     return { ok: true, data };
   },
 
   async create_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const username = trim(input.username ?? '');
     const password = String(input.password ?? '');
     const fullName = elvis(trim(input.full_name ?? ''), username);
+    const role = input.role === 'admin' ? 'admin' : 'staff'; // admins and executives may add Admin or Staff accounts
     if (!/^[A-Za-z0-9._-]{3,50}$/.test(username)) {
       jsonExit({ ok: false, error: 'Username must be 3-50 characters: letters, numbers, dot, dash or underscore.' }, 400);
     }
@@ -1177,12 +1187,12 @@ const actions = {
       jsonExit({ ok: false, error: `The username "${username}" is already taken.` }, 409);
     }
     const hash = await bcrypt.hash(password, 10);
-    const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, 'staff']);
-    return { ok: true, id, message: `Staff account "${username}" created.` };
+    const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, role]);
+    return { ok: true, id, message: `${role === 'admin' ? 'Admin' : 'Staff'} account "${username}" created.` };
   },
 
   async update_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
@@ -1199,7 +1209,7 @@ const actions = {
   },
 
   async delete_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);

@@ -73,7 +73,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
-  const [scope, setScope] = useState(''); // '' = overall (everything) | 'COMPANY' | 'HMO'
+  const [scope, setScope] = useState(''); // '' = overall (everything) | 'COMPANY' | 'HMO' | 'CHARGE'
+  const [grouping, setGrouping] = useState('all'); // 'all' = combined | 'each' = one block per account, HMOs first then Company Charges
   const [companyId, setCompanyId] = useState('');
   const [view, setView] = useState('month');
   const [year, setYear] = useState('');
@@ -104,9 +105,9 @@ export default function Dashboard() {
   if (!data) return <div className="loading-state">Loading dashboard…</div>;
 
   const company = companyId ? companies.find((c) => String(c.id) === String(companyId)) : null;
-  const scopeAll = scope === 'HMO' ? 'All HMOs' : scope === 'COMPANY' ? 'All companies' : 'All companies & HMOs';
+  const scopeAll = scope === 'HMO' ? 'All HMOs' : scope === 'CHARGE' ? 'All Company Charges' : scope === 'COMPANY' ? 'All companies' : 'All HMOs & Company Charges';
   const scopeName = company ? company.name : scopeAll;
-  const noun = scope === 'HMO' ? 'HMOs' : scope === 'COMPANY' ? 'companies' : 'accounts';
+  const noun = scope === 'HMO' ? 'HMOs' : scope === 'CHARGE' ? 'company charges' : scope === 'COMPANY' ? 'companies' : 'accounts';
   const p = data.period;
   const isMonth = data.view === 'month';
   const isAllTime = data.view === 'all';
@@ -130,7 +131,7 @@ export default function Dashboard() {
   const changeScope = (next) => { setScope(next); setCompanyId(''); };
   const pickAccount = (id) => {
     const acc = companies.find((c) => String(c.id) === String(id));
-    if (acc) setScope(acc.account_type === 'HMO' ? 'HMO' : 'COMPANY');
+    if (acc) setScope(acc.account_type === 'HMO' ? 'HMO' : acc.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY');
     setCompanyId(id ? String(id) : '');
   };
   const drillYear = (yr) => { setYear(yr); setMonth(''); setView('month'); };
@@ -163,28 +164,40 @@ export default function Dashboard() {
       {err && <div className="flash flash-error">{err}</div>}
 
       <div className="dash-scope" role="tablist" aria-label="Show">
-        {[['', 'Overall'], ['COMPANY', 'Companies'], ['HMO', 'HMOs']].map(([k, label]) => (
+        {[['', 'Overall'], ['HMO', 'HMOs'], ['CHARGE', 'Company Charges'], ['COMPANY', 'Companies']].map(([k, label]) => (
           <button key={k || 'all'} type="button" role="tab" aria-selected={scope === k} className={scope === k ? 'on' : ''} onClick={() => changeScope(k)}>{label}</button>
         ))}
       </div>
 
       <div className="panel dash-controls">
         <div className="dash-control">
-          <label htmlFor="dash-company">{scope === 'HMO' ? 'HMO' : scope === 'COMPANY' ? 'Company' : 'Account'}</label>
+          <label htmlFor="dash-company">{scope === 'HMO' ? 'HMO' : scope === 'CHARGE' ? 'Company Charge' : scope === 'COMPANY' ? 'Company' : 'Account'}</label>
           <select id="dash-company" className="select-inline" value={companyId} onChange={(e) => pickAccount(e.target.value)}>
             <option value="">{scopeAll} ({pickable.length})</option>
             {scope ? pickable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : (
               <>
-                <optgroup label="Companies">
-                  {companies.filter((c) => c.account_type !== 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
                 <optgroup label="HMOs">
                   {companies.filter((c) => c.account_type === 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+                <optgroup label="Company Charges">
+                  {companies.filter((c) => c.account_type === 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+                <optgroup label="Companies">
+                  {companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </optgroup>
               </>
             )}
           </select>
         </div>
+        {!company && (
+          <div className="dash-control">
+            <label htmlFor="dash-group">Show</label>
+            <select id="dash-group" className="select-inline" value={grouping} onChange={(e) => setGrouping(e.target.value)}>
+              <option value="all">All accounts (combined)</option>
+              <option value="each">Each account (separate blocks)</option>
+            </select>
+          </div>
+        )}
         <div className="dash-control">
           <label>View</label>
           <div className="seg" role="tablist">
@@ -205,7 +218,7 @@ export default function Dashboard() {
           <div className="dash-control dash-control-end">
             {company.status !== 'ACTIVE' && <span className={`badge ${company.status === 'BANKRUPT' ? 'badge-danger' : 'badge-secondary'}`}>{company.status}</span>}
             <Link to={`/ledger?company_id=${company.id}`} className="btn btn-secondary btn-sm">Open ledger</Link>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCompanyId('')}>Back to {scope === 'HMO' ? 'all HMOs' : scope === 'COMPANY' ? 'all companies' : 'overall'}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCompanyId('')}>Back to {scope === 'HMO' ? 'all HMOs' : scope === 'CHARGE' ? 'all company charges' : scope === 'COMPANY' ? 'all companies' : 'overall'}</button>
           </div>
         )}
       </div>
@@ -325,9 +338,9 @@ export default function Dashboard() {
 
       {!company && !scope && (
         <div className="panel">
-          <h2>Companies vs HMOs <span className="dash-sub">· {periodName}</span></h2>
+          <h2>HMOs vs Company Charges <span className="dash-sub">· {periodName}</span></h2>
           <div className="split-grid">
-            {[['COMPANY', 'Companies'], ['HMO', 'HMOs']].map(([k, label]) => {
+            {[['HMO', 'HMOs'], ['CHARGE', 'Company Charges'], ['COMPANY', 'Companies']].filter(([k]) => k !== 'COMPANY' || data.by_type.COMPANY.entries > 0).map(([k, label]) => {
               const t = data.by_type[k];
               return (
                 <button key={k} type="button" className="split-card" onClick={() => changeScope(k)} title={`Open the ${label} dashboard`}>
@@ -342,14 +355,34 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!company ? (
+      {!company && grouping === 'each' ? (
+        [
+          { key: 'HMO', title: 'HMOs', list: data.companies.filter((c) => c.account_type === 'HMO') },
+          { key: 'CHARGE', title: 'Company Charges', list: data.companies.filter((c) => c.account_type === 'CHARGE') },
+          { key: 'COMPANY', title: 'Companies', list: data.companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE') },
+        ].filter((g) => g.list.length > 0).map((g) => (
+          <div className="panel" key={g.key}>
+            <h2>{g.title} · {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
+            <div className="split-grid">
+              {g.list.map((c) => (
+                <button key={c.id} type="button" className="split-card" onClick={() => pickAccount(c.id)} title={`Show ${c.name}'s dashboard`}>
+                  <span className="split-title">{c.name}</span>
+                  <span className="split-value num">{peso(c.outstanding)}</span>
+                  <span className="split-sub">unpaid · {peso(c.past_due)} past due</span>
+                  <span className="split-sub">Billed {peso(c.billed)} · Collected {peso(c.collected)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
+      ) : !company ? (
         <div className="panel">
           <h2>{noun.charAt(0).toUpperCase() + noun.slice(1)} · {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
           {data.companies.length === 0 ? (
             <div className="empty-state">No activity for {periodName}.</div>
           ) : (
             <ol className="rank-list">
-              {data.companies.map((c, i) => (
+              {data.companies.slice(0, 15).map((c, i) => (
                 <li key={c.id}>
                   <button type="button" className="rank-row rank-button" onClick={() => pickAccount(c.id)} title={`Show ${c.name}'s dashboard`}>
                     <span className="rank-pos">{i + 1}</span>
@@ -365,8 +398,8 @@ export default function Dashboard() {
               ))}
             </ol>
           )}
-          {data.companies_total > data.companies.length && (
-            <div className="dash-hint">Showing the top {data.companies.length} of {data.companies_total} {noun} by unpaid balance.</div>
+          {data.companies_total > 15 && (
+            <div className="dash-hint">Showing the top 15 of {data.companies_total} {noun} by unpaid balance.</div>
           )}
         </div>
       ) : (

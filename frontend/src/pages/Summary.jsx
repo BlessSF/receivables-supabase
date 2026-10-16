@@ -143,7 +143,7 @@ export default function Summary() {
     const byCo = new Map();
     (rows || []).forEach((r) => {
       const key = r.company_id;
-      if (!byCo.has(key)) byCo.set(key, { id: key, name: r.company_name || '—', list: [] });
+      if (!byCo.has(key)) byCo.set(key, { id: key, name: r.company_name || '—', account_type: r.account_type, list: [] });
       byCo.get(key).list.push(r);
     });
     return [...byCo.values()]
@@ -261,9 +261,17 @@ export default function Summary() {
                   else { setCompanyId(v); setGrouping('all'); }
                 }}
               >
-                <option value="">All companies (combined)</option>
-                <option value="__each">Each company (separate blocks)</option>
-                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="">All accounts (combined)</option>
+                <option value="__each">Each account (separate blocks)</option>
+                <optgroup label="HMOs">
+                  {companies.filter((c) => c.account_type === 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+                <optgroup label="Company Charges">
+                  {companies.filter((c) => c.account_type === 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+                <optgroup label="Companies">
+                  {companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
               </select>
             </div>
           </div>
@@ -277,20 +285,29 @@ export default function Summary() {
           {rows && grouping === 'company' && (
             companyBlocks.length === 0
               ? <div className="empty-state">No entries in {year}.</div>
-              : companyBlocks.map((c) => {
-                const t = sumMonths(c.months);
-                return (
-                  <details key={c.id} open style={{ marginBottom: 16 }}>
-                    <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15, padding: '8px 0', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                      <span style={{ color: 'var(--teal)' }}>{c.name}</span>
-                      <span style={{ fontWeight: 500, fontSize: 12.5, color: 'var(--slate)' }}>
-                        {t.entries} entr{t.entries === 1 ? 'y' : 'ies'} · billed {peso(t.billed)} · {readOnly ? 'still owed' : 'deduction'} {peso(t.owed)}
-                      </span>
-                    </summary>
-                    <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
-                  </details>
-                );
-              })
+              : [
+                { key: 'hmo', title: 'HMOs', list: companyBlocks.filter((c) => c.account_type === 'HMO') },
+                { key: 'charge', title: 'Company Charges', list: companyBlocks.filter((c) => c.account_type === 'CHARGE') },
+                { key: 'co', title: 'Companies', list: companyBlocks.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE') },
+              ].filter((g) => g.list.length > 0).map((g) => (
+                <div key={g.key} style={{ marginBottom: 22 }}>
+                  <h3 style={{ margin: '4px 0 8px', fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--slate)' }}>{g.title}</h3>
+                  {g.list.map((c) => {
+                    const t = sumMonths(c.months);
+                    return (
+                      <details key={c.id} open style={{ marginBottom: 16 }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15, padding: '8px 0', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                          <span style={{ color: 'var(--teal)' }}>{c.name}</span>
+                          <span style={{ fontWeight: 500, fontSize: 12.5, color: 'var(--slate)' }}>
+                            {t.entries} entr{t.entries === 1 ? 'y' : 'ies'} · billed {peso(t.billed)} · {readOnly ? 'still owed' : 'deduction'} {peso(t.owed)}
+                          </span>
+                        </summary>
+                        <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
+                      </details>
+                    );
+                  })}
+                </div>
+              ))
           )}
         </div>
       )}

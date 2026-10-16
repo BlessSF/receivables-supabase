@@ -68,6 +68,7 @@ export default function ExecDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
+  const [grouping, setGrouping] = useState('all'); // 'all' = combined | 'each' = separate blocks: HMOs, then Company Charges
 
   useEffect(() => {
     api.getExecDashboard().then((r) => setData(r.data)).catch((e) => setErr(e.message));
@@ -84,6 +85,38 @@ export default function ExecDashboard() {
   const last3 = data.trend.slice(-3);
   const billed3 = last3.reduce((s, m) => s + m.billed, 0);
   const collected3 = last3.reduce((s, m) => s + m.collected, 0);
+
+  const callers = (list) => {
+    const mx = Math.max(1, ...list.map((c) => c.past_due));
+    return (
+      <ol className="exec-callers">
+        {list.map((c, i) => (
+          <li key={c.id}>
+            <Link to={`/summary?company_id=${c.id}`} className="exec-caller" title={`See ${c.name}'s past-due entries`}>
+              <span className="exec-rank">{i + 1}</span>
+              <div className="exec-caller-main">
+                <div className="exec-caller-top">
+                  <strong>{c.name}</strong>
+                  <span className="num">{peso(c.past_due)}</span>
+                </div>
+                <div className="exec-caller-bar"><div style={{ width: `${(c.past_due / mx) * 100}%` }} /></div>
+                <div className="exec-caller-meta">
+                  {c.entries} past-due {c.entries === 1 ? 'entry' : 'entries'} · oldest{' '}
+                  <span className={c.oldest_days > 90 ? 'text-danger' : ''}>{c.oldest_days.toLocaleString()} days late</span>
+                </div>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    );
+  };
+  const groups = [
+    { key: 'HMO', title: 'HMOs', list: (data.past_due_accounts || []).filter((c) => c.account_type === 'HMO') },
+    { key: 'CHARGE', title: 'Company Charges', list: (data.past_due_accounts || []).filter((c) => c.account_type === 'CHARGE') },
+    { key: 'COMPANY', title: 'Companies', list: (data.past_due_accounts || []).filter((c) => c.account_type === 'COMPANY') },
+  ];
+  const typeCards = [['HMO', 'HMOs'], ['CHARGE', 'Company Charges'], ['COMPANY', 'Companies']].filter(([k]) => data.by_type?.[k] && (data.by_type[k].billed > 0 || data.by_type[k].outstanding > 0));
 
   return (
     <div className="exec">
@@ -119,6 +152,27 @@ export default function ExecDashboard() {
         </div>
       </div>
 
+      {typeCards.length > 0 && (
+        <section className="panel">
+          <div className="exec-section-head">
+            <h2>HMOs vs Company Charges</h2>
+          </div>
+          <div className="split-grid">
+            {typeCards.map(([k, label]) => {
+              const tt = data.by_type[k];
+              return (
+                <div key={k} className="split-card" style={{ cursor: 'default' }}>
+                  <span className="split-title">{label} <span style={{ fontWeight: 500, color: 'var(--slate)' }}>· {tt.accounts} account{tt.accounts === 1 ? '' : 's'}</span></span>
+                  <span className="split-value num">{peso(tt.outstanding)}</span>
+                  <span className="split-sub">still owed · {peso(tt.past_due)} past due</span>
+                  <span className="split-sub">Billed {peso(tt.billed)} · Collected {peso(tt.collected)} ({tt.collection_rate}%)</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="panel">
         <div className="exec-section-head">
           <h2>How late is the money?</h2>
@@ -149,36 +203,37 @@ export default function ExecDashboard() {
       </section>
 
       <div className="exec-grid">
-        <section className="panel">
-          <div className="exec-section-head">
-            <h2>Who to call first</h2>
-            <Link to="/past-due" className="exec-link">All past due →</Link>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <select className="select-inline" value={grouping} onChange={(e) => setGrouping(e.target.value)} aria-label="Show">
+              <option value="all">All accounts (combined)</option>
+              <option value="each">Each account (separate blocks)</option>
+            </select>
           </div>
-          {data.top_past_due.length === 0 ? (
-            <div className="empty-state">Nothing is past due. 🎉</div>
+          {grouping === 'each' ? (
+            groups.filter((g) => g.list.length > 0).length === 0
+              ? <section className="panel"><div className="empty-state">Nothing is past due. 🎉</div></section>
+              : groups.filter((g) => g.list.length > 0).map((g) => (
+                <section className="panel" key={g.key}>
+                  <div className="exec-section-head">
+                    <h2>{g.title} · who to call first</h2>
+                    <Link to="/past-due" className="exec-link">All past due →</Link>
+                  </div>
+                  {callers(g.list)}
+                </section>
+              ))
           ) : (
-            <ol className="exec-callers">
-              {data.top_past_due.map((c, i) => (
-                <li key={c.id}>
-                  <Link to={`/summary?company_id=${c.id}`} className="exec-caller" title={`See ${c.name}'s past-due entries`}>
-                    <span className="exec-rank">{i + 1}</span>
-                    <div className="exec-caller-main">
-                      <div className="exec-caller-top">
-                        <strong>{c.name}</strong>
-                        <span className="num">{peso(c.past_due)}</span>
-                      </div>
-                      <div className="exec-caller-bar"><div style={{ width: `${(c.past_due / topMax) * 100}%` }} /></div>
-                      <div className="exec-caller-meta">
-                        {c.entries} past-due {c.entries === 1 ? 'entry' : 'entries'} · oldest{' '}
-                        <span className={c.oldest_days > 90 ? 'text-danger' : ''}>{c.oldest_days.toLocaleString()} days late</span>
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ol>
+            <section className="panel">
+              <div className="exec-section-head">
+                <h2>Who to call first</h2>
+                <Link to="/past-due" className="exec-link">All past due →</Link>
+              </div>
+              {data.top_past_due.length === 0 ? (
+                <div className="empty-state">Nothing is past due. 🎉</div>
+              ) : callers(data.top_past_due)}
+            </section>
           )}
-        </section>
+        </div>
 
         <div className="exec-side">
           <section className="panel">
