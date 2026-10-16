@@ -1156,6 +1156,27 @@ const actions = {
     return { ok: true, message: 'SOA entry updated.' };
   },
 
+  // Delete an SOA number from the tracker (even one marked USED), so it can be issued again.
+  // If it is attached to a ledger entry and clear_ledger is set, that entry's SOA # is cleared too
+  // (the entry and its amounts stay) -- otherwise the ledger entry would keep holding the number.
+  async soa_delete(input, auth) {
+    const id = toInt(input.id);
+    const row = await one('SELECT id, soa_number, company_id, ledger_entry_id FROM soa_tracker WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'SOA entry not found.' }, 404);
+    if (row.company_id) await requireCompanyAccess(auth, toInt(row.company_id));
+    let cleared = false;
+    if (row.ledger_entry_id && truthy(input.clear_ledger)) {
+      const e = await one('SELECT id, company_id FROM ledger_entries WHERE id = ?', [toInt(row.ledger_entry_id)]);
+      if (e) {
+        await requireCompanyAccess(auth, toInt(e.company_id));
+        await exec(`UPDATE ledger_entries SET soa_number = NULL, updated_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`, [toInt(e.id)]);
+        cleared = true;
+      }
+    }
+    await exec('DELETE FROM soa_tracker WHERE id = ?', [id]);
+    return { ok: true, message: `SOA number ${row.soa_number} deleted${cleared ? ' and removed from its ledger entry' : ''}.` };
+  },
+
   async soa_check(input) {
     const number = trim(input.number ?? '').toUpperCase();
     if (number === '') return { ok: true, data: { tracker: [], ledger: [] } };

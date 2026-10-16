@@ -85,6 +85,7 @@ export const api = {
   getSoaTracker: (prefix) => call('get_soa_tracker', { params: { prefix } }),
   soaGenerate: (body) => call('soa_generate', { method: 'POST', body }),
   soaUpdateEntry: (body) => call('soa_update_entry', { method: 'POST', body }),
+  soaDelete: (id, clearLedger) => call('soa_delete', { method: 'POST', body: { id, clear_ledger: clearLedger ? 1 : 0 } }),
   soaCheck: (number) => call('soa_check', { params: { number } }),
 
   // users (admin only)

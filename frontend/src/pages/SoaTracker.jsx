@@ -52,6 +52,22 @@ export default function SoaTracker() {
     }
   }
 
+  async function removeEntry(entry) {
+    const linked = !!entry.ledger_entry_id;
+    const msg = linked
+      ? `Delete SOA ${entry.soa_number}? It is used on ledger entry #${entry.ledger_entry_id}.\n\nOK = delete it AND clear the SOA # on that ledger entry (the entry and its amounts stay).\nCancel = do nothing.`
+      : `Delete SOA ${entry.soa_number} from the tracker?`;
+    if (!window.confirm(msg)) return;
+    try {
+      const r = await api.soaDelete(entry.id, linked);
+      setFlash({ type: 'success', msg: r.message });
+      if (checkResult) await runCheck({ preventDefault() {} });
+      load();
+    } catch (e2) {
+      setFlash({ type: 'error', msg: e2.message });
+    }
+  }
+
   async function runCheck(e) {
     e.preventDefault();
     if (!checkNumber.trim()) { setCheckResult(null); return; }
@@ -145,7 +161,7 @@ export default function SoaTracker() {
                         <td>{r.company_name || '—'}</td>
                         <td><span className={`badge ${r.status === 'USED' ? 'badge-info' : 'badge-secondary'}`}>{r.status === 'USED' ? 'Used' : 'Unused'}</span></td>
                         <td>{fdate(r.issued_date, { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
-                        <td><button className="btn btn-secondary btn-sm" onClick={() => startEdit(r)}>Edit</button></td>
+                        <td style={{ whiteSpace: 'nowrap' }}><button className="btn btn-secondary btn-sm" onClick={() => startEdit(r)}>Edit</button>{' '}<button className="btn btn-danger btn-sm" onClick={() => removeEntry(r)}>Delete</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -223,7 +239,7 @@ export default function SoaTracker() {
                   <td>{entry.company_name || '—'}</td>
                   <td><span className={`badge ${entry.status === 'USED' ? 'badge-info' : 'badge-secondary'}`}>{entry.status === 'USED' ? 'Used' : 'Unused'}</span></td>
                   <td>{fdate(entry.issued_date, { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
-                  <td><button className="btn btn-secondary btn-sm" onClick={() => startEdit(entry)}>Edit</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}><button className="btn btn-secondary btn-sm" onClick={() => startEdit(entry)}>Edit</button>{' '}<button className="btn btn-danger btn-sm" onClick={() => removeEntry(entry)}>Delete</button></td>
                 </tr>
               ))}
             </tbody>
