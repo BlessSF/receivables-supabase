@@ -717,9 +717,10 @@ const actions = {
 
   async save_billing(input, auth) {
     const id = toInt(input.id);
-    const hmoId = toInt(input.hmo_id) || null;
-    const companyId = toInt(input.company_id) || null;
     const billTo = input.bill_to === 'COMPANY' ? 'COMPANY' : 'HMO';
+    // One account per transaction: an HMO, or a "Charge to company" account
+    const hmoId = billTo === 'HMO' ? toInt(input.hmo_id) || null : null;
+    const companyId = billTo === 'COMPANY' ? toInt(input.company_id) || null : null;
     const amount = toFloat(input.amount);
     const patient = trim(input.patient_name ?? '');
     const service = trim(input.service ?? '');
@@ -736,7 +737,7 @@ const actions = {
 
     if (!hmoId && !companyId) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
     if (billTo === 'HMO' && !hmoId) jsonExit({ ok: false, error: 'Billing the HMO needs an HMO selected.' }, 400);
-    if (billTo === 'COMPANY' && !companyId) jsonExit({ ok: false, error: 'Billing the company needs a company selected.' }, 400);
+    if (billTo === 'COMPANY' && !companyId) jsonExit({ ok: false, error: 'Charge to company needs a charge account selected.' }, 400);
     if (amount < 0) jsonExit({ ok: false, error: 'Amount cannot be negative.' }, 400);
     if ((periodFrom && !periodTo) || (!periodFrom && periodTo)) jsonExit({ ok: false, error: 'Enter both dates for the covered period.' }, 400);
     if (periodFrom && periodTo && periodFrom > periodTo) jsonExit({ ok: false, error: 'The covered period "to" date cannot be before the "from" date.' }, 400);
@@ -755,7 +756,7 @@ const actions = {
     }
     if (companyId) {
       const t = await scalar('SELECT account_type FROM companies WHERE id=?', [companyId]);
-      if (t !== 'COMPANY') jsonExit({ ok: false, error: 'The company you chose is an HMO account.' }, 400);
+      if (t !== 'CHARGE') jsonExit({ ok: false, error: 'Choose a "Charge to company" account (add one under Companies).' }, 400);
       await requireCompanyAccess(auth, companyId);
     }
 
@@ -1233,7 +1234,7 @@ async function saveCompany(input, auth, action) {
   const name = trim(input.name ?? '');
   const code = trim(input.code ?? '');
   const status = STATUSES.includes(input.status ?? '') ? input.status : 'ACTIVE';
-  const accountType = (input.account_type ?? 'COMPANY') === 'HMO' ? 'HMO' : 'COMPANY';
+  const accountType = ['HMO', 'CHARGE'].includes(input.account_type) ? input.account_type : 'COMPANY'; // CHARGE = "Charge to company" ledger (same name as an HMO is allowed)
   const contact = trim(input.contact_person ?? '');
   const number = trim(input.contact_number ?? '');
   const email = trim(input.email_address ?? '');
