@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import LongDateInput from '../LongDateInput';
+import MoneyInput from '../MoneyInput';
 import { peso, fdate, coveredLabel, coveredPeriodForBilling, DEFAULT_COVERED_RULES } from '../utils';
 
 function todayLocal() {
@@ -319,7 +320,7 @@ export default function Billing() {
                                 <LongDateInput value={it.period_to} min={it.period_from} ariaLabel="Covered to" onChange={(v) => patchItem(it.key, { period_to: v })} />
                               </div>
                             </td>
-                            <td className="text-right"><input type="number" step="0.01" min="0" style={{ width: 120, textAlign: 'right' }} value={it.amount} onChange={(e) => patchItem(it.key, { amount: e.target.value })} /></td>
+                            <td className="text-right"><MoneyInput style={{ width: 120, textAlign: 'right' }} value={it.amount} onChange={(v) => patchItem(it.key, { amount: v })} /></td>
                           </>)}
                           <td className="col-sticky-r" style={{ minWidth: 170, maxWidth: 240 }}>
                             {problem
@@ -368,7 +369,7 @@ export default function Billing() {
               </div>
               <div className="form-group">
                 <label>Amount (₱)</label>
-                <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} />
+                <MoneyInput value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
               </div>
               <div className="form-group">
                 <label>Bill to</label>

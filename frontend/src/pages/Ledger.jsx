@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, coveredLabel, formatLongDate, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
+import MoneyInput, { fmtNum } from '../MoneyInput';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
 
 let measureCtx = null;
@@ -23,6 +24,17 @@ function TrashIcon() {
   );
 }
 
+const r2 = (n) => Math.round(n * 100) / 100;
+// Tax W/H, Rebate, Receivable and Balance worked out from the typed numbers (see the Ledger formulas).
+function deriveRow(e, taxPct, amountOverride, paidOverride) {
+  const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
+  const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
+  const tax = r2((amount * taxPct) / 100);
+  const base = amount - tax + (Number(e.surcharge) || 0);
+  const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
+  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: r2(amount - paid) };
+}
+
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
   const [val, setVal] = useState(value ?? '');
   const [state, setState] = useState(''); // '', 'saving', 'saved', 'error'
@@ -39,6 +51,7 @@ function EditableText({ value, onSave, onLive, type = 'text', align, row, col })
 
   async function commit() {
     if (isNum && isZero(val) && isZero(value)) { setVal(value ?? ''); return; } // still zero: nothing to save
+    if (isNum && Number(val) === Number(value)) return; // same number, nothing to save
     if ((val || '') === (value ?? '')) return;
     setState('saving');
     try {
@@ -56,17 +69,28 @@ function EditableText({ value, onSave, onLive, type = 'text', align, row, col })
 
   return (
     <div className={`editable-cell ${state}`} data-r={row} data-c={col}>
-      <input
-        type={type}
-        className={type === 'number' ? 'num' : ''}
-        style={align ? { textAlign: align } : undefined}
-        value={val}
-        placeholder={isNum ? '0.00' : undefined}
-        onChange={(e) => { setVal(e.target.value); if (onLive) onLive(e.target.value); }}
-        onFocus={onFocus}
-        onBlur={async () => { await commit(); if (onLive) onLive(null); }}
-        onKeyDown={onKeyDown}
-      />
+      {isNum ? (
+        <MoneyInput
+          className="num"
+          style={align ? { textAlign: align } : undefined}
+          value={val}
+          placeholder="0.00"
+          onChange={(v) => { setVal(v); if (onLive) onLive(v); }}
+          onFocus={onFocus}
+          onBlur={async () => { await commit(); if (onLive) onLive(null); }}
+          onKeyDown={onKeyDown}
+        />
+      ) : (
+        <input
+          type={type}
+          style={align ? { textAlign: align } : undefined}
+          value={val}
+          onChange={(e) => { setVal(e.target.value); if (onLive) onLive(e.target.value); }}
+          onFocus={onFocus}
+          onBlur={async () => { await commit(); if (onLive) onLive(null); }}
+          onKeyDown={onKeyDown}
+        />
+      )}
     </div>
   );
 }
@@ -123,25 +147,17 @@ export default function Ledger() {
   //   Tax W/H = Amount x tax %,  Rebate = Amount - Tax W/H + Surcharge - Paid (only once something is paid),
   //   Receivable = Amount - Tax W/H + Surcharge - Rebate,  Balance = Amount - Paid.
   const taxPct = Number(data?.tax_percent ?? 2);
-  const liveEntries = useMemo(() => {
-    const r2 = (n) => Math.round(n * 100) / 100;
-    return entries.map((e) => {
-      const isLive = live && e.id === live.id;
-      const amount = isLive && live.field === 'amount' ? Number(live.value) || 0 : Number(e.amount) || 0;
-      const paid = isLive && live.field === 'paid_amount' ? Number(live.value) || 0 : Number(e.paid_amount) || 0;
-      const tax = r2((amount * taxPct) / 100);
-      const base = amount - tax + (Number(e.surcharge) || 0);
-      const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
-      return {
-        ...e,
-        ...(isLive ? (live.field === 'amount' ? { live_amount: amount } : { live_paid: paid }) : {}),
-        tax_withheld: tax,
-        rebate,
-        receivable_amount: r2(base - rebate),
-        balance: r2(amount - paid), // Balance = Amount - Paid, same as the server
-      };
-    });
-  }, [entries, live, taxPct]);
+  const liveEntries = useMemo(() => entries.map((e) => {
+    const isLive = live && e.id === live.id;
+    const ao = isLive && live.field === 'amount' ? Number(live.value) || 0 : undefined;
+    const po = isLive && live.field === 'paid_amount' ? Number(live.value) || 0 : undefined;
+    return {
+      ...e,
+      ...(ao !== undefined ? { live_amount: ao } : {}),
+      ...(po !== undefined ? { live_paid: po } : {}),
+      ...deriveRow(e, taxPct, ao, po),
+    };
+  }), [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
     let amount = 0, paid = 0, balance = 0, rebate = 0;
     const tally = {};
@@ -191,10 +207,11 @@ export default function Ledger() {
     ctx.font = `${BASE_FONT}px ${fam}`;
     const SAFE = 1.12; // tabular figures + 100% zoom render a bit wider than the canvas measures
     const tw = (v) => ctx.measureText(String(v ?? '')).width * SAFE;
+    const rows = entries.map((e) => ({ ...e, ...deriveRow(e, taxPct) })); // measure the computed Tax W/H, Rebate and Receivable too
     const widest = (key, fmt = (v) => v, min = '') =>
-      entries.reduce((m, r) => Math.max(m, tw(fmt(r[key]))), tw(min));
+      rows.reduce((m, r) => Math.max(m, tw(fmt(r[key]))), tw(min));
     ctx.font = `600 ${BASE_FONT}px ${fam}`;
-    const bold = (key) => entries.reduce((m, r) => Math.max(m, ctx.measureText(peso(r[key])).width * SAFE), ctx.measureText('₱0.00').width * SAFE);
+    const bold = (key) => rows.reduce((m, r) => Math.max(m, ctx.measureText(peso(r[key])).width * SAFE), ctx.measureText('₱0.00').width * SAFE);
     const balanceW = bold('balance');
     ctx.font = `${BASE_FONT}px ${fam}`;
     const INPUT = 27;   // input padding + border + cell padding (+ a little room)
@@ -222,13 +239,13 @@ export default function Ledger() {
       // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
       Math.min(Math.max(widest('check_ref', undefined, 'Check'), tw('0'.repeat(14))), tw('0'.repeat(26))) + INPUT,
       // Paid always has room for an 8-digit amount with centavos (12,345,678.00 typed as 12345678.00) and grows past that if a bigger one is saved
-      Math.min(Math.max(widest('paid_amount', undefined, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT,
+      Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT,
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
-  }, [entries, canDelete]);
+  }, [entries, canDelete, taxPct]);
   const MIN_FONT = 10.5;
   const colWidths = useMemo(() => {
     const total = colPx.reduce((a, b) => a + b, 0);
