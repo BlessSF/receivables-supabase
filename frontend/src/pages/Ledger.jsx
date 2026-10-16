@@ -32,7 +32,7 @@ function deriveRow(e, taxPct, amountOverride, paidOverride) {
   const tax = r2((amount * taxPct) / 100);
   const base = amount - tax + (Number(e.surcharge) || 0);
   const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
-  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: r2(amount - paid) };
+  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: r2(r2(base - rebate) - paid) };
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
@@ -145,7 +145,7 @@ export default function Ledger() {
   const [live, setLive] = useState(null); // { id, field, value }
   // Tax W/H, Rebate and Receivable are computed automatically for every row (view only):
   //   Tax W/H = Amount x tax %,  Rebate = Amount - Tax W/H + Surcharge - Paid (only once something is paid),
-  //   Receivable = Amount - Tax W/H + Surcharge - Rebate,  Balance = Amount - Paid.
+  //   Receivable = Amount - Tax W/H + Surcharge - Rebate,  Balance = Receivable - Paid.
   const taxPct = Number(data?.tax_percent ?? 2);
   const liveEntries = useMemo(() => entries.map((e) => {
     const isLive = live && e.id === live.id;

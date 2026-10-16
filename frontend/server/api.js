@@ -56,7 +56,7 @@ function recalcRow(d) {
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
   const receivable = amount - tax + surcharge - rebate;
-  const balance = amount - paid; // Balance = Amount - Paid
+  const balance = round(receivable - paid, 2); // Balance = Receivable - Paid (zero once the rebate covers the shortfall)
   return [receivable, balance];
 }
 
@@ -864,7 +864,7 @@ const actions = {
       const eid = await insertId(
         `INSERT INTO ledger_entries (company_id, company_name, billing_date, soa_number, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)`,
-        [chargeId, chargeName, t.txn_date || todayYmd(), t.soa_number || null, t.period_from || null, t.period_to || null, periodMonth, amount, postTax, amount - postTax, amount, note], client
+        [chargeId, chargeName, t.txn_date || todayYmd(), t.soa_number || null, t.period_from || null, t.period_to || null, periodMonth, amount, postTax, amount - postTax, amount - postTax, note], client
       );
       await exec(
         `UPDATE billing_transactions SET status='POSTED', ledger_entry_id=?, posted_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`,
@@ -1040,7 +1040,7 @@ const actions = {
         const receivable = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
         if (Math.abs(paid - toFloat(r.receivable_amount)) < 0.01) paid = receivable;
-        const balance = amount - paid;
+        const balance = round(receivable - paid, 2);
         await exec(
           "UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, paid_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?",
           [tax, receivable, paid, balance, r.id]
