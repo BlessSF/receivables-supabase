@@ -124,20 +124,21 @@ export default function Ledger() {
     return entries.map((e) => {
       if (e.id !== live.id) return e;
       const paid = Number(live.value) || 0;
-      return { ...e, live_paid: paid, balance: Number(e.receivable_amount) - paid };
+      return { ...e, live_paid: paid, balance: (Number(e.amount) || 0) - paid }; // Balance = Amount - Paid, same as the server
     });
   }, [entries, live]);
   const liveTotals = useMemo(() => {
-    let amount = 0, paid = 0, balance = 0;
+    let amount = 0, paid = 0, balance = 0, rebate = 0;
     const tally = {};
     for (const e of liveEntries) {
       amount += Number(e.amount) || 0;
       paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
+      rebate += Number(e.rebate) || 0;
       const b = Number(e.balance) || 0;
       balance += b;
       if (b > 0.009 && e.aging_bucket && e.aging_bucket !== 'Paid') tally[e.aging_bucket] = (tally[e.aging_bucket] || 0) + b;
     }
-    return { amount, paid, balance, tally };
+    return { amount, paid, balance, rebate, tally };
   }, [liveEntries]);
 
   const filtered = useMemo(() => {
@@ -242,19 +243,32 @@ export default function Ledger() {
 
   async function saveField(id, field, value) {
     let r;
+    // Paid is less than the receivable: offer to record the difference as Rebate (Rebate = Receivable - Paid).
+    let autoRebate = false;
+    if (field === 'paid_amount') {
+      const cur = (data?.entries || []).find((e) => e.id === id);
+      const paid = Number(value) || 0;
+      if (cur && paid > 0) {
+        const base = (Number(cur.amount) || 0) - (Number(cur.tax_withheld) || 0) + (Number(cur.surcharge) || 0);
+        const diff = Math.round((base - paid) * 100) / 100;
+        if (diff > 0.009 && Math.abs(diff - (Number(cur.rebate) || 0)) > 0.009) {
+          autoRebate = window.confirm(`Receivable ${peso(base)} − Paid ${peso(paid)} = ${peso(diff)}.\n\nOK = fill the Rebate column with ${peso(diff)} automatically.\nCancel = leave the Rebate as it is.`);
+        }
+      }
+    }
     try {
-      r = await api.inlineUpdateLedger(id, field, value);
+      r = await api.inlineUpdateLedger(id, field, value, false, autoRebate);
     } catch (e) {
       // Same SOA already on another entry (e.g. two payments for one SOA): ask before allowing it.
       if (e.code !== 'SOA_SHARED') throw e;
       const ok = window.confirm(`${e.message}\n\nDo these 2 payments share the same SOA?\n\nOK = yes, use the same SOA on both. The SOA Tracker will show it as shared (x2) and it still counts as ONE SOA number.\nCancel = don't change it.`);
       if (!ok) throw new Error(''); // quiet revert
-      r = await api.inlineUpdateLedger(id, field, value, true);
+      r = await api.inlineUpdateLedger(id, field, value, true, autoRebate);
     }
     setData((d) => ({
       ...d,
       entries: d.entries.map((e) =>
-        e.id === id ? { ...e, [field]: value, receivable_amount: r.receivable_amount, balance: r.balance } : e
+        e.id === id ? { ...e, [field]: value, ...(r.rebate !== null && r.rebate !== undefined ? { rebate: r.rebate } : {}), receivable_amount: r.receivable_amount, balance: r.balance } : e
       ),
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
@@ -335,6 +349,7 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Entries</div><strong className="num">{entries.length}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(liveTotals.amount)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num totals-live">{peso(liveTotals.paid)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Rebate</div><strong className="num totals-live">{peso(liveTotals.rebate)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>

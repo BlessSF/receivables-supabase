@@ -642,6 +642,13 @@ const actions = {
     }
 
     row[field] = value;
+    // Rebate = Receivable - Paid, calculated automatically when the user confirms it in the Ledger
+    // (the shortfall between what was billed and what was actually paid).
+    let autoRebate = null;
+    if (field === 'paid_amount' && truthy(input.auto_rebate) && value > 0) {
+      autoRebate = round(Math.max(0, toFloat(row.amount) - toFloat(row.tax_withheld) + toFloat(row.surcharge) - value), 2);
+      row.rebate = autoRebate;
+    }
     const [receivable, balance] = recalcRow(row);
 
     // `field` is checked against the allow-list above, so it's safe to put in the SQL.
@@ -649,6 +656,7 @@ const actions = {
       `UPDATE ledger_entries SET ${field} = ?, receivable_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`,
       [value, receivable, balance, id]
     );
+    if (autoRebate !== null) await exec('UPDATE ledger_entries SET rebate = ? WHERE id = ?', [autoRebate, id]);
 
     if (field === 'soa_number') {
       if (value) {
@@ -663,6 +671,7 @@ const actions = {
       ok: true,
       receivable_amount: receivable,
       balance,
+      rebate: autoRebate,
       deduction: balance,
       aging_bucket: agingBucket(daysOverdue(dueOf(row, due))),
     };

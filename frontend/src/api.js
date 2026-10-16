@@ -67,7 +67,7 @@ export const api = {
   // ledger
   getLedger: (companyId) => call('get_ledger', { params: { company_id: companyId } }),
   quickAddLedger: (companyId) => call('quick_add_ledger', { method: 'POST', body: { company_id: companyId } }),
-  inlineUpdateLedger: (id, field, value, allowShared) => call('inline_update_ledger', { method: 'POST', body: { id, field, value, allow_shared: allowShared ? 1 : 0 } }),
+  inlineUpdateLedger: (id, field, value, allowShared, autoRebate) => call('inline_update_ledger', { method: 'POST', body: { id, field, value, allow_shared: allowShared ? 1 : 0, auto_rebate: autoRebate ? 1 : 0 } }),
   chargeEntryToCompany: (id) => call('charge_entry_to_company', { method: 'POST', body: { id } }),
   returnEntryToHmo: (id) => call('return_entry_to_hmo', { method: 'POST', body: { id } }),
   deleteLedger: (id) => call('delete_ledger', { method: 'POST', body: { id } }),
