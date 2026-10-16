@@ -554,6 +554,7 @@ const actions = {
       entries,
       company: selectedCompany,
       totals: { amount: sum(entries, 'amount'), paid: sum(entries, 'paid_amount'), balance: sum(entries, 'balance') },
+      tax_percent: await taxWithheldPercent(),
       aging_tally: Object.keys(agingTally).length ? agingTally : [],
       company_summary: companySummary,
     } };
@@ -644,9 +645,15 @@ const actions = {
     row[field] = value;
     // Rebate = Receivable - Paid, calculated automatically when the user confirms it in the Ledger
     // (the shortfall between what was billed and what was actually paid).
+    // Tax W/H = Amount x the tax % (2% by default, Settings), recalculated automatically when the Amount changes.
+    let autoTax = null;
+    if (field === 'amount') {
+      autoTax = round(value * (await taxWithheldPercent()) / 100, 2);
+      row.tax_withheld = autoTax;
+    }
     let autoRebate = null;
-    if (field === 'paid_amount' && value > 0) {
-      autoRebate = round(Math.max(0, toFloat(row.amount) - toFloat(row.tax_withheld) + toFloat(row.surcharge) - value), 2);
+    if ((field === 'paid_amount' && value > 0) || (field === 'amount' && toFloat(row.paid_amount) > 0)) {
+      autoRebate = round(Math.max(0, toFloat(row.amount) - toFloat(row.tax_withheld) + toFloat(row.surcharge) - toFloat(row.paid_amount)), 2);
       row.rebate = autoRebate;
     }
     const [receivable, balance] = recalcRow(row);
@@ -657,6 +664,7 @@ const actions = {
       [value, receivable, balance, id]
     );
     if (autoRebate !== null) await exec('UPDATE ledger_entries SET rebate = ? WHERE id = ?', [autoRebate, id]);
+    if (autoTax !== null) await exec('UPDATE ledger_entries SET tax_withheld = ? WHERE id = ?', [autoTax, id]);
 
     if (field === 'soa_number') {
       if (value) {
@@ -672,6 +680,7 @@ const actions = {
       receivable_amount: receivable,
       balance,
       rebate: autoRebate,
+      tax_withheld: autoTax,
       deduction: balance,
       aging_bucket: agingBucket(daysOverdue(dueOf(row, due))),
     };

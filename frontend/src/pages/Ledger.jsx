@@ -118,21 +118,30 @@ export default function Ledger() {
 
   // While a Paid amount is being typed, the row balance, the Paid / Outstanding
   // totals and the aging badges update on every keystroke (before it is saved).
-  const [live, setLive] = useState(null); // { id, value }
+  const [live, setLive] = useState(null); // { id, field, value }
   const liveEntries = useMemo(() => {
     if (!live) return entries;
     return entries.map((e) => {
       if (e.id !== live.id) return e;
-      const paid = Number(live.value) || 0;
-      const base = (Number(e.amount) || 0) - (Number(e.tax_withheld) || 0) + (Number(e.surcharge) || 0);
-      return { ...e, live_paid: paid, balance: (Number(e.amount) || 0) - paid, ...(paid > 0 ? { rebate: Math.max(0, Math.round((base - paid) * 100) / 100) } : {}) }; // Balance = Amount - Paid, same as the server
+      const r2 = (n) => Math.round(n * 100) / 100;
+      const isAmt = live.field === 'amount';
+      const amount = isAmt ? Number(live.value) || 0 : Number(e.amount) || 0;
+      const paid = isAmt ? Number(e.paid_amount) || 0 : Number(live.value) || 0;
+      const tax = isAmt ? r2(amount * (Number(data?.tax_percent ?? 2)) / 100) : Number(e.tax_withheld) || 0; // Tax W/H = Amount x tax %
+      const base = amount - tax + (Number(e.surcharge) || 0);
+      return {
+        ...e,
+        ...(isAmt ? { live_amount: amount, tax_withheld: tax } : { live_paid: paid }),
+        balance: amount - paid, // Balance = Amount - Paid, same as the server
+        ...(paid > 0 ? { rebate: Math.max(0, r2(base - paid)) } : {}),
+      };
     });
   }, [entries, live]);
   const liveTotals = useMemo(() => {
     let amount = 0, paid = 0, balance = 0, rebate = 0;
     const tally = {};
     for (const e of liveEntries) {
-      amount += Number(e.amount) || 0;
+      amount += e.live_amount !== undefined ? e.live_amount : Number(e.amount) || 0;
       paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
       rebate += Number(e.rebate) || 0;
       const b = Number(e.balance) || 0;
@@ -258,7 +267,7 @@ export default function Ledger() {
     setData((d) => ({
       ...d,
       entries: d.entries.map((e) =>
-        e.id === id ? { ...e, [field]: value, ...(r.rebate !== null && r.rebate !== undefined ? { rebate: r.rebate } : {}), receivable_amount: r.receivable_amount, balance: r.balance } : e
+        e.id === id ? { ...e, [field]: value, ...(r.rebate !== null && r.rebate !== undefined ? { rebate: r.rebate } : {}), ...(r.tax_withheld !== null && r.tax_withheld !== undefined ? { tax_withheld: r.tax_withheld } : {}), receivable_amount: r.receivable_amount, balance: r.balance } : e
       ),
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
@@ -489,7 +498,7 @@ export default function Ledger() {
                         <td><DateCell row={rowIdx} col={0} value={r.billing_date} onSave={(v) => saveField(r.id, 'billing_date', v)} /></td>
                         <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
                         <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
-                        <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onSave={(v) => saveField(r.id, 'amount', v)} /></td>
+                        <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'amount', value: v })} onSave={(v) => saveField(r.id, 'amount', v)} /></td>
                         <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
                         <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
                         <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
@@ -500,7 +509,7 @@ export default function Ledger() {
                       <>
                         <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
                         <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
                       </>
                     )}
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
