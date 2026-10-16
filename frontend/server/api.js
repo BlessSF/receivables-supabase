@@ -42,11 +42,10 @@ const STAFF_ACTIONS = new Set([
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
-// What an executive (owner / accounting) account may call: reports, a read-only ledger,
-// and deleting ledger entries (no other editing).
+// What an executive (owner / accounting) account may call: reports, the ledger (edit + delete, like Admin).
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
-  'get_monthly_report', 'get_ledger', 'delete_ledger',
+  'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
 ]);
 
 function recalcRow(d) {
