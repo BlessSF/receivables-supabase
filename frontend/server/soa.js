@@ -274,11 +274,11 @@ export async function parseSoa(buffer, fileName = '') {
     return c ? c.text : '';
   };
 
-  // Only an official series number (SN-00398, SN-00418A, SN-C00001 ...) is trusted as the SOA #.
+  // Trusted SOA # formats: SN-00398, SN-00418A, SN-C00001, AMAPHIL-000002, IMS-000002 (PREFIX-digits).
   // Anything else printed in the file (e.g. "AMAPHIL-000002") is left out, so the person types the real one.
   const officialSoa = (v) => {
     const t = clean(v).toUpperCase().replace(/^SN\s*-?\s*/, 'SN-');
-    return /^SN-[A-Z]{0,2}\d{3,}[A-Z]?$/.test(t) ? t : '';
+    return /^[A-Z]{1,12}-[A-Z]{0,2}\d{3,}[A-Z]?$/.test(t) ? t : '';
   };
   const seriesRaw = text(/^series\s*no\.?\s*:?$/i).toUpperCase();
   const soaRaw = text(/^soa\s*(no\.?|number|#)\s*:?$/i).toUpperCase();
@@ -319,7 +319,7 @@ export async function parseSoa(buffer, fileName = '') {
   if (outside) warnings.push(`${outside} transaction ${outside === 1 ? 'date falls' : 'dates fall'} outside the covered period ${coveredFrom} to ${coveredTo}.`);
   if (!soaNumber) {
     warnings.push(unusedNumber
-      ? `This file's number "${unusedNumber}" is not an SN-##### series number, so the SOA # was left blank. Type the correct SOA #.`
+      ? `This file's number "${unusedNumber}" is not a PREFIX-##### number, so the SOA # was left blank. Type the correct SOA #.`
       : 'No Series No. / SOA No. found. Type the SOA #.');
   }
   if (seriesNo && soaNo && seriesNo !== soaNo) warnings.push(`This file has two numbers: Series No. ${seriesNo} and SOA No. ${soaNo}. Using the Series No. - change it if the other one is right.`);
