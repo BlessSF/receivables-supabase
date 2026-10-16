@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, numClass } from '../utils';
+import { peso, fdate, numClass, coveredLabel } from '../utils';
 import { useAuth } from '../AuthContext';
 import { isStaff } from '../utils';
 
@@ -405,7 +405,7 @@ export default function Dashboard() {
             <thead>
               <tr>
                 {!company && <th>Company</th>}
-                <th>Billing date</th><th>SOA #</th>
+                <th>Covered period</th><th>SOA #</th>
                 <th className="text-right">Amount</th><th className="text-right">Paid</th><th className="text-right">Balance</th><th>Status</th>
               </tr>
             </thead>
@@ -415,7 +415,7 @@ export default function Dashboard() {
                 <tr key={r.id} className="clickable-row" title="Open this entry in the Ledger"
                   onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}>
                   {!company && <td className="row-link">{r.company_name}</td>}
-                  <td>{fdate(r.billing_date)}</td>
+                  <td>{coveredLabel(r.period_from, r.period_to) || fdate(r.billing_date)}</td>
                   <td>{r.soa_number || '—'}</td>
                   <td className={`text-right ${numClass(r.amount)}`}>{peso(r.amount)}</td>
                   <td className={`text-right ${numClass(r.paid_amount)}`}>{peso(r.paid_amount)}</td>

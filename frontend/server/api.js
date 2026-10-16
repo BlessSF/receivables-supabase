@@ -141,7 +141,7 @@ const actions = {
     if (month < 1 || month > 12) month = year === nowYear ? nowMonth : 12;
 
     const [bw, bp] = branchWhere(auth, 'c');
-    let sql = `SELECT l.id, l.company_id, l.billing_date, l.due_date, l.payment_date, l.soa_number,
+    let sql = `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.soa_number,
                       l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status, c.account_type
                FROM ledger_entries l JOIN companies c ON c.id = l.company_id
                WHERE 1=1 ${bw}`;
@@ -186,8 +186,9 @@ const actions = {
       const d = open ? daysOverdue(dueOf(r, due)) : null;
       const late = open && d !== null && d > 0;
 
-      // placed by billing date
-      const b = ymOf(r.billing_date);
+      // placed by the covered period (its end date), falling back to the billing date when none is set
+      const coverDate = r.period_to || r.period_from || r.billing_date;
+      const b = ymOf(coverDate);
       const tt = byType[r.account_type === 'HMO' ? 'HMO' : 'COMPANY'];
       if (!b) {
         undated.billed_count++; undated.billed_total += amount;
@@ -214,8 +215,8 @@ const actions = {
         if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; tt.past_due += bal; tt.past_due_count++; }
         periodEntries.push({
           id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
-          billing_date: r.billing_date, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
-          overdue_days: late ? d : 0, _t: b ? parseDate(r.billing_date) : null,
+          billing_date: r.billing_date, period_from: r.period_from, period_to: r.period_to, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
+          overdue_days: late ? d : 0, _t: b ? parseDate(coverDate) : null,
         });
       }
 
@@ -266,7 +267,7 @@ const actions = {
     const [bw, bp] = branchWhere(auth, 'c');
     const due = await makeImplicitDue();
     const rows = await all(
-      `SELECT l.id, l.company_id, l.billing_date, l.due_date, l.payment_date, l.amount, l.paid_amount, l.balance,
+      `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.amount, l.paid_amount, l.balance,
               l.soa_number, c.name AS company_name
        FROM ledger_entries l JOIN companies c ON c.id = l.company_id
        WHERE 1=1 ${bw}`, bp);
@@ -299,7 +300,7 @@ const actions = {
       const bal = toFloat(r.balance);
       billed += amount;
       collected += paid;
-      const bm = monthOf(r.billing_date);
+      const bm = monthOf(r.period_to || r.period_from || r.billing_date); // covered period month
       if (bm && trend[bm]) trend[bm].billed += amount;
       if (paid > 0) {
         const pm = monthOf(r.payment_date);

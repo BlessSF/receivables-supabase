@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, AGING_BADGE, isExecutive, MONTHS } from '../utils';
+import { peso, fdate, AGING_BADGE, isExecutive, MONTHS, coveredLabel } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BUCKET_OPTIONS = [
@@ -38,7 +38,7 @@ const EXEC_BUCKET_OPTIONS = [
   ['over90', 'Over 90 days late'],
 ];
 
-const billingYm = (r) => { const m = String(r.billing_date || '').match(/^(\d{4})-(\d{2})/); return m ? { y: +m[1], m: +m[2] } : null; };
+const billingYm = (r) => { const m = String(r.period_to || r.period_from || r.billing_date || '').match(/^(\d{4})-(\d{2})/); return m ? { y: +m[1], m: +m[2] } : null; };
 
 /** January - December totals for a list of entries, for one year. */
 function buildMonths(list, year) {
@@ -268,7 +268,7 @@ export default function Summary() {
             </div>
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '0 0 14px' }}>
-            Entries grouped by billing month{showAll || readOnly ? '' : ', unpaid entries only (tick "Include fully paid entries" to count paid ones too)'}. The company, status and search filters above apply.
+            Entries grouped by covered-period month{showAll || readOnly ? '' : ', unpaid entries only (tick "Include fully paid entries" to count paid ones too)'}. The company, status and search filters above apply.
           </p>
           {!rows && <div className="empty-state">Loading…</div>}
           {rows && grouping === 'all' && (
@@ -301,7 +301,7 @@ export default function Summary() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Company</th><th>Date of Billing</th><th className="text-right">Amount</th>
+                <th>Company</th><th>Covered Period</th><th className="text-right">Amount</th>
                 <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
                 <th>Comment</th><th>Status</th>
               </tr>
@@ -321,7 +321,7 @@ export default function Summary() {
                   })}
                 >
                   <td className={readOnly ? '' : 'row-link'}>{r.company_name}</td>
-                  <td>{fdate(r.billing_date)}</td>
+                  <td>{coveredLabel(r.period_from, r.period_to) || fdate(r.billing_date)}</td>
                   <td className="text-right num">{peso(r.amount)}</td>
                   <td className="text-right num">{peso(r.paid_amount)}</td>
                   <td>{r.payment_date ? fdate(r.payment_date) : '—'}</td>
