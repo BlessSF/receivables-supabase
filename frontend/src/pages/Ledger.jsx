@@ -47,7 +47,7 @@ function EditableText({ value, onSave, onLive, type = 'text', align, row, col })
       setTimeout(() => setState(''), 700);
     } catch (e) {
       setState('error');
-      alert(e.message);
+      if (e.message) alert(e.message);
       setVal(value ?? '');
     }
   }
@@ -241,7 +241,16 @@ export default function Ledger() {
   }, [colPx, data]);
 
   async function saveField(id, field, value) {
-    const r = await api.inlineUpdateLedger(id, field, value);
+    let r;
+    try {
+      r = await api.inlineUpdateLedger(id, field, value);
+    } catch (e) {
+      // Same SOA already on another entry (e.g. two payments for one SOA): ask before allowing it.
+      if (e.code !== 'SOA_SHARED') throw e;
+      const ok = window.confirm(`${e.message}\n\nDo these 2 payments share the same SOA?\n\nOK = yes, use the same SOA on both. The SOA Tracker will show it as shared (x2) and it still counts as ONE SOA number.\nCancel = don't change it.`);
+      if (!ok) throw new Error(''); // quiet revert
+      r = await api.inlineUpdateLedger(id, field, value, true);
+    }
     setData((d) => ({
       ...d,
       entries: d.entries.map((e) =>

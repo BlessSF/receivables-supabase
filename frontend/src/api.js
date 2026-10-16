@@ -22,7 +22,9 @@ async function call(action, { method = 'GET', params = {}, body } = {}) {
     throw new Error(`Server returned an unreadable response (status ${res.status}).`);
   }
   if (!data.ok) {
-    throw new Error(data.error || 'Something went wrong.');
+    const err = new Error(data.error || 'Something went wrong.');
+    if (data.code) err.code = data.code;
+    throw err;
   }
   return data;
 }
@@ -65,7 +67,7 @@ export const api = {
   // ledger
   getLedger: (companyId) => call('get_ledger', { params: { company_id: companyId } }),
   quickAddLedger: (companyId) => call('quick_add_ledger', { method: 'POST', body: { company_id: companyId } }),
-  inlineUpdateLedger: (id, field, value) => call('inline_update_ledger', { method: 'POST', body: { id, field, value } }),
+  inlineUpdateLedger: (id, field, value, allowShared) => call('inline_update_ledger', { method: 'POST', body: { id, field, value, allow_shared: allowShared ? 1 : 0 } }),
   chargeEntryToCompany: (id) => call('charge_entry_to_company', { method: 'POST', body: { id } }),
   returnEntryToHmo: (id) => call('return_entry_to_hmo', { method: 'POST', body: { id } }),
   deleteLedger: (id) => call('delete_ledger', { method: 'POST', body: { id } }),

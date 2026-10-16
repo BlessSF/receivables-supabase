@@ -13,7 +13,7 @@ import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed,
+  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed, releaseSoaForEntry,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -628,9 +628,15 @@ const actions = {
       value = elvis(trim(value), null);
     }
 
+    let sharedSoa = false;
     if (field === 'soa_number' && value) {
       const holder = await soaNumberHolder(value, id);
-      if (holder) {
+      if (holder && holder.where === 'ledger' && truthy(input.allow_shared)) {
+        sharedSoa = true; // confirmed: two payments use the same SOA
+      } else if (holder && holder.where === 'ledger') {
+        // The browser asks "use the same SOA on both payments?" and retries with allow_shared.
+        jsonExit({ ok: false, code: 'SOA_SHARED', error: `SOA number "${String(value).toUpperCase()}" is already in use — ${holder.text}.` }, 409);
+      } else if (holder) {
         jsonExit({ ok: false, error: `SOA number "${value}" is already in use — ${holder.text}. Add a letter like A or B for a supplementary copy, or use a different number.` }, 409);
       }
     }
@@ -646,9 +652,9 @@ const actions = {
 
     if (field === 'soa_number') {
       if (value) {
-        await recordSoaNumberUsed(value, row.company_id, id);
+        await recordSoaNumberUsed(value, row.company_id, id, sharedSoa);
       } else {
-        await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ?", [id]);
+        await releaseSoaForEntry(id);
       }
     }
 
@@ -672,7 +678,7 @@ const actions = {
     if (!cid) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
     await requireCompanyAccess(auth, toInt(cid));
     // Free the SOA number first; otherwise the tracker row stays USED forever and blocks the number.
-    await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ?", [id]);
+    await releaseSoaForEntry(id);
     // The Billing transaction that was posted into this entry goes too, so it doesn't stay "POSTED" with nothing behind it.
     await exec('DELETE FROM billing_transactions WHERE ledger_entry_id = ?', [id]);
     await exec('DELETE FROM ledger_entries WHERE id=?', [id]);
@@ -1113,7 +1119,8 @@ const actions = {
     const suggested = await nextSoaNumber(prefix);
     const [bw, bp] = branchWhere(auth, 'c');
     const entries = await all(
-      `SELECT t.*, c.name as company_name
+      `SELECT t.*, c.name as company_name,
+         (SELECT COUNT(*) FROM ledger_entries l WHERE UPPER(l.soa_number) = UPPER(t.soa_number)) AS share_count
        FROM soa_tracker t LEFT JOIN companies c ON c.id = t.company_id
        WHERE 1=1 ${bw}
        ORDER BY t.issued_date DESC NULLS LAST, t.id DESC`, bp);
@@ -1165,9 +1172,10 @@ const actions = {
     if (!row) jsonExit({ ok: false, error: 'SOA entry not found.' }, 404);
     if (row.company_id) await requireCompanyAccess(auth, toInt(row.company_id));
     let cleared = false;
-    if (row.ledger_entry_id && truthy(input.clear_ledger)) {
-      const e = await one('SELECT id, company_id FROM ledger_entries WHERE id = ?', [toInt(row.ledger_entry_id)]);
-      if (e) {
+    if (truthy(input.clear_ledger)) {
+      // every ledger entry using this number (more than one when two payments share it)
+      const users = await all('SELECT id, company_id FROM ledger_entries WHERE UPPER(soa_number) = UPPER(?)', [row.soa_number]);
+      for (const e of users) {
         await requireCompanyAccess(auth, toInt(e.company_id));
         await exec(`UPDATE ledger_entries SET soa_number = NULL, updated_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`, [toInt(e.id)]);
         cleared = true;

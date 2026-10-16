@@ -54,8 +54,9 @@ export default function SoaTracker() {
 
   async function removeEntry(entry) {
     const linked = !!entry.ledger_entry_id;
+    const shared = Number(entry.share_count) > 1;
     const msg = linked
-      ? `Delete SOA ${entry.soa_number}? It is used on ledger entry #${entry.ledger_entry_id}.\n\nOK = delete it AND clear the SOA # on that ledger entry (the entry and its amounts stay).\nCancel = do nothing.`
+      ? `Delete SOA ${entry.soa_number}? It is used on ${shared ? `${entry.share_count} ledger entries (shared)` : `ledger entry #${entry.ledger_entry_id}`}.\n\nOK = delete it AND clear the SOA # on ${shared ? 'all of them' : 'that ledger entry'} (the entries and its amounts stay).\nCancel = do nothing.`
       : `Delete SOA ${entry.soa_number} from the tracker?`;
     if (!window.confirm(msg)) return;
     try {
@@ -237,7 +238,7 @@ export default function SoaTracker() {
                 <tr key={entry.id}>
                   <td><strong>{entry.soa_number}</strong></td>
                   <td>{entry.company_name || '—'}</td>
-                  <td><span className={`badge ${entry.status === 'USED' ? 'badge-info' : 'badge-secondary'}`}>{entry.status === 'USED' ? 'Used' : 'Unused'}</span></td>
+                  <td><span className={`badge ${entry.status === 'USED' ? 'badge-info' : 'badge-secondary'}`}>{entry.status === 'USED' ? 'Used' : 'Unused'}</span>{Number(entry.share_count) > 1 && <span className="badge badge-warning" style={{ marginLeft: 6 }} title="One SOA shared by more than one ledger entry">×{entry.share_count} shared</span>}</td>
                   <td>{fdate(entry.issued_date, { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
                   <td style={{ whiteSpace: 'nowrap' }}><button className="btn btn-secondary btn-sm" onClick={() => startEdit(entry)}>Edit</button>{' '}<button className="btn btn-danger btn-sm" onClick={() => removeEntry(entry)}>Delete</button></td>
                 </tr>

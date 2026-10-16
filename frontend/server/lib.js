@@ -162,16 +162,39 @@ export async function soaNumberConflicts(soa, excludeLedgerId = null, excludeTra
 }
 
 /**
+ * A ledger entry stops using its SOA number (deleted, cleared or changed). The tracker row goes
+ * back to UNUSED -- unless another ledger entry still shares that number, in which case the row
+ * stays USED and is handed to that entry. keepSoa = the number the entry is switching TO (left alone).
+ */
+export async function releaseSoaForEntry(ledgerEntryId, keepSoa = null) {
+  const rows = await all('SELECT id, soa_number FROM soa_tracker WHERE ledger_entry_id = ?', [ledgerEntryId]);
+  for (const t of rows) {
+    if (keepSoa && String(t.soa_number).toUpperCase() === String(keepSoa).toUpperCase()) continue;
+    const other = await scalar(
+      'SELECT id FROM ledger_entries WHERE UPPER(soa_number) = UPPER(?) AND id <> ? ORDER BY id LIMIT 1',
+      [t.soa_number, ledgerEntryId]
+    );
+    if (other) await exec('UPDATE soa_tracker SET ledger_entry_id = ? WHERE id = ?', [other, t.id]);
+    else await exec("UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE id = ?", [t.id]);
+  }
+}
+
+/**
  * An SOA number typed into a ledger row is logged in the tracker and marked
  * USED; the row's previous number (if different) goes back to UNUSED.
  */
-export async function recordSoaNumberUsed(soa, companyId, ledgerEntryId) {
+export async function recordSoaNumberUsed(soa, companyId, ledgerEntryId, shared = false) {
   soa = trim(soa).toUpperCase();
   if (soa === '') return;
-  await exec(
-    "UPDATE soa_tracker SET ledger_entry_id = NULL, status = 'UNUSED' WHERE ledger_entry_id = ? AND UPPER(soa_number) <> ?",
-    [ledgerEntryId, soa]
-  );
+  await releaseSoaForEntry(ledgerEntryId, soa);
+  if (shared) {
+    // Two payments sharing one SOA: the tracker keeps ONE row for the number (marked USED);
+    // only create it if it is somehow missing.
+    const has = await scalar("SELECT id FROM soa_tracker WHERE UPPER(soa_number) = ? LIMIT 1", [soa]);
+    if (!has) await exec('INSERT INTO soa_tracker (soa_number, company_id, ledger_entry_id, status) VALUES (?, ?, ?, ?)', [soa, companyId, ledgerEntryId, 'USED']);
+    else await exec("UPDATE soa_tracker SET status = 'USED' WHERE UPPER(soa_number) = ?", [soa]);
+    return;
+  }
   // Prefer claiming an UNUSED row for this number (the one the tracker shows as available).
   const trackerId = await scalar(
     "SELECT id FROM soa_tracker WHERE UPPER(soa_number) = ? ORDER BY (status = 'USED') ASC, id ASC LIMIT 1",
