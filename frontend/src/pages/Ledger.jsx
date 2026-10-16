@@ -223,7 +223,7 @@ export default function Ledger() {
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ...(canDelete ? ['Action'] : [])];
+      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
@@ -242,6 +242,7 @@ export default function Ledger() {
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT,
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
+      tw('Unpaid') + 46,                                      // Paid Status badge
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
@@ -490,13 +491,14 @@ export default function Ledger() {
                   <th>Payment Date</th><th>Check Ref</th>
                   <th className="text-right">Paid</th><th className="text-right">Balance</th>
                   <th>Aging</th>
+                  <th>Paid Status</th>
                   <th>Remarks</th>
                   {canDelete && <th className="text-center col-sticky-r">Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 15 : 14} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 16 : 15} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -536,10 +538,13 @@ export default function Ledger() {
                     )}
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
-                      {r.is_paid && <span className="badge badge-success">Paid</span>}
+                      {r.is_paid && <span style={{ color: 'var(--slate)' }}>—</span>}
                       {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
+                    <td>{Number(r.balance) > 0.009
+                      ? <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
+                      : <span className="badge badge-success" title="Balance is zero">Paid</span>}</td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
