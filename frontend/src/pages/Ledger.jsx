@@ -159,17 +159,18 @@ export default function Ledger() {
     };
   }), [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
-    let amount = 0, paid = 0, balance = 0, rebate = 0;
+    let amount = 0, paid = 0, balance = 0, rebate = 0, tax = 0;
     const tally = {};
     for (const e of liveEntries) {
       amount += e.live_amount !== undefined ? e.live_amount : Number(e.amount) || 0;
       paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
       rebate += Number(e.rebate) || 0;
+      tax += Number(e.tax_withheld) || 0;
       const b = Number(e.balance) || 0;
       balance += b;
       if (b > 0.009 && e.aging_bucket && e.aging_bucket !== 'Paid') tally[e.aging_bucket] = (tally[e.aging_bucket] || 0) + b;
     }
-    return { amount, paid, balance, rebate, tally };
+    return { amount, paid, balance, rebate, tax, tally };
   }, [liveEntries]);
 
   const filtered = useMemo(() => {
@@ -371,6 +372,7 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Entries</div><strong className="num">{entries.length}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(liveTotals.amount)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num totals-live">{peso(liveTotals.paid)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Tax W/H</div><strong className="num totals-live">{peso(liveTotals.tax)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Rebate</div><strong className="num totals-live">{peso(liveTotals.rebate)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
