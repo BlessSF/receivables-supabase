@@ -274,9 +274,18 @@ export async function parseSoa(buffer, fileName = '') {
     return c ? c.text : '';
   };
 
-  const seriesNo = text(/^series\s*no\.?\s*:?$/i).toUpperCase();
-  const soaNo = text(/^soa\s*(no\.?|number|#)\s*:?$/i).toUpperCase();
+  // Only an official series number (SN-00398, SN-00418A, SN-C00001 ...) is trusted as the SOA #.
+  // Anything else printed in the file (e.g. "AMAPHIL-000002") is left out, so the person types the real one.
+  const officialSoa = (v) => {
+    const t = clean(v).toUpperCase().replace(/^SN\s*-?\s*/, 'SN-');
+    return /^SN-[A-Z]{0,2}\d{3,}[A-Z]?$/.test(t) ? t : '';
+  };
+  const seriesRaw = text(/^series\s*no\.?\s*:?$/i).toUpperCase();
+  const soaRaw = text(/^soa\s*(no\.?|number|#)\s*:?$/i).toUpperCase();
+  const seriesNo = officialSoa(seriesRaw);
+  const soaNo = officialSoa(soaRaw);
   const soaNumber = seriesNo || soaNo;
+  const unusedNumber = [seriesRaw, soaRaw].find((x) => x && !officialSoa(x)) || '';
   const company = text(/^company\s*name\s*:?$/i) || text(/^company\s*\/\s*hmo\s*:?$/i) || text(/^hmo\s*:?$/i);
   const dateCell = valueFor(cells, /^date\s*:?$/i);
   const soaDate = dateCell ? parseDateYmd(dateCell.value) : null; // printed on the SOA = last day of the covered period
@@ -308,7 +317,11 @@ export async function parseSoa(buffer, fileName = '') {
   const date = coveredTo ? billingDateForPeriodEnd(coveredTo) : soaDate;
   const outside = dates.filter((x) => coveredFrom && coveredTo && (x < coveredFrom || x > coveredTo)).length;
   if (outside) warnings.push(`${outside} transaction ${outside === 1 ? 'date falls' : 'dates fall'} outside the covered period ${coveredFrom} to ${coveredTo}.`);
-  if (!soaNumber) warnings.push('No Series No. / SOA No. found.');
+  if (!soaNumber) {
+    warnings.push(unusedNumber
+      ? `This file's number "${unusedNumber}" is not an SN-##### series number, so the SOA # was left blank. Type the correct SOA #.`
+      : 'No Series No. / SOA No. found. Type the SOA #.');
+  }
   if (seriesNo && soaNo && seriesNo !== soaNo) warnings.push(`This file has two numbers: Series No. ${seriesNo} and SOA No. ${soaNo}. Using the Series No. - change it if the other one is right.`);
   if (!company) warnings.push('No Company Name found.');
   if (!soaDate && !filePeriod) warnings.push('No valid Date found.');

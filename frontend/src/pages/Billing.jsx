@@ -183,6 +183,7 @@ export default function Billing() {
     if (!it.txn_date) return 'Billing date needed';
     if (it.period_from && it.period_to && it.period_from > it.period_to) return 'Period dates are reversed';
     const soa = (it.soa_number || '').trim().toUpperCase();
+    if (!soa) return 'Type the SOA #';
     if (soa) {
       // The server flagged the number as parsed from the file; editing the number clears that flag.
       if (it.duplicate && soa === (it.parsed_soa || '').trim().toUpperCase()) return `SOA already used — ${it.duplicate}`;
