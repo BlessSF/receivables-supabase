@@ -583,6 +583,7 @@ const actions = {
     let value = input.value ?? null;
 
     if (!id || !allowed.includes(field)) jsonExit({ ok: false, error: 'Invalid field.' }, 400);
+    if (field === 'tax_withheld' || field === 'rebate') jsonExit({ ok: false, error: 'Tax W/H and Rebate are calculated automatically.' }, 400);
     if (auth.isStaff() && !STAFF_EDITABLE_FIELDS.includes(field)) {
       jsonExit({ ok: false, error: 'Staff accounts can only edit Payment Date, Check Ref and Paid.' }, 403);
     }
@@ -643,17 +644,15 @@ const actions = {
     }
 
     row[field] = value;
-    // Rebate = Receivable - Paid, calculated automatically when the user confirms it in the Ledger
-    // (the shortfall between what was billed and what was actually paid).
-    // Tax W/H = Amount x the tax % (2% by default, Settings), recalculated automatically when the Amount changes.
+    // Tax W/H and Rebate are automatic (view only in the Ledger):
+    //   Tax W/H = Amount x the tax % (Settings, 2 by default); Rebate = Amount - Tax W/H + Surcharge - Paid once paid.
     let autoTax = null;
-    if (field === 'amount') {
-      autoTax = round(value * (await taxWithheldPercent()) / 100, 2);
-      row.tax_withheld = autoTax;
-    }
     let autoRebate = null;
-    if ((field === 'paid_amount' && value > 0) || (field === 'amount' && toFloat(row.paid_amount) > 0)) {
-      autoRebate = round(Math.max(0, toFloat(row.amount) - toFloat(row.tax_withheld) + toFloat(row.surcharge) - toFloat(row.paid_amount)), 2);
+    if (['amount', 'surcharge', 'paid_amount'].includes(field)) {
+      autoTax = round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+      row.tax_withheld = autoTax;
+      const paidNow = toFloat(row.paid_amount);
+      autoRebate = paidNow > 0 ? round(Math.max(0, toFloat(row.amount) - autoTax + toFloat(row.surcharge) - paidNow), 2) : 0;
       row.rebate = autoRebate;
     }
     const [receivable, balance] = recalcRow(row);

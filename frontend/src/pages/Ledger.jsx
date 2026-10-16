@@ -119,24 +119,29 @@ export default function Ledger() {
   // While a Paid amount is being typed, the row balance, the Paid / Outstanding
   // totals and the aging badges update on every keystroke (before it is saved).
   const [live, setLive] = useState(null); // { id, field, value }
+  // Tax W/H, Rebate and Receivable are computed automatically for every row (view only):
+  //   Tax W/H = Amount x tax %,  Rebate = Amount - Tax W/H + Surcharge - Paid (only once something is paid),
+  //   Receivable = Amount - Tax W/H + Surcharge - Rebate,  Balance = Amount - Paid.
+  const taxPct = Number(data?.tax_percent ?? 2);
   const liveEntries = useMemo(() => {
-    if (!live) return entries;
+    const r2 = (n) => Math.round(n * 100) / 100;
     return entries.map((e) => {
-      if (e.id !== live.id) return e;
-      const r2 = (n) => Math.round(n * 100) / 100;
-      const isAmt = live.field === 'amount';
-      const amount = isAmt ? Number(live.value) || 0 : Number(e.amount) || 0;
-      const paid = isAmt ? Number(e.paid_amount) || 0 : Number(live.value) || 0;
-      const tax = isAmt ? r2(amount * (Number(data?.tax_percent ?? 2)) / 100) : Number(e.tax_withheld) || 0; // Tax W/H = Amount x tax %
+      const isLive = live && e.id === live.id;
+      const amount = isLive && live.field === 'amount' ? Number(live.value) || 0 : Number(e.amount) || 0;
+      const paid = isLive && live.field === 'paid_amount' ? Number(live.value) || 0 : Number(e.paid_amount) || 0;
+      const tax = r2((amount * taxPct) / 100);
       const base = amount - tax + (Number(e.surcharge) || 0);
+      const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
       return {
         ...e,
-        ...(isAmt ? { live_amount: amount, tax_withheld: tax } : { live_paid: paid }),
-        balance: amount - paid, // Balance = Amount - Paid, same as the server
-        ...(paid > 0 ? { rebate: Math.max(0, r2(base - paid)) } : {}),
+        ...(isLive ? (live.field === 'amount' ? { live_amount: amount } : { live_paid: paid }) : {}),
+        tax_withheld: tax,
+        rebate,
+        receivable_amount: r2(base - rebate),
+        balance: r2(amount - paid), // Balance = Amount - Paid, same as the server
       };
     });
-  }, [entries, live]);
+  }, [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
     let amount = 0, paid = 0, balance = 0, rebate = 0;
     const tally = {};
@@ -499,9 +504,9 @@ export default function Ledger() {
                         <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
                         <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
                         <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'amount', value: v })} onSave={(v) => saveField(r.id, 'amount', v)} /></td>
-                        <td><EditableText row={rowIdx} col={4} value={r.tax_withheld} type="number" align="right" onSave={(v) => saveField(r.id, 'tax_withheld', v)} /></td>
+                        <td><div className="ro-cell ro-num" title="Automatic: Amount x tax %">{money(r.tax_withheld)}</div></td>
                         <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                        <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                        <td><div className="ro-cell ro-num" title="Automatic: Receivable - Paid">{money(r.rebate)}</div></td>
                       </>
                     )}
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
