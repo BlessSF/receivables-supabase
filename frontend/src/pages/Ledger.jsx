@@ -23,7 +23,7 @@ function TrashIcon() {
   );
 }
 
-function EditableText({ value, onSave, type = 'text', align, row, col }) {
+function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
   const [val, setVal] = useState(value ?? '');
   const [state, setState] = useState(''); // '', 'saving', 'saved', 'error'
   useEffect(() => setVal(value ?? ''), [value]);
@@ -62,9 +62,9 @@ function EditableText({ value, onSave, type = 'text', align, row, col }) {
         style={align ? { textAlign: align } : undefined}
         value={val}
         placeholder={isNum ? '0.00' : undefined}
-        onChange={(e) => setVal(e.target.value)}
+        onChange={(e) => { setVal(e.target.value); if (onLive) onLive(e.target.value); }}
         onFocus={onFocus}
-        onBlur={commit}
+        onBlur={async () => { await commit(); if (onLive) onLive(null); }}
         onKeyDown={onKeyDown}
       />
     </div>
@@ -115,13 +115,38 @@ export default function Ledger() {
   }
 
   const entries = data?.entries || [];
+
+  // While a Paid amount is being typed, the row balance, the Paid / Outstanding
+  // totals and the aging badges update on every keystroke (before it is saved).
+  const [live, setLive] = useState(null); // { id, value }
+  const liveEntries = useMemo(() => {
+    if (!live) return entries;
+    return entries.map((e) => {
+      if (e.id !== live.id) return e;
+      const paid = Number(live.value) || 0;
+      return { ...e, live_paid: paid, balance: Number(e.receivable_amount) - paid };
+    });
+  }, [entries, live]);
+  const liveTotals = useMemo(() => {
+    let amount = 0, paid = 0, balance = 0;
+    const tally = {};
+    for (const e of liveEntries) {
+      amount += Number(e.amount) || 0;
+      paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
+      const b = Number(e.balance) || 0;
+      balance += b;
+      if (b > 0.009 && e.aging_bucket && e.aging_bucket !== 'Paid') tally[e.aging_bucket] = (tally[e.aging_bucket] || 0) + b;
+    }
+    return { amount, paid, balance, tally };
+  }, [liveEntries]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return entries;
+    if (!search.trim()) return liveEntries;
     const q = search.trim().toLowerCase();
-    return entries.filter((r) =>
+    return liveEntries.filter((r) =>
       [r.company_name, r.soa_number, r.remarks, r.billing_date, coveredLabel(r.period_from, r.period_to, r.period_date)].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
-  }, [entries, search]);
+  }, [liveEntries, search]);
 
   const periodYears = useMemo(() => {
     const now = new Date().getFullYear();
@@ -223,6 +248,8 @@ export default function Ledger() {
         e.id === id ? { ...e, [field]: value, receivable_amount: r.receivable_amount, balance: r.balance } : e
       ),
     }));
+    // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
+    if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate'].includes(field)) reload();
   }
 
   async function deleteRow(r) {
@@ -297,14 +324,14 @@ export default function Ledger() {
             </div>
             <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Entries</div><strong className="num">{entries.length}</strong></div>
-              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(data.totals.amount)}</strong></div>
-              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num">{peso(data.totals.paid)}</strong></div>
-              <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num" style={{ color: 'var(--teal)' }}>{peso(data.totals.balance)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(liveTotals.amount)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num totals-live">{peso(liveTotals.paid)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>
-          {Object.keys(data.aging_tally).length > 0 && (
+          {Object.keys(liveTotals.tally).length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {Object.entries(data.aging_tally).map(([bucket, total]) => (
+              {Object.entries(liveTotals.tally).map(([bucket, total]) => (
                 <span key={bucket} className={`badge ${AGING_BADGE[bucket] || 'badge-secondary'}`}>{bucket}: {peso(total)}</span>
               ))}
             </div>
@@ -459,7 +486,7 @@ export default function Ledger() {
                       <>
                         <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
                         <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
                       </>
                     )}
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
