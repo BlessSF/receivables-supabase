@@ -227,7 +227,7 @@ function HmoDetail({ id, onBack, onEdit }) {
   const available = useMemo(() => {
     if (!data) return [];
     const have = new Set(data.partners.filter((p) => p.is_partner).map((p) => p.id));
-    return companies.filter((c) => c.account_type !== 'HMO' && !have.has(c.id));
+    return companies.filter((c) => c.account_type === 'COMPANY' && !have.has(c.id));
   }, [companies, data]);
 
   const stats = useMemo(() => {

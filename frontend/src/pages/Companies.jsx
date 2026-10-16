@@ -23,12 +23,13 @@ export default function Companies() {
   }
   useEffect(load, [user]);
 
-  const companyOptions = useMemo(() => (companies || []).filter((c) => c.account_type !== 'HMO'), [companies]);
+  const companyOptions = useMemo(() => (companies || []).filter((c) => c.account_type === 'COMPANY'), [companies]);
   const byId = useMemo(() => Object.fromEntries((companies || []).map((c) => [c.id, c])), [companies]);
 
   // What to show in the "Linked" column: an HMO shows its company, a company shows its HMO(s).
   function linkedLabel(c) {
     if (c.account_type === 'HMO') return byId[c.linked_company_id]?.name || '';
+    if (c.account_type === 'CHARGE') return '';
     return (companies || []).filter((h) => h.account_type === 'HMO' && h.linked_company_id === c.id).map((h) => h.name).join(', ');
   }
 
@@ -111,6 +112,7 @@ export default function Companies() {
                 <select value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value, linked_company_id: e.target.value === 'HMO' ? form.linked_company_id : '' })}>
                   <option value="COMPANY">Company</option>
                   <option value="HMO">HMO</option>
+                  <option value="CHARGE">Charge to company (own ledger, same name allowed)</option>
                 </select>
               </div>
               {form.account_type === 'HMO' && (
@@ -208,7 +210,7 @@ export default function Companies() {
                   <td className="num" style={{ color: 'var(--slate)' }}>{idx + 1}</td>
                   <td><Link to={`/ledger?company_id=${c.id}`}>{c.name}</Link></td>
                   <td>{c.code || '—'}</td>
-                  <td><span className={`badge ${c.account_type === 'HMO' ? 'badge-info' : 'badge-secondary'}`}>{c.account_type}</span></td>
+                  <td><span className={`badge ${c.account_type === 'HMO' ? 'badge-info' : c.account_type === 'CHARGE' ? 'badge-warning' : 'badge-secondary'}`}>{c.account_type === 'CHARGE' ? 'CHARGE' : c.account_type}</span></td>
                   <td>
                     {linkedLabel(c) || '—'}
                   </td>

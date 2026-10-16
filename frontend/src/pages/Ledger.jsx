@@ -148,11 +148,12 @@ export default function Ledger() {
     const ctx = getMeasureCtx();
     const fam = getComputedStyle(document.body).fontFamily || 'sans-serif';
     ctx.font = `${BASE_FONT}px ${fam}`;
-    const tw = (v) => ctx.measureText(String(v ?? '')).width;
+    const SAFE = 1.12; // tabular figures + 100% zoom render a bit wider than the canvas measures
+    const tw = (v) => ctx.measureText(String(v ?? '')).width * SAFE;
     const widest = (key, fmt = (v) => v, min = '') =>
       entries.reduce((m, r) => Math.max(m, tw(fmt(r[key]))), tw(min));
     ctx.font = `600 ${BASE_FONT}px ${fam}`;
-    const bold = (key) => entries.reduce((m, r) => Math.max(m, ctx.measureText(peso(r[key])).width), ctx.measureText('₱0.00').width);
+    const bold = (key) => entries.reduce((m, r) => Math.max(m, ctx.measureText(peso(r[key])).width * SAFE), ctx.measureText('₱0.00').width * SAFE);
     const balanceW = bold('balance');
     ctx.font = `${BASE_FONT}px ${fam}`;
     const INPUT = 27;   // input padding + border + cell padding (+ a little room)
@@ -165,7 +166,7 @@ export default function Ledger() {
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Remarks', ...(canDelete ? ['Action'] : [])];
-    const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width)) + 22);
+    const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
       DATE + 10,                                              // Billing Date (first column has extra left padding)
@@ -272,7 +273,7 @@ export default function Ledger() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <select className="select-inline" value={companyId} onChange={(e) => setParams(e.target.value ? { company_id: e.target.value } : {})}>
             <option value="">All companies…</option>
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.account_type === 'CHARGE' ? ' (Charge)' : ''}</option>)}
           </select>
           {!exec && <a className="btn btn-secondary" href={`/export_csv.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export CSV</a>}
           {!exec && <a className="btn btn-secondary" href={`/export_xlsx.php?type=ledger${companyId ? `&company_id=${companyId}` : ''}`}>Export XLSX</a>}
@@ -328,7 +329,7 @@ export default function Ledger() {
                   title={`Open ${c.name} in the Ledger`}
                 >
                   <div className="company-card-top">
-                    <div className="company-card-name">{c.name}</div>
+                    <div className="company-card-name">{c.name}{c.account_type === 'CHARGE' && <span className="badge badge-warning" style={{ marginLeft: 8 }}>Charge</span>}</div>
                     <svg className="company-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                   </div>
                   <div className="company-card-value">{peso(c.outstanding)}</div>

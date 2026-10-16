@@ -70,6 +70,7 @@ export default function Billing() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hmos = useMemo(() => accounts.filter((a) => a.account_type === 'HMO'), [accounts]);
+  const chargeAccts = useMemo(() => accounts.filter((a) => a.account_type === 'CHARGE'), [accounts]);
 
   const shown = useMemo(() => {
     if (!rows) return null;
@@ -85,7 +86,7 @@ export default function Billing() {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   async function save(andPost) {
-    if (!form.hmo_id) { setFlash({ type: 'error', msg: 'Choose an HMO.' }); return; }
+    if (form.bill_to === 'COMPANY' ? !form.company_id : !form.hmo_id) { setFlash({ type: 'error', msg: form.bill_to === 'COMPANY' ? 'Choose a charge account.' : 'Choose an HMO.' }); return; }
     if (andPost && !(Number(form.amount) > 0)) { setFlash({ type: 'error', msg: 'Enter an amount greater than zero to post.' }); return; }
     setBusy(true);
     try {
@@ -129,7 +130,7 @@ export default function Billing() {
     setFlash(null);
     setForm({
       id: r.id, txn_date: r.txn_date || todayLocal(), period_from: r.period_from || '', period_to: r.period_to || '',
-      soa_number: r.soa_number || '', amount: r.amount, hmo_id: r.hmo_id || '', company_id: '', bill_to: 'HMO', remarks: r.remarks || '',
+      soa_number: r.soa_number || '', amount: r.amount, hmo_id: r.hmo_id || '', company_id: r.bill_to === 'COMPANY' ? (r.company_id || '') : '', bill_to: r.bill_to === 'COMPANY' ? 'COMPANY' : 'HMO', remarks: r.remarks || '',
     });
   }
 
@@ -370,14 +371,40 @@ export default function Billing() {
                 <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} />
               </div>
               <div className="form-group">
-                <label>HMO *</label>
-                <select required value={form.hmo_id} onChange={set('hmo_id')}>
-                  <option value="">Select an HMO…</option>
-                  {hmos.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-                </select>
+                <label>Bill to</label>
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center', height: 40 }}>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 500, cursor: 'pointer' }}>
+                    <input type="radio" name="bill-to" style={{ width: 16, height: 16, margin: 0 }} checked={form.bill_to !== 'COMPANY'} onChange={() => setForm({ ...form, bill_to: 'HMO', company_id: '' })} /> HMO
+                  </label>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 500, cursor: 'pointer' }}>
+                    <input type="radio" name="bill-to" style={{ width: 16, height: 16, margin: 0 }} checked={form.bill_to === 'COMPANY'} onChange={() => setForm({ ...form, bill_to: 'COMPANY', hmo_id: '' })} /> Charge to company
+                  </label>
+                </div>
               </div>
+              {form.bill_to === 'COMPANY' ? (
+                <div className="form-group">
+                  <label>Charge account *</label>
+                  <select required value={form.company_id} onChange={set('company_id')}>
+                    <option value="">Select a charge account…</option>
+                    {chargeAccts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>HMO *</label>
+                  <select required value={form.hmo_id} onChange={set('hmo_id')}>
+                    <option value="">Select an HMO…</option>
+                    {hmos.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
-            {hmos.length === 0 && (
+            {form.bill_to === 'COMPANY' && chargeAccts.length === 0 && (
+              <div className="subtitle" style={{ marginTop: 10 }}>
+                No charge accounts yet. Open Companies, add one and set "Company or HMO?" to "Charge to company". The name can be the same as an HMO.
+              </div>
+            )}
+            {form.bill_to !== 'COMPANY' && hmos.length === 0 && (
               <div className="subtitle" style={{ marginTop: 10 }}>
                 No HMO accounts yet. Open Companies, edit each partner HMO and set "Company or HMO?" to HMO.
               </div>
@@ -410,7 +437,7 @@ export default function Billing() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Billing Date</th><th>Covered Period</th><th>SOA #</th><th>HMO</th>
+                <th>#</th><th>Billing Date</th><th>Covered Period</th><th>SOA #</th><th>HMO / Charge</th>
                 <th className="text-right">Amount</th><th>Status</th><th></th>
               </tr>
             </thead>
@@ -431,6 +458,7 @@ export default function Billing() {
                     {r.status === 'POSTED' && r.ledger_entry_id
                       ? <Link to={`/ledger?company_id=${billedId(r)}&entry=${r.ledger_entry_id}`}>{billedName(r)}</Link>
                       : billedName(r)}
+                    {r.bill_to === 'COMPANY' && <span className="badge badge-warning" style={{ marginLeft: 8 }}>Charge</span>}
                   </td>
                   <td className="text-right num">{peso(r.amount)}</td>
                   <td><span className={`badge ${STATUS_BADGE[r.status] || 'badge-secondary'}`}>{r.status}</span></td>
