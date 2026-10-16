@@ -42,4 +42,6 @@ export const IconHeart = () => (
 );
 export const IconUsers = () => (
   <svg {...common}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" /><path d="M18 14.3a6.5 6.5 0 0 1 3.5 5.7" /></svg>
+);export const IconCoins = () => (
+  <svg {...common}><circle cx="9" cy="9" r="6" /><path d="M15.5 9.4A6 6 0 1 1 9.4 15.5" /><path d="M9 7v4M7.5 8.5h3" /></svg>
 );

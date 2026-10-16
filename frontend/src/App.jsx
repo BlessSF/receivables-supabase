@@ -8,6 +8,7 @@ import Companies from './pages/Companies';
 import Ledger from './pages/Ledger';
 import Billing from './pages/Billing';
 import Hmos from './pages/Hmos';
+import CompanyCharges from './pages/CompanyCharges';
 import Aging from './pages/Aging';
 import PastDue from './pages/PastDue';
 import SoaTracker from './pages/SoaTracker';
@@ -53,6 +54,7 @@ function Gate() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/hmos" element={<Hmos />} />
+          <Route path="/company-charges" element={<CompanyCharges />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -69,6 +71,7 @@ function Gate() {
         <Route path="/reports-by-month" element={<MonthlyReport />} />
         <Route path="/companies" element={<Companies />} />
         <Route path="/hmos" element={<Hmos />} />
+          <Route path="/company-charges" element={<CompanyCharges />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/aging" element={<Aging />} />

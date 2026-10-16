@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive, isStaff } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -21,6 +21,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/companies', label: 'Companies', Icon: IconBuilding },
       { to: '/hmos', label: 'HMOs', Icon: IconHeart },
+      { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
       { to: '/billing', label: 'Billing', Icon: IconReceipt },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
@@ -58,6 +59,7 @@ const STAFF_NAV_GROUPS = [
     items: [
       { to: '/companies', label: 'Companies', Icon: IconBuilding },
       { to: '/hmos', label: 'HMOs', Icon: IconHeart },
+      { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
   },
