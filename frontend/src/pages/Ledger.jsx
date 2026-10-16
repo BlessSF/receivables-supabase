@@ -415,7 +415,7 @@ export default function Ledger() {
                   <th className="text-right">Paid</th><th className="text-right">Balance</th>
                   <th>Aging</th>
                   <th>Remarks</th>
-                  {canDelete && <th className="text-center">Action</th>}
+                  {canDelete && <th className="text-center col-sticky-r">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -465,7 +465,7 @@ export default function Ledger() {
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
-                    {canDelete && <td className="text-center"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
+                    {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
                 ))}
               </tbody>

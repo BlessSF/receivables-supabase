@@ -278,10 +278,10 @@ export default function Billing() {
                   <input type="radio" name="soa-basis" style={{ width: 20, height: 20, margin: 0, cursor: 'pointer' }} checked={imp.basis === 'current'} onChange={() => setBasis('current')} /> Current Amount Due only
                 </label>
               </div>
-              <div className="table-wrap">
-                <table className="data-table">
+              <div className="table-wrap import-scroll">
+                <table className="data-table import-table">
                   <thead>
-                    <tr><th></th><th>File</th><th>SOA #</th><th>HMO</th><th>Billing Date</th><th>Covered Period</th><th className="text-right">Amount (₱)</th><th>Check</th></tr>
+                    <tr><th></th><th>File</th><th>SOA #</th><th>HMO</th><th>Billing Date</th><th>Covered Period</th><th className="text-right">Amount (₱)</th><th className="col-sticky-r">Check</th></tr>
                   </thead>
                   <tbody>
                     {imp.items.map((it) => {
@@ -291,7 +291,7 @@ export default function Billing() {
                           <td>
                             <input type="checkbox" checked={it.selected && !it.error} disabled={!!it.error} onChange={(e) => patchItem(it.key, { selected: e.target.checked })} aria-label={`Import ${it.file}`} />
                           </td>
-                          <td style={{ maxWidth: 220 }}>
+                          <td style={{ minWidth: 150, maxWidth: 220 }}>
                             <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{it.file}</div>
                             {!it.error && (
                               <div style={{ fontSize: 12, color: 'var(--slate)' }}>
@@ -320,7 +320,7 @@ export default function Billing() {
                             </td>
                             <td className="text-right"><input type="number" step="0.01" min="0" style={{ width: 120, textAlign: 'right' }} value={it.amount} onChange={(e) => patchItem(it.key, { amount: e.target.value })} /></td>
                           </>)}
-                          <td style={{ minWidth: 150 }}>
+                          <td className="col-sticky-r" style={{ minWidth: 170, maxWidth: 240 }}>
                             {problem
                               ? <span className="badge badge-danger" style={{ whiteSpace: 'normal' }}>{problem}</span>
                               : <span className="badge badge-success">Ready</span>}
