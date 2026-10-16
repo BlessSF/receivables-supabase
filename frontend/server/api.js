@@ -508,7 +508,7 @@ const actions = {
     if (!companyId) {
       const [bws, bps] = branchWhereStandalone(auth, 'c');
       const rows = await all(
-        `SELECT c.id, c.name, c.status, COUNT(l.id) as entry_count, COALESCE(SUM(l.balance),0) as outstanding
+        `SELECT c.id, c.name, c.status, c.account_type, COUNT(l.id) as entry_count, COALESCE(SUM(l.balance),0) as outstanding
          FROM companies c LEFT JOIN ledger_entries l ON l.company_id = c.id
          ${bws}
          GROUP BY c.id ORDER BY c.id`, bps);
@@ -519,6 +519,7 @@ const actions = {
           id: toInt(row.id),
           name: row.name,
           status: row.status,
+          account_type: row.account_type,
           outstanding: toFloat(row.outstanding),
           worst_days_overdue: null,
           soonest_days_until_due: null,

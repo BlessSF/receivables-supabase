@@ -312,11 +312,14 @@ export default function Ledger() {
         </div>
       )}
 
-      {!company && data.company_summary && data.company_summary.length > 0 && (
-        <div className="panel">
-          <h2>Companies — Outstanding &amp; Aging</h2>
+      {!company && data.company_summary && data.company_summary.length > 0 && [
+        { key: 'hmo', title: 'HMOs', list: data.company_summary.filter((c) => c.account_type !== 'CHARGE') },
+        { key: 'charge', title: 'Company Charges', list: data.company_summary.filter((c) => c.account_type === 'CHARGE') },
+      ].filter((g) => g.list.length > 0).map((g) => (
+        <div className="panel" key={g.key}>
+          <h2>{g.title} — Outstanding &amp; Aging</h2>
           <div className="company-card-grid">
-            {data.company_summary.map((c) => {
+            {g.list.map((c) => {
               const hasBalance = c.outstanding > 0.009;
               const overdue = hasBalance && c.worst_days_overdue !== null && c.worst_days_overdue !== undefined;
               const dueSoon = hasBalance && !overdue && c.soonest_days_until_due !== null && c.soonest_days_until_due !== undefined;
@@ -329,7 +332,7 @@ export default function Ledger() {
                   title={`Open ${c.name} in the Ledger`}
                 >
                   <div className="company-card-top">
-                    <div className="company-card-name">{c.name}{c.account_type === 'CHARGE' && <span className="badge badge-warning" style={{ marginLeft: 8 }}>Charge</span>}</div>
+                    <div className="company-card-name">{c.name}</div>
                     <svg className="company-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                   </div>
                   <div className="company-card-value">{peso(c.outstanding)}</div>
@@ -344,7 +347,7 @@ export default function Ledger() {
             })}
           </div>
         </div>
-      )}
+      ))}
 
       <div className="panel">
         <div className="table-toolbar">
