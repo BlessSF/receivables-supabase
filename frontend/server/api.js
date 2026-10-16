@@ -860,11 +860,12 @@ const actions = {
     const note = `${t.remarks ? `${trim(t.remarks)} ` : ''}[Billing #${id}]`;
     const periodMonth = t.period_from ? normalizePeriod(t.period_from) : null;
 
+    const postTax = round(amount * (await taxWithheldPercent()) / 100, 2); // Tax W/H = Amount x tax %
     const entryId = await transaction(async (client) => {
       const eid = await insertId(
         `INSERT INTO ledger_entries (company_id, company_name, billing_date, soa_number, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)`,
-        [chargeId, chargeName, t.txn_date || todayYmd(), t.soa_number || null, t.period_from || null, t.period_to || null, periodMonth, amount, amount, amount, note], client
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)`,
+        [chargeId, chargeName, t.txn_date || todayYmd(), t.soa_number || null, t.period_from || null, t.period_to || null, periodMonth, amount, postTax, amount - postTax, amount, note], client
       );
       await exec(
         `UPDATE billing_transactions SET status='POSTED', ledger_entry_id=?, posted_at=(now() AT TIME ZONE 'Asia/Manila') WHERE id=?`,
