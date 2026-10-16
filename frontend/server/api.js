@@ -46,6 +46,7 @@ const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
+  'get_users', 'create_user', 'update_user', 'delete_user',
 ]);
 
 function recalcRow(d) {
@@ -1159,16 +1160,17 @@ const actions = {
   // Admins create and manage Staff accounts. Admin / branch / executive accounts
   // are listed for reference but can't be edited or deleted from here.
   async get_users(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const data = await all('SELECT id, username, full_name, role, created_at FROM users ORDER BY (role = \'staff\') DESC, UPPER(username) COLLATE "C" ASC');
     return { ok: true, data };
   },
 
   async create_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const username = trim(input.username ?? '');
     const password = String(input.password ?? '');
     const fullName = elvis(trim(input.full_name ?? ''), username);
+    const role = input.role === 'admin' ? 'admin' : 'staff'; // admins and executives may add Admin or Staff accounts
     if (!/^[A-Za-z0-9._-]{3,50}$/.test(username)) {
       jsonExit({ ok: false, error: 'Username must be 3-50 characters: letters, numbers, dot, dash or underscore.' }, 400);
     }
@@ -1177,12 +1179,12 @@ const actions = {
       jsonExit({ ok: false, error: `The username "${username}" is already taken.` }, 409);
     }
     const hash = await bcrypt.hash(password, 10);
-    const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, 'staff']);
-    return { ok: true, id, message: `Staff account "${username}" created.` };
+    const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, role]);
+    return { ok: true, id, message: `${role === 'admin' ? 'Admin' : 'Staff'} account "${username}" created.` };
   },
 
   async update_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
@@ -1199,7 +1201,7 @@ const actions = {
   },
 
   async delete_user(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can manage users.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);

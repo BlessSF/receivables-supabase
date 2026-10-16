@@ -40,6 +40,7 @@ function Gate() {
           <Route path="/aging" element={<Aging />} />
           <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="/ledger" element={<Ledger />} />
+          <Route path="/users" element={<Users />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

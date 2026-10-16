@@ -87,6 +87,12 @@ const EXEC_NAV_GROUPS = [
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
   },
+  {
+    label: 'System',
+    items: [
+      { to: '/users', label: 'Users', Icon: IconUsers },
+    ],
+  },
 ];
 
 export default function Layout() {

@@ -31,6 +31,7 @@ export default function Users() {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('staff');
   const [busy, setBusy] = useState(false);
 
   // edit row
@@ -48,7 +49,7 @@ export default function Users() {
     setBusy(true);
     setFlash(null);
     try {
-      const r = await api.createUser({ full_name: fullName, username, password });
+      const r = await api.createUser({ full_name: fullName, username, password, role });
       setFlash({ type: 'success', msg: r.message });
       setFullName(''); setUsername(''); setPassword('');
       load();
@@ -89,7 +90,7 @@ export default function Users() {
     }
   }
 
-  if (!user?.is_admin) return <div className="flash flash-error">Only an admin can open Users.</div>;
+  if (!user?.is_admin && !user?.is_executive) return <div className="flash flash-error">Only an admin or executive can open Users.</div>;
   if (err) return <div className="flash flash-error">{err}</div>;
   if (!users) return <div className="loading-state">Loading users…</div>;
 
@@ -100,7 +101,7 @@ export default function Users() {
       <div className="page-header">
         <div>
           <h1>Users</h1>
-          <div className="subtitle">Create Staff accounts. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
+          <div className="subtitle">Create Admin or Staff accounts. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
         </div>
       </div>
 
@@ -132,8 +133,9 @@ export default function Users() {
             </div>
             <div className="form-group">
               <label>Role</label>
-              <select value="staff" disabled>
+              <select value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
           </div>
