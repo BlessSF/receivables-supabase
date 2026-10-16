@@ -148,6 +148,14 @@ export default function Dashboard() {
   ];
   const agingTotal = agingRows.reduce((s, [k]) => s + (data.aging[k]?.total || 0), 0) || 1;
   const staff = isStaff(user);
+  // HMOs vs Company Charges breakdown shown under each total (overall view only)
+  const showSplit = !company && !scope && !!data.by_type;
+  const splitLine = (field) => showSplit && (
+    <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
+      <span className="kpi-dark-left">HMOs {peso(data.by_type.HMO?.[field] || 0)}</span>
+      <span className="kpi-dark-right">Company Charges {peso(data.by_type.CHARGE?.[field] || 0)}</span>
+    </div>
+  );
 
   return (
     <div className={loading ? 'dash is-loading' : 'dash'}>
@@ -247,6 +255,7 @@ export default function Dashboard() {
             <span className="kpi-dark-left">{p.entries} {p.entries === 1 ? 'entry' : 'entries'}</span>
             <span className="kpi-dark-right">{delta(p.billed, prev?.billed, prevLabel) || scopeName}</span>
           </div>
+          {splitLine('billed')}
         </div>
         <div className="kpi-dark-card accent-green">
           <div className="kpi-dark-label">Collected · {periodName}</div>
@@ -256,6 +265,7 @@ export default function Dashboard() {
             <span className="kpi-dark-left">{p.collection_rate}% of billed</span>
             <span className="kpi-dark-right">{delta(p.collected, prev?.collected, prevLabel) || 'by payment date'}</span>
           </div>
+          {splitLine('collected')}
         </div>
         <div className="kpi-dark-card accent-red">
           <div className="kpi-dark-label">Outstanding balance</div>
@@ -265,6 +275,7 @@ export default function Dashboard() {
             <span className="kpi-dark-left">{p.open_count} unpaid {p.open_count === 1 ? 'entry' : 'entries'}</span>
             <span className="kpi-dark-right">{isAllTime ? 'across all periods' : `billed in ${periodName}`}</span>
           </div>
+          {splitLine('outstanding')}
         </div>
         <div className="kpi-dark-card accent-amber">
           <div className="kpi-dark-label">Past due</div>
@@ -274,6 +285,7 @@ export default function Dashboard() {
             <span className="kpi-dark-left">{p.past_due_count} overdue {p.past_due_count === 1 ? 'entry' : 'entries'}</span>
             <span className="kpi-dark-right">of {peso(p.outstanding)} unpaid</span>
           </div>
+          {splitLine('past_due')}
         </div>
       </div>
 
