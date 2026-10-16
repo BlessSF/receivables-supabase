@@ -645,7 +645,7 @@ const actions = {
     // Rebate = Receivable - Paid, calculated automatically when the user confirms it in the Ledger
     // (the shortfall between what was billed and what was actually paid).
     let autoRebate = null;
-    if (field === 'paid_amount' && truthy(input.auto_rebate) && value > 0) {
+    if (field === 'paid_amount' && value > 0) {
       autoRebate = round(Math.max(0, toFloat(row.amount) - toFloat(row.tax_withheld) + toFloat(row.surcharge) - value), 2);
       row.rebate = autoRebate;
     }

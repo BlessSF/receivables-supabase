@@ -124,7 +124,8 @@ export default function Ledger() {
     return entries.map((e) => {
       if (e.id !== live.id) return e;
       const paid = Number(live.value) || 0;
-      return { ...e, live_paid: paid, balance: (Number(e.amount) || 0) - paid }; // Balance = Amount - Paid, same as the server
+      const base = (Number(e.amount) || 0) - (Number(e.tax_withheld) || 0) + (Number(e.surcharge) || 0);
+      return { ...e, live_paid: paid, balance: (Number(e.amount) || 0) - paid, ...(paid > 0 ? { rebate: Math.max(0, Math.round((base - paid) * 100) / 100) } : {}) }; // Balance = Amount - Paid, same as the server
     });
   }, [entries, live]);
   const liveTotals = useMemo(() => {
@@ -243,19 +244,8 @@ export default function Ledger() {
 
   async function saveField(id, field, value) {
     let r;
-    // Paid is less than the receivable: offer to record the difference as Rebate (Rebate = Receivable - Paid).
-    let autoRebate = false;
-    if (field === 'paid_amount') {
-      const cur = (data?.entries || []).find((e) => e.id === id);
-      const paid = Number(value) || 0;
-      if (cur && paid > 0) {
-        const base = (Number(cur.amount) || 0) - (Number(cur.tax_withheld) || 0) + (Number(cur.surcharge) || 0);
-        const diff = Math.round((base - paid) * 100) / 100;
-        if (diff > 0.009 && Math.abs(diff - (Number(cur.rebate) || 0)) > 0.009) {
-          autoRebate = window.confirm(`Receivable ${peso(base)} − Paid ${peso(paid)} = ${peso(diff)}.\n\nOK = fill the Rebate column with ${peso(diff)} automatically.\nCancel = leave the Rebate as it is.`);
-        }
-      }
-    }
+    // Rebate = Receivable - Paid, filled in automatically whenever a Paid amount is entered.
+    const autoRebate = field === 'paid_amount' && (Number(value) || 0) > 0;
     try {
       r = await api.inlineUpdateLedger(id, field, value, false, autoRebate);
     } catch (e) {
