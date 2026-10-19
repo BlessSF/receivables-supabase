@@ -1,4 +1,4 @@
-import { IconLedger, IconEdit, IconTrash } from '../icons';
+import { IconOpen, IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -38,6 +38,15 @@ export default function CompanyCharges() {
   }, [rows, search]);
 
   const totalOutstanding = useMemo(() => (rows || []).reduce((s, c) => s + (Number(c.outstanding) || 0), 0), [rows]);
+  const stats = useMemo(() => {
+    const r = rows || [];
+    return {
+      accounts: r.length,
+      active: r.filter((c) => c.status === 'ACTIVE').length,
+      withBalance: r.filter((c) => (Number(c.outstanding) || 0) > 0.009).length,
+      entries: r.reduce((s, c) => s + (Number(c.entry_count) || 0), 0),
+    };
+  }, [rows]);
   const setF = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   async function submit(e) {
@@ -129,17 +138,40 @@ export default function CompanyCharges() {
       </div>
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
+      <div className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-label">Charged companies</div>
+          <div className="kpi-value">{rows ? stats.accounts : '…'}</div>
+          <div className="kpi-sub">{rows ? `${stats.active} active` : 'on file'}</div>
+        </div>
+        <div className="kpi-card accent-red">
+          <div className="kpi-label">Unpaid, charged directly</div>
+          <div className="kpi-value">{peso(totalOutstanding)}</div>
+          <div className="kpi-sub">from posted charges</div>
+        </div>
+        <div className="kpi-card accent-amber">
+          <div className="kpi-label">Accounts with a balance</div>
+          <div className="kpi-value">{rows ? stats.withBalance : '…'}</div>
+          <div className="kpi-sub">still unpaid</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Ledger entries</div>
+          <div className="kpi-value">{rows ? stats.entries : '…'}</div>
+          <div className="kpi-sub">across all accounts</div>
+        </div>
+      </div>
+
       <div className="panel">
         <div className="table-toolbar">
           <input className="table-search" placeholder="Search company name, code, contact…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <span className="table-toolbar-count">{filtered ? `${filtered.length} account${filtered.length === 1 ? '' : 's'} · unpaid ${peso(totalOutstanding)}` : ''}</span>
+          <span className="table-toolbar-count">{filtered ? `${filtered.length} account${filtered.length === 1 ? '' : 's'}` : ''}</span>
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Company</th><th>Status</th><th>Contact</th>
-                <th className="text-right">Entries</th><th className="text-right">Ledger balance</th><th></th>
+                <th className="text-right">Ledger entries</th><th className="text-right">Ledger balance</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -157,7 +189,7 @@ export default function CompanyCharges() {
                   <td className="text-right num">{c.entry_count}</td>
                   <td className="text-right num"><Link to={`/ledger?company_id=${c.id}`}>{peso(c.outstanding)}</Link></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <Link className="btn btn-secondary btn-sm icon-btn" to={`/ledger?company_id=${c.id}`} title="Open ledger" aria-label="Open ledger"><IconLedger /></Link>
+                    <Link className="btn btn-secondary btn-sm icon-btn" to={`/ledger?company_id=${c.id}`} title="Open" aria-label="Open"><IconOpen /></Link>
                     {!staff && <>
                       <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...c }); }}><IconEdit /></button>
                       <button className="btn btn-danger btn-sm icon-btn" title="Delete" aria-label="Delete" onClick={() => remove(c)}><IconTrash /></button></>}
