@@ -111,7 +111,7 @@ export default function Dashboard() {
   const p = data.period;
   const isMonth = data.view === 'month';
   const isAllTime = data.view === 'all';
-  const periodName = isAllTime ? 'All time' : isMonth ? `${MONTHS_LONG[data.month - 1]} ${data.year}` : String(data.year);
+  const periodName = isAllTime ? 'All time' : isMonth ? (data.month === 0 ? `All months ${data.year}` : `${MONTHS_LONG[data.month - 1]} ${data.year}`) : String(data.year);
   const pickable = companies.filter((c) => !scope || c.account_type === scope);
 
   // previous period, for the "vs" notes on the cards
@@ -234,6 +234,7 @@ export default function Dashboard() {
 
       {isMonth && (
         <div className="month-chips" role="tablist" aria-label="Month">
+          <button type="button" role="tab" aria-selected={data.month === 0} className={data.month === 0 ? 'on' : ''} onClick={() => setMonth('all')}>All months</button>
           {MONTHS.map((m, i) => {
             const t = data.months[i];
             const has = t.billed || t.collected || t.entries;
@@ -300,7 +301,7 @@ export default function Dashboard() {
             <span><i style={{ background: '#e2a03a', borderRadius: 999 }} />Unpaid balance</span>
           </div>
         </div>
-        <EvolutionChart items={items} selected={isMonth ? data.month : isAllTime ? null : data.year} onSelect={pickCategory}
+        <EvolutionChart items={items} selected={isMonth ? (data.month || null) : isAllTime ? null : data.year} onSelect={pickCategory}
           label={isMonth ? `Billed, collected and unpaid by month, ${data.year}` : 'Billed, collected and unpaid by year'} />
         <div className="dash-hint">{isMonth ? 'Click a month to focus on it.' : 'Click a year to open it month by month.'}</div>
       </div>
@@ -323,7 +324,7 @@ export default function Dashboard() {
             <tbody>
               {rowsForTable.length === 0 && <tr><td colSpan={7} className="empty-state">Nothing recorded for {scopeName} yet.</td></tr>}
               {rowsForTable.map((t) => {
-                const active = !isAllTime && t.key === (isMonth ? data.month : data.year);
+                const active = !isAllTime && data.month !== 0 && t.key === (isMonth ? data.month : data.year);
                 return (
                   <tr key={t.key} className={`clickable-row ${active ? 'row-active' : ''}`}
                     onClick={() => (isMonth ? setMonth(t.key) : drillYear(t.key))}

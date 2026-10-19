@@ -55,8 +55,11 @@ function recalcRow(d) {
   const surcharge = toFloat(d.surcharge);
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
-  const receivable = amount - tax + surcharge - rebate;
-  const balance = Math.max(0, round(receivable - paid, 2)); // Balance = Receivable - Paid. Never below 0, so an applied rebate (or an overpayment) is never counted as due or as negative outstanding
+  // Receivable = Amount - Tax W/H + Surcharge - Rebate (only a rebate that was actually entered).
+  const receivable = round(amount - tax + surcharge - rebate, 2);
+  // Balance = Receivable - Paid. An unpaid difference stays outstanding until it is paid; an overpayment
+  // is shown as 0 outstanding, never as a negative amount in the totals.
+  const balance = Math.max(0, round(receivable - paid, 2));
   return [receivable, balance];
 }
 
@@ -138,8 +141,10 @@ const actions = {
     const type = ['HMO', 'COMPANY', 'CHARGE'].includes(input.type) ? input.type : null; // null = everything (CHARGE = Company Charges accounts)
     let year = toInt(input.year);
     if (year < 2000 || year > 2100) year = nowYear;
+    const allMonths = String(input.month) === 'all'; // "All months" chip: the whole year in the monthly view
     let month = toInt(input.month);
-    if (month < 1 || month > 12) month = year === nowYear ? nowMonth : 12;
+    if (allMonths) month = 0;
+    else if (month < 1 || month > 12) month = year === nowYear ? nowMonth : 12;
 
     const [bw, bp] = branchWhere(auth, 'c');
     let sql = `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.soa_number,
@@ -159,7 +164,7 @@ const actions = {
       const d = new Date(ms);
       return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
     };
-    const inPeriod = (ym) => view === 'all' || (!!ym && ym.y === year && (view === 'year' || ym.m === month));
+    const inPeriod = (ym) => view === 'all' || (!!ym && ym.y === year && (view === 'year' || allMonths || ym.m === month));
 
     const yearAgg = new Map();
     const monthAgg = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, ...blank() }));
@@ -493,7 +498,7 @@ const actions = {
 
     const agingTally = {};
     for (const r of entries) {
-      if (toFloat(r.balance) <= 0) continue;
+      if (toFloat(r.balance) <= 0.009) continue;
       const bucket = agingBucket(daysOverdue(dueOf(r, due)));
       agingTally[bucket] = (agingTally[bucket] ?? 0) + toFloat(r.balance);
     }
@@ -583,7 +588,7 @@ const actions = {
     let value = input.value ?? null;
 
     if (!id || !allowed.includes(field)) jsonExit({ ok: false, error: 'Invalid field.' }, 400);
-    if (field === 'tax_withheld' || field === 'rebate') jsonExit({ ok: false, error: 'Tax W/H and Rebate are calculated automatically.' }, 400);
+    if (field === 'tax_withheld') jsonExit({ ok: false, error: 'Tax W/H is calculated automatically (Amount x tax %).' }, 400);
     if (auth.isStaff() && !STAFF_EDITABLE_FIELDS.includes(field)) {
       jsonExit({ ok: false, error: 'Staff accounts can only edit Payment Date, Check Ref and Paid.' }, 403);
     }
@@ -644,20 +649,13 @@ const actions = {
     }
 
     row[field] = value;
-    // Tax W/H and Rebate are automatic (view only in the Ledger):
-    //   Tax W/H = Amount x the tax % (Settings, 2 by default); Rebate = Amount - Tax W/H + Surcharge - Paid once paid.
-    let autoTax = null;
-    let autoRebate = null;
-    {
-      // Always re-derived on any edit, so every row stays consistent with the formulas.
-      // Charge to Company accounts have no 2% EWT deduction (HMO and regular accounts do).
-      const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
-      autoTax = acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
-      row.tax_withheld = autoTax;
-      const paidNow = toFloat(row.paid_amount);
-      autoRebate = paidNow > 0 ? round(Math.max(0, toFloat(row.amount) - autoTax + toFloat(row.surcharge) - paidNow), 2) : 0;
-      row.rebate = autoRebate;
-    }
+    // Tax W/H is automatic (view only in the Ledger): Amount x the tax % (Settings, 2 by default), none for
+    // Charge to Company accounts. It is re-derived on every edit so every row follows the same formula.
+    // Rebate is NOT calculated: only a rebate that someone actually enters reduces the balance. An unpaid
+    // difference stays outstanding until it is paid.
+    const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
+    const autoTax = acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+    row.tax_withheld = autoTax;
     const [receivable, balance] = recalcRow(row);
 
     // `field` is checked against the allow-list above, so it's safe to put in the SQL.
@@ -665,8 +663,7 @@ const actions = {
       `UPDATE ledger_entries SET ${field} = ?, receivable_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`,
       [value, receivable, balance, id]
     );
-    if (autoRebate !== null) await exec('UPDATE ledger_entries SET rebate = ? WHERE id = ?', [autoRebate, id]);
-    if (autoTax !== null) await exec('UPDATE ledger_entries SET tax_withheld = ? WHERE id = ?', [autoTax, id]);
+    await exec('UPDATE ledger_entries SET tax_withheld = ? WHERE id = ?', [autoTax, id]);
 
     if (field === 'soa_number') {
       if (value) {
@@ -681,7 +678,6 @@ const actions = {
       ok: true,
       receivable_amount: receivable,
       balance,
-      rebate: autoRebate,
       tax_withheld: autoTax,
       deduction: balance,
       aging_bucket: agingBucket(daysOverdue(dueOf(row, due))),
