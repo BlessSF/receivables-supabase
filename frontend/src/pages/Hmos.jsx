@@ -1,4 +1,4 @@
-import { IconOpen, IconEdit } from '../icons';
+import { IconOpen, IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -48,6 +48,21 @@ export default function Hmos() {
   }, [hmos]);
 
   const setF = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  // Deleting an HMO also deletes ALL of its ledger entries, so it asks twice: OK, then type the name.
+  async function remove(h) {
+    if (!window.confirm(`Delete the HMO "${h.name}" and ALL of its ledger entries (ledger balance ${peso(h.account_balance)})?\n\nThis cannot be undone.`)) return;
+    const typed = window.prompt(`To confirm, type the HMO name exactly:\n${h.name}`);
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== String(h.name).trim().toLowerCase()) { setFlash({ type: 'error', msg: 'The name did not match, so nothing was deleted.' }); return; }
+    try {
+      await api.deleteCompany(h.id);
+      setFlash({ type: 'success', msg: `HMO "${h.name}" deleted.` });
+      load();
+    } catch (err) {
+      setFlash({ type: 'error', msg: err.message });
+    }
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -196,7 +211,8 @@ export default function Hmos() {
                   <td className="text-right num"><Link to={`/ledger?company_id=${h.id}`}>{peso(h.account_balance)}</Link></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-secondary btn-sm icon-btn" title="Open" aria-label="Open" onClick={() => { setFlash(null); setSelectedId(h.id); }}><IconOpen /></button>{!staff && <>
-                    <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}><IconEdit /></button></>}
+                    <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}><IconEdit /></button>
+                    <button className="btn btn-danger btn-sm icon-btn" title="Delete" aria-label="Delete" onClick={() => remove(h)}><IconTrash /></button></>}
                   </td>
                 </tr>
               ))}
