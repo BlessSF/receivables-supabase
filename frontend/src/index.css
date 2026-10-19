@@ -85,18 +85,25 @@ button { font-family: inherit; }
 
 .brand {
   display: flex; align-items: center; gap: 12px;
-  padding: 2px 8px 22px;
+  padding: 12px 12px; margin: 0 0 18px;
   flex-shrink: 0;
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 6px 18px rgba(0, 0, 0, 0.22);
 }
 .brand-mark {
-  width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
   display: grid; place-items: center;
-  background: linear-gradient(140deg, #1b8f80, #0d5f56);
-  color: #fff; font-family: var(--font-display); font-size: 22px; font-weight: 600; line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, #2bb5a2 0%, #12806f 55%, #0b564d 100%);
+  color: #fff; font-family: var(--font-display); font-size: 23px; font-weight: 700; line-height: 1; letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 4px 12px rgba(18, 128, 111, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
-.brand-name { font-weight: 600; font-size: 16px; color: #fff; line-height: 1.2; }
-.brand-sub { font-size: 12px; color: #8494ad; margin-top: 1px; }
+.brand-name { font-weight: 700; font-size: 16.5px; color: #fff; line-height: 1.15; letter-spacing: 0.01em; }
+.brand-sub {
+  font-size: 10.5px; color: #7fd6c8; margin-top: 4px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.11em; line-height: 1.2;
+}
 
 .sidebar-nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .nav-group-label {
@@ -281,7 +288,7 @@ button { font-family: inherit; }
 .company-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .company-card-name {
   font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.3;
-  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
 }
 .company-card-arrow { flex-shrink: 0; color: var(--slate); opacity: 0.4; transition: opacity 0.12s ease, color 0.12s ease; }
 .company-card:hover .company-card-arrow { opacity: 1; color: var(--teal); }
@@ -700,14 +707,14 @@ button { font-family: inherit; }
 }
 
 /* ---------- Custom account logo (e.g. Demic Lab) ---------- */
-.brand-custom { flex-direction: column; align-items: stretch; gap: 8px; }
+.brand-custom { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
 .brand-logo-card {
   background: #fff; border-radius: 10px; padding: 10px 12px;
   display: flex; align-items: center; justify-content: center;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .brand-logo-card img { display: block; width: 100%; max-width: 190px; height: auto; }
-.brand-custom .brand-sub { padding-left: 2px; }
+.brand-custom .brand-sub { padding-left: 2px; margin-top: 0; }
 
 /* ---------- Back links (← Back to …) ---------- */
 .back-link {
@@ -740,7 +747,7 @@ button { font-family: inherit; }
 /* ---------- Collapsed sidebar (icons only) -- only when you click "Collapse" ---------- */
 @media (min-width: 781px) {
   .shell.is-collapsed .sidebar { width: 72px; padding: 18px 10px 14px; }
-  .shell.is-collapsed .brand, .shell.is-collapsed .brand-custom { padding: 2px 0 18px; justify-content: center; }
+  .shell.is-collapsed .brand, .shell.is-collapsed .brand-custom { padding: 8px 0; margin-bottom: 14px; justify-content: center; background: none; box-shadow: none; }
   .shell.is-collapsed .brand > div, .shell.is-collapsed .brand-custom .brand-sub, .shell.is-collapsed .brand-logo-card { display: none; }
   .shell.is-collapsed .brand-custom::before {
     content: attr(data-initial); width: 36px; height: 36px; border-radius: 9px; margin: 0 auto;
