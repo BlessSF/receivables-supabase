@@ -1,3 +1,4 @@
+import { IconLedger, IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -156,10 +157,10 @@ export default function CompanyCharges() {
                   <td className="text-right num">{c.entry_count}</td>
                   <td className="text-right num"><Link to={`/ledger?company_id=${c.id}`}>{peso(c.outstanding)}</Link></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <Link className="btn btn-secondary btn-sm" to={`/ledger?company_id=${c.id}`}>Ledger</Link>
-                    {!staff && <>{' '}
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...c }); }}>Edit</button>{' '}
-                      <button className="btn btn-danger btn-sm" onClick={() => remove(c)}>Delete</button></>}
+                    <Link className="btn btn-secondary btn-sm icon-btn" to={`/ledger?company_id=${c.id}`} title="Open ledger" aria-label="Open ledger"><IconLedger /></Link>
+                    {!staff && <>
+                      <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...c }); }}><IconEdit /></button>
+                      <button className="btn btn-danger btn-sm icon-btn" title="Delete" aria-label="Delete" onClick={() => remove(c)}><IconTrash /></button></>}
                   </td>
                 </tr>
               ))}

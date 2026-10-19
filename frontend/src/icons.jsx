@@ -45,3 +45,16 @@ export const IconUsers = () => (
 );export const IconCoins = () => (
   <svg {...common}><circle cx="9" cy="9" r="6" /><path d="M15.5 9.4A6 6 0 1 1 9.4 15.5" /><path d="M9 7v4M7.5 8.5h3" /></svg>
 );
+
+export const IconEdit = () => (
+  <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+);
+export const IconTrash = () => (
+  <svg {...common}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></svg>
+);
+export const IconOpen = () => (
+  <svg {...common}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+export const IconLedger = () => (
+  <svg {...common}><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2Z" /><path d="M5 18a2 2 0 0 1 2-2h12" /><path d="M9 8h6M9 12h6" /></svg>
+);

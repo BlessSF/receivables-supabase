@@ -1,3 +1,4 @@
+import { IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -233,8 +234,8 @@ export default function Companies() {
                   <td>{c.contact_person || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {!staff && <>
-                      <button className="btn btn-secondary btn-sm" onClick={() => startEdit(c)}>Edit</button>{' '}
-                      <button className="btn btn-danger btn-sm" onClick={() => remove(c)}>Delete</button>
+                      <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => startEdit(c)}><IconEdit /></button>
+                      <button className="btn btn-danger btn-sm icon-btn" title="Delete" aria-label="Delete" onClick={() => remove(c)}><IconTrash /></button>
                     </>}
                   </td>
                 </tr>

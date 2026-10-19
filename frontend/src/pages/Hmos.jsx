@@ -1,3 +1,4 @@
+import { IconOpen, IconEdit } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -194,8 +195,8 @@ export default function Hmos() {
                   <td className="text-right num" title={`Charged ${peso(h.billed_partners)}, still unpaid ${peso(h.unpaid_partners)}`}>{peso(h.unpaid_partners)}</td>
                   <td className="text-right num"><Link to={`/ledger?company_id=${h.id}`}>{peso(h.account_balance)}</Link></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setSelectedId(h.id); }}>Open</button>{!staff && <>{' '}
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}>Edit</button></>}
+                    <button className="btn btn-secondary btn-sm icon-btn" title="Open" aria-label="Open" onClick={() => { setFlash(null); setSelectedId(h.id); }}><IconOpen /></button>{!staff && <>
+                    <button className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...h }); }}><IconEdit /></button></>}
                   </td>
                 </tr>
               ))}

@@ -1039,3 +1039,8 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .hs-track.dragging .hs-thumb { background: #5f768f; cursor: grabbing; }
 .hs-hint { flex: none; font-size: 11.5px; color: var(--slate, #5b6573); white-space: nowrap; }
 @media (max-width: 780px), (pointer: coarse) { .hs-hint { display: none; } }
+
+/* Icon-only action buttons (Edit / Delete / Open / Ledger) */
+.icon-btn { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+.icon-btn + .icon-btn { margin-left: 6px; }
+.icon-btn svg { width: 16px; height: 16px; }
