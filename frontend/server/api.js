@@ -475,7 +475,7 @@ const actions = {
   async get_ledger(input, auth) {
     const companyId = isSet(input.company_id) && input.company_id !== '' ? toInt(input.company_id) : null;
     if (companyId) await requireCompanyAccess(auth, companyId);
-    let sql = 'SELECT l.*, c.name as company_name, c.status as company_status, h.name as via_hmo_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id LEFT JOIN companies h ON h.id = l.via_hmo_id';
+    let sql = 'SELECT l.*, c.name as company_name, c.status as company_status, c.account_type as account_type, h.name as via_hmo_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id LEFT JOIN companies h ON h.id = l.via_hmo_id';
     let params = [];
     if (companyId) {
       sql += ' WHERE l.company_id = ?';
@@ -649,7 +649,9 @@ const actions = {
     let autoTax = null;
     let autoRebate = null;
     if (['amount', 'surcharge', 'paid_amount'].includes(field)) {
-      autoTax = round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+      // Charge to Company accounts have no 2% EWT deduction (HMO and regular accounts do).
+      const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
+      autoTax = acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
       row.tax_withheld = autoTax;
       const paidNow = toFloat(row.paid_amount);
       autoRebate = paidNow > 0 ? round(Math.max(0, toFloat(row.amount) - autoTax + toFloat(row.surcharge) - paidNow), 2) : 0;
@@ -859,7 +861,7 @@ const actions = {
     const note = `${t.remarks ? `${trim(t.remarks)} ` : ''}[Billing #${id}]`;
     const periodMonth = t.period_from ? normalizePeriod(t.period_from) : null;
 
-    const postTax = round(amount * (await taxWithheldPercent()) / 100, 2); // Tax W/H = Amount x tax %
+    const postTax = t.bill_to === 'COMPANY' ? 0 : round(amount * (await taxWithheldPercent()) / 100, 2); // Tax W/H = Amount x tax %; none for Charge to Company
     const entryId = await transaction(async (client) => {
       const eid = await insertId(
         `INSERT INTO ledger_entries (company_id, company_name, billing_date, soa_number, period_from, period_to, period_date, amount, tax_withheld, surcharge, rebate, paid_amount, receivable_amount, balance, remarks)
@@ -1033,10 +1035,11 @@ const actions = {
     let recalcCount = 0;
     const cid = isSet(input.company_id) ? toInt(input.company_id) : null;
     if (truthy(input.recalc_existing) && cid && (await canAccessCompany(auth, cid))) {
+      const recalcIsCharge = (await scalar('SELECT account_type FROM companies WHERE id = ?', [cid])) === 'CHARGE';
       const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount FROM ledger_entries WHERE company_id = ?', [cid]);
       for (const r of rows) {
         const amount = toFloat(r.amount);
-        const tax = round((amount * percent) / 100, 2);
+        const tax = recalcIsCharge ? 0 : round((amount * percent) / 100, 2);
         const receivable = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
         if (Math.abs(paid - toFloat(r.receivable_amount)) < 0.01) paid = receivable;
