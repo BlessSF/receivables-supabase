@@ -205,10 +205,10 @@ export default function ExecDashboard() {
       <div className="exec-grid">
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <select className="select-inline" value={grouping} onChange={(e) => setGrouping(e.target.value)} aria-label="Show">
-              <option value="all">All accounts (combined)</option>
-              <option value="each">Each account (separate blocks)</option>
-            </select>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" className={grouping === 'all' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('all')}>All accounts (combined)</button>
+              <button type="button" className={grouping === 'each' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('each')}>Each account (separate blocks)</button>
+            </div>
           </div>
           {grouping === 'each' ? (
             groups.filter((g) => g.list.length > 0).length === 0

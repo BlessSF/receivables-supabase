@@ -200,10 +200,10 @@ export default function Dashboard() {
         {!company && (
           <div className="dash-control">
             <label htmlFor="dash-group">Show</label>
-            <select id="dash-group" className="select-inline" value={grouping} onChange={(e) => setGrouping(e.target.value)}>
-              <option value="all">All accounts (combined)</option>
-              <option value="each">Each account (separate blocks)</option>
-            </select>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" className={grouping === 'all' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('all')}>All accounts (combined)</button>
+              <button type="button" className={grouping === 'each' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setGrouping('each')}>Each account (separate blocks)</button>
+            </div>
           </div>
         )}
         <div className="dash-control">

@@ -279,29 +279,35 @@ export default function Summary() {
         <div className="panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
             <h2 style={{ margin: 0 }}>Summary by Month{selectedCompany ? ` — ${selectedCompany.name}` : ''} — {year}</h2>
-            <div className="form-group" style={{ minWidth: 240 }}>
-              <label>Company to summarize</label>
-              <select
-                className="select-inline"
-                value={companyId || (grouping === 'company' ? '__each' : '')}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '__each') { setCompanyId(''); setGrouping('company'); }
-                  else { setCompanyId(v); setGrouping('all'); }
-                }}
-              >
-                <option value="">All accounts (combined)</option>
-                <option value="__each">Each account (separate blocks)</option>
-                <optgroup label="HMOs">
-                  {companies.filter((c) => c.account_type === 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
-                <optgroup label="Company Charges">
-                  {companies.filter((c) => c.account_type === 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
-                <optgroup label="Companies">
-                  {companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
-              </select>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Show</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" className={grouping === 'all' && !companyId ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => { setCompanyId(''); setGrouping('all'); }}>All accounts (combined)</button>
+                  <button type="button" className={grouping === 'company' ? 'btn btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => { setCompanyId(''); setGrouping('company'); }}>Each account (separate blocks)</button>
+                </div>
+              </div>
+              <div className="form-group" style={{ minWidth: 200, marginBottom: 0 }}>
+                <label>One account only</label>
+                <select
+                  className="select-inline"
+                  value={companyId}
+                  onChange={(e) => { setCompanyId(e.target.value); setGrouping('all'); }}
+                >
+                  <option value="">— none —</option>
+                  <optgroup label="HMOs">
+                    {companies.filter((c) => c.account_type === 'HMO').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                  <optgroup label="Company Charges">
+                    {companies.filter((c) => c.account_type === 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                  {companies.some((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE') && (
+                    <optgroup label="Companies">
+                      {companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
             </div>
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--slate)', margin: '0 0 14px' }}>
