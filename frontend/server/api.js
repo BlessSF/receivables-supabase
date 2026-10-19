@@ -56,7 +56,7 @@ function recalcRow(d) {
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
   const receivable = amount - tax + surcharge - rebate;
-  const balance = round(receivable - paid, 2); // Balance = Receivable - Paid (zero once the rebate covers the shortfall)
+  const balance = Math.max(0, round(receivable - paid, 2)); // Balance = Receivable - Paid. Never below 0, so an applied rebate (or an overpayment) is never counted as due or as negative outstanding
   return [receivable, balance];
 }
 
@@ -648,7 +648,8 @@ const actions = {
     //   Tax W/H = Amount x the tax % (Settings, 2 by default); Rebate = Amount - Tax W/H + Surcharge - Paid once paid.
     let autoTax = null;
     let autoRebate = null;
-    if (['amount', 'surcharge', 'paid_amount'].includes(field)) {
+    {
+      // Always re-derived on any edit, so every row stays consistent with the formulas.
       // Charge to Company accounts have no 2% EWT deduction (HMO and regular accounts do).
       const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
       autoTax = acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
@@ -1043,7 +1044,7 @@ const actions = {
         const receivable = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
         if (Math.abs(paid - toFloat(r.receivable_amount)) < 0.01) paid = receivable;
-        const balance = round(receivable - paid, 2);
+        const balance = Math.max(0, round(receivable - paid, 2));
         await exec(
           "UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, paid_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?",
           [tax, receivable, paid, balance, r.id]

@@ -32,7 +32,7 @@ function deriveRow(e, taxPct, amountOverride, paidOverride) {
   const tax = e.account_type === 'CHARGE' ? 0 : r2((amount * taxPct) / 100); // no 2% EWT on Charge to Company accounts
   const base = amount - tax + (Number(e.surcharge) || 0);
   const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
-  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: r2(r2(base - rebate) - paid) };
+  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: Math.max(0, r2(r2(base - rebate) - paid)) }; // never below 0: applied rebates / overpayments are not due
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
