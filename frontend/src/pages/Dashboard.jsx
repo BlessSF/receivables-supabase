@@ -148,6 +148,7 @@ export default function Dashboard() {
   ];
   const agingTotal = agingRows.reduce((s, [k]) => s + (data.aging[k]?.total || 0), 0) || 1;
   const staff = isStaff(user);
+  const eachMode = !company && grouping === 'each'; // one block per account instead of the combined view
   // HMOs vs Company Charges breakdown shown under each total (overall view only)
   const showSplit = !company && !scope && !!data.by_type;
   const splitLine = (field) => showSplit && (
@@ -246,6 +247,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {!eachMode && (<>
       <div className="kpi-dark-grid">
         <div className="kpi-dark-card">
           <div className="kpi-dark-label">Billed · {periodName}</div>
@@ -341,6 +343,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      </>)}
+
       {!isAllTime && data.undated.billed_count > 0 && (
         <div className="flash flash-warning">
           {data.undated.billed_count} ledger {data.undated.billed_count === 1 ? 'entry' : 'entries'} ({peso(data.undated.billed_total)}) have a billing date the dashboard can’t place in a month
@@ -367,26 +371,64 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!company && grouping === 'each' ? (
-        [
-          { key: 'HMO', title: 'HMOs', list: data.companies.filter((c) => c.account_type === 'HMO') },
-          { key: 'CHARGE', title: 'Company Charges', list: data.companies.filter((c) => c.account_type === 'CHARGE') },
-          { key: 'COMPANY', title: 'Companies', list: data.companies.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE') },
+      {eachMode ? (
+        (() => {
+          // every account gets a block, even when it has nothing in this period (shown as zeros)
+          const byId = new Map(data.companies.map((c) => [String(c.id), c]));
+          const zero = { billed: 0, collected: 0, outstanding: 0, past_due: 0 };
+          const accounts = companies
+            .filter((c) => (scope ? c.account_type === scope : c.account_type === 'HMO' || c.account_type === 'CHARGE'))
+            .map((c) => ({ ...c, ...zero, ...(byId.get(String(c.id)) || {}) }))
+            .sort((a, b) => (b.outstanding - a.outstanding) || String(a.name).localeCompare(String(b.name)));
+          return [
+            { key: 'HMO', title: 'HMOs', list: accounts.filter((c) => c.account_type === 'HMO') },
+            { key: 'CHARGE', title: 'Company Charges', list: accounts.filter((c) => c.account_type === 'CHARGE') },
+            { key: 'COMPANY', title: 'Companies', list: accounts.filter((c) => c.account_type !== 'HMO' && c.account_type !== 'CHARGE') },
         ].filter((g) => g.list.length > 0).map((g) => (
-          <div className="panel" key={g.key}>
-            <h2>{g.title} · {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
-            <div className="split-grid">
-              {g.list.map((c) => (
-                <button key={c.id} type="button" className="split-card" onClick={() => pickAccount(c.id)} title={`Show ${c.name}'s dashboard`}>
-                  <span className="split-title">{c.name}</span>
-                  <span className="split-value num">{peso(c.outstanding)}</span>
-                  <span className="split-sub">unpaid · {peso(c.past_due)} past due</span>
-                  <span className="split-sub">Billed {peso(c.billed)} · Collected {peso(c.collected)}</span>
-                </button>
-              ))}
-            </div>
+          <div key={g.key}>
+            <div className="dash-group-title">{g.title} <span>· {g.list.length} · {periodName}</span></div>
+            {g.list.map((c) => {
+              const rate = c.billed ? Math.round((c.collected / c.billed) * 1000) / 10 : 0;
+              return (
+                <div className="panel account-block" key={c.id}>
+                  <div className="dash-panel-head">
+                    <h2 style={{ margin: 0 }}>{c.name}
+                      {c.status !== 'ACTIVE' && <span className={`badge ${c.status === 'BANKRUPT' ? 'badge-danger' : 'badge-secondary'}`} style={{ marginLeft: 8 }}>{c.status}</span>}
+                    </h2>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" className="btn btn-sm" onClick={() => pickAccount(c.id)}>Open dashboard</button>
+                      <Link className="btn btn-secondary btn-sm" to={`/ledger?company_id=${c.id}`}>Ledger</Link>
+                    </div>
+                  </div>
+                  <div className="kpi-dark-grid" style={{ marginTop: 12 }}>
+                    <div className="kpi-dark-card">
+                      <div className="kpi-dark-label">Billed · {periodName}</div>
+                      <div className="kpi-dark-value">{peso(c.billed)}</div>
+                      <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: c.billed ? '100%' : '0%' }} /></div>
+                    </div>
+                    <div className="kpi-dark-card accent-green">
+                      <div className="kpi-dark-label">Collected</div>
+                      <div className="kpi-dark-value">{peso(c.collected)}</div>
+                      <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${Math.min(100, rate)}%` }} /></div>
+                      <div className="kpi-dark-footer"><span className="kpi-dark-left">{rate}% of billed</span></div>
+                    </div>
+                    <div className="kpi-dark-card accent-red">
+                      <div className="kpi-dark-label">Outstanding balance</div>
+                      <div className="kpi-dark-value">{peso(c.outstanding)}</div>
+                      <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${c.billed ? Math.min(100, (c.outstanding / c.billed) * 100) : 0}%` }} /></div>
+                    </div>
+                    <div className="kpi-dark-card accent-amber">
+                      <div className="kpi-dark-label">Past due</div>
+                      <div className="kpi-dark-value">{peso(c.past_due)}</div>
+                      <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${c.outstanding ? Math.min(100, (c.past_due / c.outstanding) * 100) : 0}%` }} /></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))
+        ));
+        })()
       ) : !company ? (
         <div className="panel">
           <h2>{noun.charAt(0).toUpperCase() + noun.slice(1)} · {periodName} <span className="dash-sub">· click one to open its own dashboard</span></h2>
@@ -443,6 +485,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {!eachMode && (
       <div className="panel">
         <h2>{isAllTime ? 'Latest ledger entries' : `Entries billed in ${periodName}`} <span className="dash-sub">· {scopeName}</span></h2>
         <div className="table-wrap">
@@ -482,6 +525,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
