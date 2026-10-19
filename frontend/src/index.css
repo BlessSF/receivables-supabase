@@ -1051,3 +1051,38 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .icon-btn { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
 .icon-btn + .icon-btn { margin-left: 6px; }
 .icon-btn svg { width: 16px; height: 16px; }
+
+/* Dashboard: "Each account (separate blocks)" */
+.dash-group-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 22px 2px 10px; }
+.dash-group-title span { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--slate); }
+.account-block { margin-bottom: 14px; }
+
+/* ---------- Ledger: several payments on one SOA ---------- */
+.paid-cell { display: flex; align-items: center; gap: 4px; }
+.paid-cell > :first-child { flex: 1; min-width: 0; }
+.pay-btn {
+  flex: none; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--teal); background: var(--teal-soft); color: var(--teal-strong);
+  font-weight: 700; font-size: 12px; line-height: 1;
+}
+.pay-btn:hover { background: var(--teal); color: #fff; }
+.pm-backdrop {
+  position: fixed; inset: 0; z-index: 80; background: rgba(10, 18, 32, 0.55);
+  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto;
+}
+.pm-card {
+  background: #fff; border-radius: 14px; width: 100%; max-width: 720px; padding: 22px 24px 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.pm-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.pm-head h2 { margin: 0; }
+.pm-sub { font-size: 12.5px; color: var(--slate); margin-top: 4px; }
+.pm-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.pm-summary > div { background: var(--panel-alt, #f3f5f8); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.pm-summary span { font-size: 11.5px; color: var(--slate); }
+.pm-summary strong { font-size: 18px; }
+.pm-summary .is-due strong { color: var(--brick); }
+.pm-summary .is-ok strong { color: var(--teal-strong); }
+.pm-actions { margin-top: 14px; }
+.pm-form { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e4e8eb; }
+.pm-form h3 { margin: 0 0 10px; font-size: 14px; }

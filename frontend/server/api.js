@@ -38,6 +38,7 @@ function userPayload(u) {
 // and edit only the three payment fields of a ledger row.
 const STAFF_ACTIONS = new Set([
   'get_dashboard', 'get_company_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
+  'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
@@ -46,6 +47,7 @@ const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
+  'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
 ]);
 
@@ -61,6 +63,103 @@ function recalcRow(d) {
   // is shown as 0 outstanding, never as a negative amount in the totals.
   const balance = Math.max(0, round(receivable - paid, 2));
   return [receivable, balance];
+}
+
+
+// ---------------------------------------------------------------- several payments on one ledger row
+// Table `ledger_payments` (database/add_ledger_payments.sql). Until that SQL is run everything keeps working
+// the old way: one Paid / Payment Date / Check Ref per row.
+const PAY_FIELDS = ['payment_date', 'check_ref', 'check_date', 'payment_method', 'payment_method_bank', 'payment_method_other'];
+
+async function paymentsEnabled() {
+  return !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
+}
+
+async function autoTaxFor(row) {
+  const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
+  return acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+}
+
+/** Paid / Payment Date / Check Ref / Balance of a row = the total and the latest of its payments. */
+async function syncRowFromPayments(id) {
+  const row = await one('SELECT * FROM ledger_entries WHERE id = ?', [id]);
+  if (!row) return null;
+  const pays = await all(
+    "SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, '') ASC, id ASC", [id]);
+  const total = round(pays.reduce((t, p) => t + toFloat(p.amount), 0), 2);
+  const last = pays.length ? pays[pays.length - 1] : null;
+  row.paid_amount = total;
+  row.tax_withheld = await autoTaxFor(row);
+  const [receivable, balance] = recalcRow(row);
+  await exec(
+    `UPDATE ledger_entries SET paid_amount = ?, payment_date = ?, check_ref = ?, check_date = ?, payment_method = ?,
+            payment_method_bank = ?, payment_method_other = ?, tax_withheld = ?, receivable_amount = ?, balance = ?,
+            updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`,
+    [total, last?.payment_date ?? null, last?.check_ref ?? null, last?.check_date ?? null, last?.payment_method ?? null,
+      last?.payment_method_bank ?? null, last?.payment_method_other ?? null, row.tax_withheld, receivable, balance, id]);
+  return { paid_amount: total, receivable_amount: receivable, balance, payment_date: last?.payment_date ?? null, payment_count: pays.length };
+}
+
+/** After Paid / Payment Date / Check Ref is typed straight into the row: keep a single payment in step with it. */
+async function mirrorRowToPayments(id) {
+  const row = await one('SELECT * FROM ledger_entries WHERE id = ?', [id]);
+  if (!row) return;
+  const pays = await all('SELECT id FROM ledger_payments WHERE ledger_entry_id = ?', [id]);
+  const paid = toFloat(row.paid_amount);
+  if (pays.length === 0 && paid > 0.009) {
+    await exec(
+      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, row.payment_date, paid, row.check_ref, row.check_date, row.payment_method, row.payment_method_bank, row.payment_method_other]);
+  } else if (pays.length === 1) {
+    if (paid <= 0.009 && !row.payment_date && !row.check_ref) {
+      await exec('DELETE FROM ledger_payments WHERE id = ?', [pays[0].id]);
+    } else {
+      await exec(
+        `UPDATE ledger_payments SET amount = ?, payment_date = ?, check_ref = ?, check_date = ?, payment_method = ?,
+                payment_method_bank = ?, payment_method_other = ? WHERE id = ?`,
+        [paid, row.payment_date, row.check_ref, row.check_date, row.payment_method, row.payment_method_bank, row.payment_method_other, pays[0].id]);
+    }
+  }
+}
+
+/** Map of ledger row id -> its payments (empty map while the table does not exist yet). */
+async function paymentsByEntry(entryIds = null) {
+  const map = new Map();
+  if (!(await paymentsEnabled())) return map;
+  const rows = await all('SELECT ledger_entry_id, payment_date, amount FROM ledger_payments');
+  const keep = entryIds ? new Set(entryIds.map(String)) : null;
+  for (const p of rows) {
+    const k = String(p.ledger_entry_id);
+    if (keep && !keep.has(k)) continue;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push({ payment_date: p.payment_date, amount: toFloat(p.amount) });
+  }
+  return map;
+}
+
+function cleanPayment(input) {
+  const out = {};
+  const amount = toFloat(input.amount);
+  if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter the payment amount (more than 0).' }, 400);
+  out.amount = round(amount, 2);
+  const txt = (v) => { v = trim(v ?? ''); return v === '' ? null : v; };
+  out.payment_date = txt(input.payment_date);
+  out.check_ref = txt(input.check_ref);
+  out.check_date = txt(input.check_date);
+  const pm = trim(input.payment_method ?? '');
+  out.payment_method = PAYMENT_METHODS.includes(pm) ? pm : null;
+  const bank = trim(input.payment_method_bank ?? '');
+  out.payment_method_bank = PAYMENT_BANKS.includes(bank) ? bank : null;
+  out.payment_method_other = txt(input.payment_method_other);
+  out.remarks = txt(input.remarks);
+  return out;
+}
+
+async function paymentsReply(entryId) {
+  const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date FROM ledger_entries WHERE id = ?', [entryId]);
+  const payments = await all('SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, \'\') ASC, id ASC', [entryId]);
+  return { enabled: true, entry: e, payments, payment_count: payments.length };
 }
 
 async function requireCompanyAccess(auth, companyId) {
@@ -156,6 +255,7 @@ const actions = {
     if (companyId) { sql += ' AND l.company_id = ?'; params = [...params, companyId]; }
     const rows = await all(sql, params);
     const due = await makeImplicitDue();
+    const payMap = await paymentsByEntry(); // each payment counts in the month it was received
 
     const blank = () => ({ billed: 0, collected: 0, outstanding: 0, past_due: 0, past_due_count: 0, entries: 0, open_count: 0 });
     const ymOf = (v) => {
@@ -226,17 +326,19 @@ const actions = {
         });
       }
 
-      // placed by payment date
-      if (paid > 0) {
-        const p = ymOf(r.payment_date);
+      // placed by payment date: one payment per piece when the row has a payment history, else the row's own Paid
+      const pieces = payMap.get(String(r.id)) || (paid > 0 ? [{ payment_date: r.payment_date, amount: paid }] : []);
+      for (const pc of pieces) {
+        if (!(pc.amount > 0)) continue;
+        const p = ymOf(pc.payment_date);
         if (!p) {
-          undated.collected_total += paid;
+          undated.collected_total += pc.amount;
         } else {
-          yAgg(p.y).collected += paid;
-          if (p.y === year) monthAgg[p.m - 1].collected += paid;
+          yAgg(p.y).collected += pc.amount;
+          if (p.y === year) monthAgg[p.m - 1].collected += pc.amount;
         }
+        if (inPeriod(p)) { period.collected += pc.amount; co(r).collected += pc.amount; tt.collected += pc.amount; }
       }
-      if (paid > 0 && inPeriod(ymOf(r.payment_date))) { period.collected += paid; co(r).collected += paid; tt.collected += paid; }
     }
 
     // make sure the selected / current year is always in the list
@@ -301,6 +403,7 @@ const actions = {
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     };
     const recentPayments = [];
+    const payMap = await paymentsByEntry(); // one piece per payment received (falls back to the row's own Paid)
 
     for (const r of rows) {
       const amount = toFloat(r.amount);
@@ -312,12 +415,14 @@ const actions = {
       tg.billed += amount; tg.collected += paid; tg.accounts.add(r.company_id);
       const bm = monthOf(r.period_to || r.period_from || r.billing_date); // covered period month
       if (bm && trend[bm]) trend[bm].billed += amount;
-      if (paid > 0) {
-        const pm = monthOf(r.payment_date);
-        if (pm && trend[pm]) trend[pm].collected += paid;
-        if (r.payment_date && parseDate(r.payment_date) !== null) {
+      const pieces = payMap.get(String(r.id)) || (paid > 0 ? [{ payment_date: r.payment_date, amount: paid }] : []);
+      for (const pc of pieces) {
+        if (!(pc.amount > 0)) continue;
+        const pm = monthOf(pc.payment_date);
+        if (pm && trend[pm]) trend[pm].collected += pc.amount;
+        if (pc.payment_date && parseDate(pc.payment_date) !== null) {
           recentPayments.push({ id: r.id, company_id: r.company_id, company_name: r.company_name,
-            payment_date: r.payment_date, paid_amount: paid, soa_number: r.soa_number, _t: parseDate(r.payment_date) });
+            payment_date: pc.payment_date, paid_amount: pc.amount, soa_number: r.soa_number, _t: parseDate(pc.payment_date) });
         }
       }
       if (bal < -0.009) { overpaidTotal += -bal; overpaidCount++; }
@@ -496,6 +601,15 @@ const actions = {
 
     const selectedCompany = companyId ? await one('SELECT * FROM companies WHERE id=?', [companyId]) : null;
 
+    // how many payments each row has (the "+ Payment" button shows it); 0 everywhere until the payments table exists
+    const payCounts = new Map();
+    const paymentsOn = await paymentsEnabled();
+    if (paymentsOn && entries.length) {
+      const counts = await all('SELECT ledger_entry_id, COUNT(*) AS n FROM ledger_payments GROUP BY ledger_entry_id');
+      counts.forEach((c) => payCounts.set(String(c.ledger_entry_id), toInt(c.n)));
+    }
+    for (const r of entries) r.payment_count = payCounts.get(String(r.id)) || 0;
+
     const agingTally = {};
     for (const r of entries) {
       if (toFloat(r.balance) <= 0.009) continue;
@@ -560,6 +674,7 @@ const actions = {
       company: selectedCompany,
       totals: { amount: sum(entries, 'amount'), paid: sum(entries, 'paid_amount'), balance: sum(entries, 'balance') },
       tax_percent: await taxWithheldPercent(),
+      payments_enabled: paymentsOn,
       aging_tally: Object.keys(agingTally).length ? agingTally : [],
       company_summary: companySummary,
     } };
@@ -577,6 +692,65 @@ const actions = {
       [cid, cName || null, billingDate, cp?.from ?? null, cp?.to ?? null, cp ? normalizePeriod(cp.from) : null]
     );
     return { ok: true, id };
+  },
+
+
+  // ---- several payments on one ledger row
+  async get_payments(input, auth) {
+    const id = toInt(input.ledger_entry_id);
+    const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [id]);
+    if (!cid) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
+    await requireCompanyAccess(auth, toInt(cid));
+    if (!(await paymentsEnabled())) {
+      const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date FROM ledger_entries WHERE id = ?', [id]);
+      return { ok: true, data: { enabled: false, entry: e, payments: [], payment_count: 0 } };
+    }
+    return { ok: true, data: await paymentsReply(id) };
+  },
+
+  async add_payment(input, auth) {
+    const id = toInt(input.ledger_entry_id);
+    const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [id]);
+    if (!cid) jsonExit({ ok: false, error: 'Entry not found.' }, 404);
+    await requireCompanyAccess(auth, toInt(cid));
+    if (!(await paymentsEnabled())) jsonExit({ ok: false, error: 'Payments are not set up yet. Run database/add_ledger_payments.sql in Supabase first.' }, 400);
+    const p = cleanPayment(input);
+    // a row that still has Paid typed in directly (no payment record yet) keeps that amount as its first payment
+    await mirrorRowToPayments(id);
+    await exec(
+      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks]);
+    const row = await syncRowFromPayments(id);
+    return { ok: true, row, data: await paymentsReply(id) };
+  },
+
+  async update_payment(input, auth) {
+    const pid = toInt(input.id);
+    if (!(await paymentsEnabled())) jsonExit({ ok: false, error: 'Payments are not set up yet.' }, 400);
+    const pay = await one('SELECT * FROM ledger_payments WHERE id = ?', [pid]);
+    if (!pay) jsonExit({ ok: false, error: 'Payment not found.' }, 404);
+    const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [pay.ledger_entry_id]);
+    await requireCompanyAccess(auth, toInt(cid));
+    const p = cleanPayment(input);
+    await exec(
+      `UPDATE ledger_payments SET payment_date = ?, amount = ?, check_ref = ?, check_date = ?, payment_method = ?,
+              payment_method_bank = ?, payment_method_other = ?, remarks = ? WHERE id = ?`,
+      [p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, pid]);
+    const row = await syncRowFromPayments(toInt(pay.ledger_entry_id));
+    return { ok: true, row, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
+  },
+
+  async delete_payment(input, auth) {
+    const pid = toInt(input.id);
+    if (!(await paymentsEnabled())) jsonExit({ ok: false, error: 'Payments are not set up yet.' }, 400);
+    const pay = await one('SELECT * FROM ledger_payments WHERE id = ?', [pid]);
+    if (!pay) jsonExit({ ok: false, error: 'Payment not found.' }, 404);
+    const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [pay.ledger_entry_id]);
+    await requireCompanyAccess(auth, toInt(cid));
+    await exec('DELETE FROM ledger_payments WHERE id = ?', [pid]);
+    const row = await syncRowFromPayments(toInt(pay.ledger_entry_id));
+    return { ok: true, row, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
   },
 
   async inline_update_ledger(input, auth) {
@@ -648,6 +822,13 @@ const actions = {
       }
     }
 
+    const payLinked = field === 'paid_amount' || PAY_FIELDS.includes(field);
+    const payOn = payLinked && (await paymentsEnabled());
+    if (payOn) {
+      const n = toInt(await scalar('SELECT COUNT(*) FROM ledger_payments WHERE ledger_entry_id = ?', [id]));
+      if (n > 1) jsonExit({ ok: false, code: 'MULTI_PAYMENT', error: `This entry has ${n} payments. Use the + Payment button to change them.` }, 409);
+    }
+
     row[field] = value;
     // Tax W/H is automatic (view only in the Ledger): Amount x the tax % (Settings, 2 by default), none for
     // Charge to Company accounts. It is re-derived on every edit so every row follows the same formula.
@@ -664,6 +845,7 @@ const actions = {
       [value, receivable, balance, id]
     );
     await exec('UPDATE ledger_entries SET tax_withheld = ? WHERE id = ?', [autoTax, id]);
+    if (payOn) await mirrorRowToPayments(id);
 
     if (field === 'soa_number') {
       if (value) {
@@ -1045,6 +1227,7 @@ const actions = {
           "UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, paid_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?",
           [tax, receivable, paid, balance, r.id]
         );
+        if (await paymentsEnabled()) await mirrorRowToPayments(r.id);
         recalcCount++;
       }
     }

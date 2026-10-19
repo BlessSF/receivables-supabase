@@ -5,6 +5,7 @@ import { peso, money, AGING_BADGE, fdate, timeAgo, periodLabel, periodParts, cov
 import { useAuth } from '../AuthContext';
 import MoneyInput, { fmtNum } from '../MoneyInput';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
+import PaymentsModal from '../PaymentsModal';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -25,14 +26,17 @@ function TrashIcon() {
 }
 
 const r2 = (n) => Math.round(n * 100) / 100;
-// Tax W/H, Rebate, Receivable and Balance worked out from the typed numbers (see the Ledger formulas).
-function deriveRow(e, taxPct, amountOverride, paidOverride) {
+// Tax W/H, Receivable and Balance worked out from the typed numbers -- exactly the server's formulas.
+//   Tax W/H    = Amount x tax % (none for Charge to Company accounts)
+//   Receivable = Amount - Tax W/H + Surcharge - Rebate   (Rebate is only what was actually entered)
+//   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
+function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
-  const tax = e.account_type === 'CHARGE' ? 0 : r2((amount * taxPct) / 100); // no 2% EWT on Charge to Company accounts
-  const base = amount - tax + (Number(e.surcharge) || 0);
-  const rebate = paid > 0 ? Math.max(0, r2(base - paid)) : 0;
-  return { tax_withheld: tax, rebate, receivable_amount: r2(base - rebate), balance: Math.max(0, r2(r2(base - rebate) - paid)) }; // never below 0: applied rebates / overpayments are not due
+  const tax = e.account_type === 'CHARGE' ? 0 : r2((amount * taxPct) / 100);
+  const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
+  const receivable = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
+  return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)) };
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
@@ -108,6 +112,7 @@ export default function Ledger() {
   const [err, setErr] = useState('');
   const [search, setSearch] = useState('');
   const [highlightId, setHighlightId] = useState(null);
+  const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
 
   const reload = useCallback(() => {
     api.getLedger(companyId || null).then((r) => setData(r.data)).catch((e) => setErr(e.message));
@@ -143,19 +148,19 @@ export default function Ledger() {
   // While a Paid amount is being typed, the row balance, the Paid / Outstanding
   // totals and the aging badges update on every keystroke (before it is saved).
   const [live, setLive] = useState(null); // { id, field, value }
-  // Tax W/H, Rebate and Receivable are computed automatically for every row (view only):
-  //   Tax W/H = Amount x tax %,  Rebate = Amount - Tax W/H + Surcharge - Paid (only once something is paid),
-  //   Receivable = Amount - Tax W/H + Surcharge - Rebate,  Balance = Receivable - Paid.
+  // Tax W/H, Receivable and Balance are computed for every row (view only) -- see deriveRow. Rebate is only what was entered.
   const taxPct = Number(data?.tax_percent ?? 2);
   const liveEntries = useMemo(() => entries.map((e) => {
     const isLive = live && e.id === live.id;
     const ao = isLive && live.field === 'amount' ? Number(live.value) || 0 : undefined;
     const po = isLive && live.field === 'paid_amount' ? Number(live.value) || 0 : undefined;
+    const ro = isLive && live.field === 'rebate' ? Number(live.value) || 0 : undefined;
     return {
       ...e,
       ...(ao !== undefined ? { live_amount: ao } : {}),
       ...(po !== undefined ? { live_paid: po } : {}),
-      ...deriveRow(e, taxPct, ao, po),
+      ...(ro !== undefined ? { live_rebate: ro } : {}),
+      ...deriveRow(e, taxPct, ao, po, ro),
     };
   }), [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
@@ -164,7 +169,7 @@ export default function Ledger() {
     for (const e of liveEntries) {
       amount += e.live_amount !== undefined ? e.live_amount : Number(e.amount) || 0;
       paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
-      rebate += Number(e.rebate) || 0;
+      rebate += e.live_rebate !== undefined ? e.live_rebate : Number(e.rebate) || 0;
       tax += Number(e.tax_withheld) || 0;
       const b = Number(e.balance) || 0;
       balance += b;
@@ -240,7 +245,7 @@ export default function Ledger() {
       // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
       Math.min(Math.max(widest('check_ref', undefined, 'Check'), tw('0'.repeat(14))), tw('0'.repeat(26))) + INPUT,
       // Paid always has room for an 8-digit amount with centavos (12,345,678.00 typed as 12345678.00) and grows past that if a bigger one is saved
-      Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT,
+      Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
       tw('Unpaid') + 46,                                      // Paid Status badge
@@ -277,21 +282,19 @@ export default function Ledger() {
 
   async function saveField(id, field, value) {
     let r;
-    // Rebate = Receivable - Paid, filled in automatically whenever a Paid amount is entered.
-    const autoRebate = field === 'paid_amount' && (Number(value) || 0) > 0;
     try {
-      r = await api.inlineUpdateLedger(id, field, value, false, autoRebate);
+      r = await api.inlineUpdateLedger(id, field, value);
     } catch (e) {
       // Same SOA already on another entry (e.g. two payments for one SOA): ask before allowing it.
       if (e.code !== 'SOA_SHARED') throw e;
       const ok = window.confirm(`${e.message}\n\nDo these 2 payments share the same SOA?\n\nOK = yes, use the same SOA on both. The SOA Tracker will show it as shared (x2) and it still counts as ONE SOA number.\nCancel = don't change it.`);
       if (!ok) throw new Error(''); // quiet revert
-      r = await api.inlineUpdateLedger(id, field, value, true, autoRebate);
+      r = await api.inlineUpdateLedger(id, field, value, true);
     }
     setData((d) => ({
       ...d,
       entries: d.entries.map((e) =>
-        e.id === id ? { ...e, [field]: value, ...(r.rebate !== null && r.rebate !== undefined ? { rebate: r.rebate } : {}), ...(r.tax_withheld !== null && r.tax_withheld !== undefined ? { tax_withheld: r.tax_withheld } : {}), receivable_amount: r.receivable_amount, balance: r.balance } : e
+        e.id === id ? { ...e, [field]: value, ...(r.tax_withheld !== null && r.tax_withheld !== undefined ? { tax_withheld: r.tax_withheld } : {}), receivable_amount: r.receivable_amount, balance: r.balance } : e
       ),
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
@@ -527,7 +530,7 @@ export default function Ledger() {
                         <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'amount', value: v })} onSave={(v) => saveField(r.id, 'amount', v)} /></td>
                         <td><div className="ro-cell ro-num" title="Automatic: Amount x tax %">{money(r.tax_withheld)}</div></td>
                         <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                        <td><div className="ro-cell ro-num" title="Automatic: Receivable - Paid">{money(r.rebate)}</div></td>
+                        <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                       </>
                     )}
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
@@ -535,7 +538,18 @@ export default function Ledger() {
                       <>
                         <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
                         <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} /></td>
+                        <td className="cell-glow">
+                          <div className="paid-cell">
+                            {r.payment_count > 1
+                              ? <div className="ro-cell ro-num" title={`${r.payment_count} payments - use the + button`}>{money(r.paid_amount)}</div>
+                              : <EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
+                            {data?.payments_enabled && (
+                              <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => setPayFor(r)}>
+                                {r.payment_count > 1 ? `×${r.payment_count}` : '+'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </>
                     )}
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
@@ -556,6 +570,16 @@ export default function Ledger() {
           </div>
         )}
       </div>
+      {payFor && (
+        <PaymentsModal
+          entry={payFor}
+          onClose={() => setPayFor(null)}
+          onChanged={(row) => {
+            if (row) setData((d) => ({ ...d, entries: d.entries.map((e) => (e.id === payFor.id ? { ...e, ...row } : e)) }));
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
