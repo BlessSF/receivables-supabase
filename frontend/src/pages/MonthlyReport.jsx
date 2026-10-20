@@ -41,6 +41,32 @@ export default function MonthlyReport() {
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(() => new Set()); // All months: columns the user switched off (they are not shown, printed or exported)
 
+  // Printing: whatever is selected is shrunk to fit one page width (landscape; A3 when it is too wide for A4)
+  useEffect(() => {
+    let style = null;
+    const before = () => {
+      const t = document.querySelector('.report-table');
+      if (!t) return;
+      t.style.zoom = '';
+      const natural = t.scrollWidth;
+      const A4 = 1050, A3 = 1500; // printable width in CSS px, landscape, 8mm margins
+      const paper = natural * 0.5 > A4 ? 'A3' : 'A4';
+      const avail = paper === 'A3' ? A3 : A4;
+      t.style.zoom = String(Math.min(1, avail / natural));
+      style = document.createElement('style');
+      style.textContent = `@page { size: ${paper} landscape; margin: 8mm; }`;
+      document.head.appendChild(style);
+    };
+    const after = () => {
+      const t = document.querySelector('.report-table');
+      if (t) t.style.zoom = '';
+      if (style) { style.remove(); style = null; }
+    };
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', after); after(); };
+  }, []);
+
   useEffect(() => {
     let live = true;
     setBusy(true);
@@ -131,6 +157,7 @@ export default function MonthlyReport() {
               <button type="button" className="link-btn" onClick={() => setHidden(new Set(allBlocks.map((b) => b.key)))}>None</button>
             </span>
           </div>
+          {blocks.length > 6 && <div className="col-picker-hint">Printing fits everything on one page width. With more than 6 columns the text gets small: tick fewer months for bigger print.</div>}
           <div className="month-chips">
             {allBlocks.map((b) => (
               <button key={b.key} type="button" aria-pressed={!hidden.has(b.key)} className={hidden.has(b.key) ? '' : 'on'} onClick={() => toggle(b.key)}

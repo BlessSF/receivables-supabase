@@ -1110,3 +1110,14 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .col-picker .link-btn:hover { text-decoration: underline; }
 .col-picker .month-chips { margin: 0; }
 .col-picker .month-chips button[aria-pressed="true"]::before { content: "\2713\00a0"; }
+
+/* Printing Reports by Month: the whole table goes on the page (shrunk to fit by the page script), nothing sticky or scrolling */
+@media print {
+  .report-panel, .report-scroll { overflow: visible !important; }
+  .report-table .rep-company, .report-table .rep-company-head, .report-table tfoot td:first-child { position: static !important; box-shadow: none !important; }
+  .report-table.report-wide { width: auto; }
+  .report-table thead { display: table-header-group; }
+  .report-table tr { break-inside: avoid; }
+  .report-table { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.col-picker-hint { font-size: 12px; color: var(--slate, #64748b); margin: -2px 0 8px; }
