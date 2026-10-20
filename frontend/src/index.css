@@ -1086,3 +1086,5 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .pm-actions { margin-top: 14px; }
 .pm-form { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e4e8eb; }
 .pm-form h3 { margin: 0 0 10px; font-size: 14px; }
+
+@media print { .report-chips { display: none; } }

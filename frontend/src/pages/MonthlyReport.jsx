@@ -76,7 +76,7 @@ export default function MonthlyReport() {
         <div>
           <h1>Reports by Month</h1>
           <div className="subtitle">
-            Unpaid balances per company: what is overdue and what falls due in the two months you pick.
+            Pick a month (Jan–Dec): the report builds itself with what is overdue and who is due in that month and the next.
             An entry is due on its own Due Date if it has one, otherwise {terms === 0 ? 'in its Period Date month' : `${terms} month${terms === 1 ? '' : 's'} after its Period Date`}.
           </div>
         </div>
@@ -89,15 +89,10 @@ export default function MonthlyReport() {
       <div className="panel report-filters">
         <div className="filter-bar">
           <div className="form-group">
-            <label htmlFor="rep-month">Report month</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select id="rep-month" value={mm} onChange={(e) => setPart(yy, Number(e.target.value))} aria-label="Month">
-                {MONTHS.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
-              </select>
-              <select value={yy} onChange={(e) => setPart(Number(e.target.value), mm)} aria-label="Year" style={{ minWidth: 90 }}>
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+            <label htmlFor="rep-year">Year</label>
+            <select id="rep-year" value={yy} onChange={(e) => setPart(Number(e.target.value), mm)} aria-label="Year" style={{ minWidth: 100 }}>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label htmlFor="rep-terms">Payment terms</label>
@@ -110,6 +105,16 @@ export default function MonthlyReport() {
       </div>
 
       {err && <div className="flash flash-error">{err}</div>}
+
+      <div className="month-chips report-chips" role="tablist" aria-label="Report month">
+        {MONTHS.map((name, i) => (
+          <button key={name} type="button" role="tab" aria-selected={mm === i + 1} className={mm === i + 1 ? 'on' : ''}
+            title={`Who is overdue and who is due in ${name} ${yy}`} onClick={() => setPart(yy, i + 1)}>
+            {name.slice(0, 3)}
+          </button>
+        ))}
+      </div>
+
       {data.no_period.count > 0 && (
         <div className="flash report-warn">
           <strong>{data.no_period.count} unpaid entr{data.no_period.count === 1 ? 'y' : 'ies'} ({peso(data.no_period.total)}) {data.no_period.count === 1 ? 'is' : 'are'} not in this report</strong>
