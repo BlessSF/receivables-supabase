@@ -250,7 +250,7 @@ export default function Ledger() {
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
-      tw('Unpaid') + 46,                                      // Paid Status badge (an "Overpaid" flag can sit beside it)
+      Math.max(tw('Unpaid') + 46, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
@@ -568,8 +568,9 @@ export default function Ledger() {
                     </td>
                     <td>{Number(r.balance) > 0.009
                       ? <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
-                      : <><span className="badge badge-success" title="Balance is zero">Paid</span>
-                        {r.variance > 0.009 && <span className="badge badge-warning" style={{ marginLeft: 6 }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</>}</td>
+                      : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                        <span className="badge badge-success" title="Balance is zero">Paid</span>
+                        {r.variance > 0.009 && <span className="badge badge-warning" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
