@@ -124,7 +124,7 @@ export default function MonthlyReport() {
       )}
 
       <div className="panel report-panel">
-        <div className="report-scroll">
+        <div className="report-scroll table-wrap">
           <table className={`report-table${blocks.length > 3 ? ' report-wide' : ''}`}>
             <colgroup>
               <col className="rep-col-company" />

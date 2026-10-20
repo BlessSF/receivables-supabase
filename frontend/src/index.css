@@ -838,6 +838,12 @@ button { font-family: inherit; }
 .report-table .rep-col-bal { width: 10.5%; }
 .report-table .rep-col-gap { width: 14px; }
 .report-table.report-wide { width: auto; min-width: 0; }
+/* Many columns: the Company column stays put while you slide sideways, and the slider bar sticks to the top while you scroll down */
+.report-panel > .hs-bar { position: sticky; top: 0; z-index: 6; }
+.report-table.report-wide .rep-company, .report-table.report-wide .rep-company-head { position: sticky; left: 0; z-index: 3; box-shadow: 2px 0 0 var(--line-strong); }
+.report-table.report-wide thead .rep-company-head { background: var(--panel-tint); }
+.report-table.report-wide tfoot td:first-child { position: sticky; left: 0; z-index: 3; background: var(--panel); }
+@media print { .report-panel > .hs-bar { display: none; } }
 .report-table.report-wide .rep-col-company { width: 190px; }
 .report-table.report-wide .rep-col-soa { width: 92px; }
 .report-table.report-wide .rep-col-month { width: 84px; }
