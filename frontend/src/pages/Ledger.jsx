@@ -30,13 +30,14 @@ const r2 = (n) => Math.round(n * 100) / 100;
 //   Tax W/H    = Amount x tax % (none for Charge to Company accounts)
 //   Receivable = Amount - Tax W/H + Surcharge - Rebate   (Rebate is only what was actually entered)
 //   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
+//   Variance   = Paid above Receivable (an overpayment). It is NOT a rebate and NOT outstanding: it stays flagged until someone fixes the payment or enters a real rebate.
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
   const tax = e.account_type === 'CHARGE' ? 0 : r2((amount * taxPct) / 100);
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
   const receivable = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
-  return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)) };
+  return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
@@ -164,7 +165,7 @@ export default function Ledger() {
     };
   }), [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
-    let amount = 0, paid = 0, balance = 0, rebate = 0, tax = 0;
+    let amount = 0, paid = 0, balance = 0, rebate = 0, tax = 0, variance = 0, varianceCount = 0;
     const tally = {};
     for (const e of liveEntries) {
       amount += e.live_amount !== undefined ? e.live_amount : Number(e.amount) || 0;
@@ -173,9 +174,10 @@ export default function Ledger() {
       tax += Number(e.tax_withheld) || 0;
       const b = Number(e.balance) || 0;
       balance += b;
+      if (e.variance > 0.009) { variance += e.variance; varianceCount++; }
       if (b > 0.009 && e.aging_bucket && e.aging_bucket !== 'Paid') tally[e.aging_bucket] = (tally[e.aging_bucket] || 0) + b;
     }
-    return { amount, paid, balance, rebate, tax, tally };
+    return { amount, paid, balance, rebate, tax, variance, varianceCount, tally };
   }, [liveEntries]);
 
   const filtered = useMemo(() => {
@@ -248,7 +250,7 @@ export default function Ledger() {
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
-      tw('Unpaid') + 46,                                      // Paid Status badge
+      tw('Unpaid') + 46,                                      // Paid Status badge (an "Overpaid" flag can sit beside it)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
@@ -380,6 +382,12 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>
+          {liveTotals.varianceCount > 0 && (
+            <div className="flash flash-warning" style={{ marginTop: 12 }}>
+              <b>{liveTotals.varianceCount} unresolved variance{liveTotals.varianceCount === 1 ? '' : 's'} ({peso(liveTotals.variance)} overpaid).</b>{' '}
+              Paid is more than the receivable. It is not counted as a rebate or as outstanding. Correct the payment, or enter a real Rebate if one was given.
+            </div>
+          )}
           {Object.keys(liveTotals.tally).length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {Object.entries(liveTotals.tally).map(([bucket, total]) => (
@@ -560,7 +568,8 @@ export default function Ledger() {
                     </td>
                     <td>{Number(r.balance) > 0.009
                       ? <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
-                      : <span className="badge badge-success" title="Balance is zero">Paid</span>}</td>
+                      : <><span className="badge badge-success" title="Balance is zero">Paid</span>
+                        {r.variance > 0.009 && <span className="badge badge-warning" style={{ marginLeft: 6 }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</>}</td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
