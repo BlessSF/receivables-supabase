@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, numClass, coveredLabel } from '../utils';
 import { useAuth } from '../AuthContext';
-import { isStaff } from '../utils';
+import { isStaff, isExecutive } from '../utils';
+import { billingYm, buildMonths, MonthTable } from '../MonthTable';
 
 // Evolving dashboard: pick Overall / Companies / HMOs, optionally one account,
 // then watch it month by month, year by year, or all time. Clicking a bar, a month, a year or a
@@ -83,6 +84,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const reqId = useRef(0);
+  const [entries, setEntries] = useState(null); // every ledger entry, for each account's Jan - Dec summary
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.data || [])).catch(() => {});
@@ -100,6 +102,12 @@ export default function Dashboard() {
       .catch((e) => { if (id === reqId.current) setErr(e.message); })
       .finally(() => { if (id === reqId.current) setLoading(false); });
   }, [companyId, scope, view, year, month]);
+
+  const wantMonthly = grouping === 'each' && !companyId && (view === 'year' || view === 'all' || (view === 'month' && month === 'all'));
+  useEffect(() => {
+    if (!wantMonthly || entries) return;
+    api.getSummary({ show_all: 1 }).then((r) => setEntries(r.data || [])).catch(() => setEntries([]));
+  }, [wantMonthly, entries]);
 
   if (err && !data) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading dashboard…</div>;
@@ -147,6 +155,29 @@ export default function Dashboard() {
     ['N/A', 'No valid date', '#cfd6de'],
   ];
   const agingTotal = agingRows.reduce((s, [k]) => s + (data.aging[k]?.total || 0), 0) || 1;
+  // Each account block: the Summary page's January - December table (Yearly, All time, or Monthly > All months)
+  const monthlyFor = (id) => {
+    if (!(eachMode && (data.view === 'year' || data.view === 'all' || (data.view === 'month' && data.month === 0)))) return null;
+    if (!entries) return <div className="dash-month-wait">Loading monthly summary…</div>;
+    const list = entries.filter((r) => String(r.company_id) === String(id));
+    if (list.length === 0) return <div className="dash-month-wait">No entries yet.</div>;
+    const owedLabel = isExecutive(user) ? 'Still Owed' : 'Deduction';
+    const years = data.view === 'all'
+      ? [...new Set(list.map((r) => billingYm(r)?.y).filter(Boolean))].sort((a, b) => b - a)
+      : [data.year];
+    if (years.length === 0) years.push(data.year);
+    const noPeriod = list.filter((r) => !billingYm(r));
+    return (
+      <div className="dash-month-tables">
+        {years.map((y, i) => (
+          <details key={y} open={years.length === 1 || i === 0}>
+            <summary>Summary by month · {y}</summary>
+            <MonthTable months={buildMonths([...list.filter((r) => billingYm(r)?.y === y), ...(i === 0 ? noPeriod : [])], y)} totalLabel={`TOTAL ${y}`} owedLabel={owedLabel} />
+          </details>
+        ))}
+      </div>
+    );
+  };
   const staff = isStaff(user);
   const eachMode = !company && grouping === 'each'; // one block per account instead of the combined view
   // HMOs vs Company Charges breakdown shown under each total (overall view only)
@@ -424,6 +455,7 @@ export default function Dashboard() {
                       <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${c.outstanding ? Math.min(100, (c.past_due / c.outstanding) * 100) : 0}%` }} /></div>
                     </div>
                   </div>
+                  {monthlyFor(c.id)}
                 </div>
               );
             })}

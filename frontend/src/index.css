@@ -1131,3 +1131,8 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .pm-card.settle-card { max-width: 480px; }
 .settle-note { font-size: 13.5px; color: var(--ink-soft, #334155); line-height: 1.5; background: var(--panel-alt, #f3f5f8); border-radius: 10px; padding: 12px 14px; }
 .settle-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+.dash-month-tables { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.dash-month-tables details > summary { cursor: pointer; font-weight: 700; font-size: 13.5px; padding: 8px 2px; color: var(--ink, #0f172a); }
+.dash-month-wait { margin-top: 14px; font-size: 13px; color: var(--slate, #64748b); }
+.dash-month-tables .data-table tfoot td { position: static; }
