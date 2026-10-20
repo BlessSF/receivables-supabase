@@ -145,7 +145,18 @@ export default function MonthlyReport() {
           </div>
           <div className="form-group"><label>&nbsp;</label>
             <button type="button" className={`btn btn-secondary${data.all_year && pickOpen ? ' active' : ''}`} aria-expanded={!!data.all_year && pickOpen}
-              onClick={() => { if (data.all_year) setPickOpen((o) => !o); else { setPickOpen(true); setPart(yyN, 0); } }}
+              onClick={() => {
+                if (data.all_year) { setPickOpen((o) => !o); return; }
+                // From a single month (e.g. Oct): open the month picker with what was on screen already ticked
+                // (Overdue + the months up to next month), so the report transforms and more months can be ticked.
+                const keys = ['overdue', ...Array.from({ length: 12 }, (_, i) => `m${String(i + 1).padStart(2, '0')}`), 'after'];
+                // everything the single-month view covered stays ticked (Overdue + every month up to next month), so no balance disappears;
+                // the months before this one are now broken out column by column
+                const keep = new Set(['overdue', ...keys.filter((k) => k.startsWith('m') && Number(k.slice(1)) <= Math.min(12, mm + 1))]);
+                setHidden(new Set(keys.filter((k) => !keep.has(k))));
+                setPickOpen(true);
+                setPart(yyN, 0);
+              }}
               title="Choose which months are shown, printed and exported (switches to All months)">
               Select months{data.all_year ? ` (${allBlocks.length - hidden.size}/${allBlocks.length})` : ''}
             </button>
@@ -158,7 +169,7 @@ export default function MonthlyReport() {
 
       <div className="month-chips report-chips" role="tablist" aria-label="Report month">
         <button type="button" role="tab" aria-selected={allMonths} className={allMonths ? 'on' : ''}
-          title={`Everything unpaid that is due in ${yy} (Jan - Dec), plus what is overdue before it and what falls due after it`} onClick={() => setPart(yyN, 0)}>All months</button>
+          title={`Everything unpaid that is due in ${yy} (Jan - Dec), plus what is overdue before it and what falls due after it`} onClick={() => { setHidden(new Set()); setPart(yyN, 0); }}>All months</button>
         {MONTHS.map((name, i) => (
           <button key={name} type="button" role="tab" aria-selected={mm === i + 1} className={mm === i + 1 ? 'on' : ''}
             title={`Who is overdue and who is due in ${name} ${yy}`} onClick={() => setPart(yyN, i + 1)}>
