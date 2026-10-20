@@ -4,7 +4,7 @@ import { all, scalar } from './db.js';
 import { getQuery, sendText, sendFile } from './http.js';
 import { readSession, makeAuth } from './auth.js';
 import { toInt, toFloat, toStr } from './php.js';
-import { excelSerial, periodLabel, coveredLabel } from './dates.js';
+import { excelSerial, periodLabel, coveredLabel, monthName } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
@@ -403,6 +403,19 @@ export async function handleXlsx(req, res) {
     const report = await buildMonthlyReport(auth, query);
     if (report.all_year && query.cols) { // only the months picked on the page
       const keep = new Set(String(query.cols).split(','));
+      // Overdue ticked + the first ticked month is not January: the earlier (unticked) months count as overdue
+      const mNo = (k) => (/^m\d\d$/.test(k) ? Number(k.slice(1)) : 0);
+      const ticked = report.block_defs.map((d) => d.key).filter((k) => keep.has(k) && mNo(k));
+      if (keep.has('overdue') && ticked.length) {
+        const first = Math.min(...ticked.map(mNo));
+        const merge = report.block_defs.map((d) => d.key).filter((k) => mNo(k) && mNo(k) < first);
+        if (merge.length) {
+          for (const c of report.companies) c.overdue = [...c.overdue, ...merge.flatMap((k) => c[k])];
+          report.totals.overdue += merge.reduce((a, k) => a + Number(report.totals[k] || 0), 0);
+          const od = report.block_defs.find((d) => d.key === 'overdue');
+          if (od) od.title = `OVERDUE (BEFORE ${monthName(`${report.all_year}-${String(first).padStart(2, '0')}`).toUpperCase()} ${report.all_year})`;
+        }
+      }
       report.block_defs = report.block_defs.filter((d) => keep.has(d.key));
       report.companies = report.companies.filter((c) => report.block_defs.some((d) => c[d.key].length));
     }

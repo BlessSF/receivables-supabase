@@ -95,7 +95,19 @@ export default function MonthlyReport() {
   if (!data) return <div className="loading-state">Loading report…</div>;
 
   const allBlocks = data.block_defs; // OVERDUE | this month | next month -- or OVERDUE | Jan ... Dec | after, for All months
-  const blocks = data.all_year ? allBlocks.filter((b) => !hidden.has(b.key)) : allBlocks;
+  const shown = data.all_year ? allBlocks.filter((b) => !hidden.has(b.key)) : allBlocks;
+  // Overdue ticked + the first ticked month is not January: everything due in the months BEFORE that first ticked month
+  // (unticked, earlier months) counts as overdue, so it lands in the Overdue column instead of disappearing.
+  const monthNo = (k) => (/^m\d\d$/.test(k) ? Number(k.slice(1)) : 0);
+  const tickedNos = shown.map((b) => monthNo(b.key)).filter(Boolean);
+  const mergeKeys = data.all_year && shown.some((b) => b.key === 'overdue') && tickedNos.length
+    ? allBlocks.map((b) => b.key).filter((k) => monthNo(k) && monthNo(k) < Math.min(...tickedNos))
+    : [];
+  const blocks = mergeKeys.length
+    ? shown.map((b) => (b.key === 'overdue' ? { ...b, title: `OVERDUE (BEFORE ${MONTHS[Math.min(...tickedNos) - 1].toUpperCase()} ${data.all_year})` } : b))
+    : shown;
+  const dCompanies = mergeKeys.length ? data.companies.map((c) => ({ ...c, overdue: [...c.overdue, ...mergeKeys.flatMap((k) => c[k])] })) : data.companies;
+  const dTotals = mergeKeys.length ? { ...data.totals, overdue: data.totals.overdue + mergeKeys.reduce((a, k) => a + Number(data.totals[k] || 0), 0) } : data.totals;
   const shortName = (b) => (b.key === 'overdue' ? 'Overdue' : b.key === 'after' ? `After ${data.all_year}` : MONTHS[Number(b.key.slice(1)) - 1].slice(0, 3));
   // All months: a TOTAL REMAINING BALANCE column sits right before the "After" block. It adds up every shown block
   // before it (Overdue + the ticked months), so it follows what is selected in Select months.
@@ -106,11 +118,11 @@ export default function MonthlyReport() {
     if (!cols.some((c) => c.isTotal)) cols.push({ key: '__total', isTotal: true });
   } else blocks.forEach((b) => cols.push(b));
   const rowTotal = (c) => sumKeys.reduce((s2, k) => s2 + c[k].reduce((a, i) => a + Number(i.balance || 0), 0), 0);
-  const grandTotal = sumKeys.reduce((s2, k) => s2 + Number(data.totals[k] || 0), 0);
+  const grandTotal = sumKeys.reduce((s2, k) => s2 + Number(dTotals[k] || 0), 0);
   const toggle = (key) => setHidden((h) => { const n = new Set(h); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}${data.all_year && hidden.size ? `&cols=${blocks.map((b) => b.key).join(',')}` : ''}`;
   // With some months switched off, companies that have nothing in the remaining columns are left out
-  const companies = data.all_year && hidden.size ? data.companies.filter((c) => blocks.some((b) => c[b.key].length)) : data.companies;
+  const companies = data.all_year && hidden.size ? dCompanies.filter((c) => blocks.some((b) => c[b.key].length)) : dCompanies;
   const empty = companies.length === 0;
 
   return (
@@ -270,7 +282,7 @@ export default function MonthlyReport() {
                       ? <td className="rep-total rep-total-amt rep-total-col rep-total-foot text-right num">{money(grandTotal)}</td>
                       : <>
                         <td colSpan={2} className={`rep-total ${b.cls}`}>{b.total}</td>
-                        <td className={`rep-total rep-total-amt text-right num ${b.cls}`}>{money(data.totals[b.key])}</td>
+                        <td className={`rep-total rep-total-amt text-right num ${b.cls}`}>{money(dTotals[b.key])}</td>
                       </>}
                     {i < cols.length - 1 && <td className="rep-gap" />}
                   </Fragment>
