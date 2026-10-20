@@ -1136,3 +1136,12 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .dash-month-tables details > summary { cursor: pointer; font-weight: 700; font-size: 13.5px; padding: 8px 2px; color: var(--ink, #0f172a); }
 .dash-month-wait { margin-top: 14px; font-size: 13px; color: var(--slate, #64748b); }
 .dash-month-tables .data-table tfoot td { position: static; }
+
+/* Reports by Month, All months: TOTAL REMAINING BALANCE column (pinned to the right edge while scrolling sideways) */
+.report-table .rep-col-total { width: 150px; }
+.report-table th.rep-total-col, .report-table td.rep-total-col { position: sticky; right: 0; z-index: 4; }
+.report-table th.rep-total-head { background: #0f172a !important; color: #fff; font-size: 12.5px; line-height: 1.25; text-align: center; box-shadow: -2px 0 0 var(--line-strong); }
+.report-table td.rep-total-cell { background: #f1f5f9; font-weight: 700; font-size: 14px; vertical-align: middle; box-shadow: -2px 0 0 var(--line-strong); }
+.report-table tbody tr:hover > td.rep-total-cell { background: #e8eef5; }
+.report-table td.rep-total-foot { background: #0f172a !important; color: #fff; box-shadow: -2px 0 0 var(--line-strong); }
+@media print { .report-table th.rep-total-col, .report-table td.rep-total-col { position: static !important; box-shadow: none !important; } }

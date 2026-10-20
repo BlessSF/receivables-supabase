@@ -96,6 +96,16 @@ export default function MonthlyReport() {
   const allBlocks = data.block_defs; // OVERDUE | this month | next month -- or OVERDUE | Jan ... Dec | after, for All months
   const blocks = data.all_year ? allBlocks.filter((b) => !hidden.has(b.key)) : allBlocks;
   const shortName = (b) => (b.key === 'overdue' ? 'Overdue' : b.key === 'after' ? `After ${data.all_year}` : MONTHS[Number(b.key.slice(1)) - 1].slice(0, 3));
+  // All months: a TOTAL REMAINING BALANCE column sits right before the "After" block. It adds up every shown block
+  // before it (Overdue + the ticked months), so it follows what is selected in Select months.
+  const sumKeys = data.all_year ? blocks.filter((b) => b.key !== 'after').map((b) => b.key) : [];
+  const cols = [];
+  if (sumKeys.length) {
+    blocks.forEach((b) => { if (b.key === 'after') cols.push({ key: '__total', isTotal: true }); cols.push(b); });
+    if (!cols.some((c) => c.isTotal)) cols.push({ key: '__total', isTotal: true });
+  } else blocks.forEach((b) => cols.push(b));
+  const rowTotal = (c) => sumKeys.reduce((s2, k) => s2 + c[k].reduce((a, i) => a + Number(i.balance || 0), 0), 0);
+  const grandTotal = sumKeys.reduce((s2, k) => s2 + Number(data.totals[k] || 0), 0);
   const toggle = (key) => setHidden((h) => { const n = new Set(h); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}${data.all_year && hidden.size ? `&cols=${blocks.map((b) => b.key).join(',')}` : ''}`;
   // With some months switched off, companies that have nothing in the remaining columns are left out
@@ -188,20 +198,22 @@ export default function MonthlyReport() {
           {blocks.length === 0 ? <div className="empty-state">Pick at least one month above to show.</div> : <table className={`report-table${data.all_year ? ' report-wide' : ''}`}>
             <colgroup>
               <col className="rep-col-company" />
-              {blocks.map((b, i) => (
+              {cols.map((b, i) => (
                 <Fragment key={b.key}>
-                  <col className="rep-col-soa" /><col className="rep-col-month" /><col className="rep-col-bal" />
-                  {i < blocks.length - 1 && <col className="rep-col-gap" />}
+                  {b.isTotal ? <col className="rep-col-total" /> : <><col className="rep-col-soa" /><col className="rep-col-month" /><col className="rep-col-bal" /></>}
+                  {i < cols.length - 1 && <col className="rep-col-gap" />}
                 </Fragment>
               ))}
             </colgroup>
             <thead>
               <tr>
                 <th rowSpan={2} className="rep-company-head">COMPANY</th>
-                {blocks.map((b, i) => (
+                {cols.map((b, i) => (
                   <Fragment key={b.key}>
-                    <th colSpan={3} className={`rep-band ${b.cls}`}>{b.title}</th>
-                    {i < blocks.length - 1 && <th rowSpan={2} className="rep-gap" />}
+                    {b.isTotal
+                      ? <th rowSpan={2} className="rep-band rep-total-col rep-total-head">TOTAL REMAINING BALANCE</th>
+                      : <th colSpan={3} className={`rep-band ${b.cls}`}>{b.title}</th>}
+                    {i < cols.length - 1 && <th rowSpan={2} className="rep-gap" />}
                   </Fragment>
                 ))}
               </tr>
@@ -213,7 +225,7 @@ export default function MonthlyReport() {
             </thead>
             <tbody>
               {empty && (
-                <tr><td colSpan={blocks.length * 4} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
+                <tr><td colSpan={cols.length * 4} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
               )}
               {companies.map((c) => {
                 const n = Math.max(1, ...blocks.map((b) => c[b.key].length));
@@ -224,10 +236,12 @@ export default function MonthlyReport() {
                         {readOnly ? c.company : <Link className="rep-link" to={`/ledger?company_id=${c.company_id}`} title="Open this company's ledger">{c.company}</Link>}
                       </td>
                     )}
-                    {blocks.map((b, bi) => (
+                    {cols.map((b, bi) => (
                       <Fragment key={b.key}>
-                        <Block item={c[b.key][i]} readOnly={readOnly} companyId={c.company_id} />
-                        {bi < blocks.length - 1 && <td className="rep-gap" />}
+                        {b.isTotal
+                          ? (i === 0 && <td rowSpan={n} className="rep-total-col rep-total-cell text-right num">{money(rowTotal(c))}</td>)
+                          : <Block item={c[b.key][i]} readOnly={readOnly} companyId={c.company_id} />}
+                        {bi < cols.length - 1 && <td className="rep-gap" />}
                       </Fragment>
                     ))}
                   </tr>
@@ -237,11 +251,15 @@ export default function MonthlyReport() {
             <tfoot>
               <tr>
                 <td className="rep-foot-space" />
-                {blocks.map((b, i) => (
+                {cols.map((b, i) => (
                   <Fragment key={b.key}>
-                    <td colSpan={2} className={`rep-total ${b.cls}`}>{b.total}</td>
-                    <td className={`rep-total rep-total-amt text-right num ${b.cls}`}>{money(data.totals[b.key])}</td>
-                    {i < blocks.length - 1 && <td className="rep-gap" />}
+                    {b.isTotal
+                      ? <td className="rep-total rep-total-amt rep-total-col rep-total-foot text-right num">{money(grandTotal)}</td>
+                      : <>
+                        <td colSpan={2} className={`rep-total ${b.cls}`}>{b.total}</td>
+                        <td className={`rep-total rep-total-amt text-right num ${b.cls}`}>{money(data.totals[b.key])}</td>
+                      </>}
+                    {i < cols.length - 1 && <td className="rep-gap" />}
                   </Fragment>
                 ))}
               </tr>

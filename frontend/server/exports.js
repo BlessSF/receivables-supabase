@@ -232,14 +232,28 @@ function writeMonthlySheet(wb, report, preparedBy) {
 
   const ws = wb.addWorksheet('Reports by Month', { views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }] });
   ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
-  // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio, with a thin gap column between them
-  const blocks = report.block_defs.map((d, i) => ({
-    key: d.key, col: 2 + i * 4, title: d.title, color: d.cls === 'rep-red' ? RED : BLUE, totalLabel: d.total,
+  // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio, with a thin gap column between them.
+  // All months: a TOTAL REMAINING BALANCE column (one column) sits right before the "After" block; it adds up every block before it.
+  const slots = report.block_defs.map((d) => ({
+    key: d.key, title: d.title, color: d.cls === 'rep-red' ? RED : BLUE, totalLabel: d.total,
   }));
-  ws.columns = [
-    { width: 30 },
-    ...blocks.flatMap((_, i) => [{ width: 14 }, { width: 22 }, { width: 20 }, ...(i < blocks.length - 1 ? [{ width: 3 }] : [])]),
-  ];
+  const sumKeys = report.all_year ? slots.filter((b) => b.key !== 'after').map((b) => b.key) : [];
+  if (sumKeys.length) {
+    const at = slots.findIndex((b) => b.key === 'after');
+    const total = { key: '__total', isTotal: true };
+    if (at >= 0) slots.splice(at, 0, total); else slots.push(total);
+  }
+  let nextCol = 2;
+  const widths = [{ width: 30 }];
+  slots.forEach((b, i) => {
+    b.col = nextCol;
+    if (b.isTotal) { widths.push({ width: 22 }); nextCol += 1; } else { widths.push({ width: 14 }, { width: 22 }, { width: 20 }); nextCol += 3; }
+    if (i < slots.length - 1) { widths.push({ width: 3 }); nextCol += 1; }
+  });
+  ws.columns = widths;
+  const blocks = slots.filter((b) => !b.isTotal);
+  const totalSlot = slots.find((b) => b.isTotal);
+  const rowTotal = (c) => sumKeys.reduce((a, k) => a + c[k].reduce((x, i) => x + Number(i.balance || 0), 0), 0);
 
   // ---- header rows
   ws.mergeCells(1, 1, 2, 1);
@@ -263,6 +277,15 @@ function writeMonthlySheet(wb, report, preparedBy) {
       c.alignment = { horizontal: i === 2 ? 'right' : 'center', vertical: 'middle' };
       c.border = box;
     });
+  }
+  if (totalSlot) {
+    ws.mergeCells(1, totalSlot.col, 2, totalSlot.col);
+    const t = ws.getCell(1, totalSlot.col);
+    t.value = 'TOTAL REMAINING BALANCE';
+    t.font = { bold: true, size: 11, color: WHITE };
+    t.fill = fill('FF0F172A');
+    t.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    t.border = box;
   }
   ws.getRow(1).height = 22;
   ws.getRow(2).height = 18;
@@ -294,6 +317,16 @@ function writeMonthlySheet(wb, report, preparedBy) {
         for (const cell of [soa, month, bal]) cell.border = box;
       }
     }
+    if (totalSlot) {
+      if (n > 1) ws.mergeCells(r, totalSlot.col, r + n - 1, totalSlot.col);
+      const tc = ws.getCell(r, totalSlot.col);
+      tc.value = Math.round(rowTotal(c) * 100) / 100;
+      tc.numFmt = MONEY;
+      tc.font = { bold: true };
+      tc.alignment = { horizontal: 'right', vertical: 'middle' };
+      tc.fill = fill('FFF1F5F9');
+      for (let i = 0; i < n; i++) ws.getCell(r + i, totalSlot.col).border = box;
+    }
     r += n;
   }
 
@@ -312,6 +345,14 @@ function writeMonthlySheet(wb, report, preparedBy) {
       cell.fill = fill(b.color);
       cell.font = { bold: true, color: WHITE };
     }
+  }
+  if (totalSlot) {
+    const g = ws.getCell(r, totalSlot.col);
+    g.value = Math.round(sumKeys.reduce((a, k) => a + Number(report.totals[k] || 0), 0) * 100) / 100;
+    g.numFmt = MONEY;
+    g.alignment = { horizontal: 'right' };
+    g.fill = fill('FF0F172A');
+    g.font = { bold: true, color: WHITE };
   }
   if (preparedBy) {
     ws.getCell(r + 3, 1).value = 'Prepared by:';
