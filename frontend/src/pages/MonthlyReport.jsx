@@ -39,7 +39,7 @@ export default function MonthlyReport() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [pickOpen, setPickOpen] = useState(false); // the "Select months" panel
+  const [pickOpen, setPickOpen] = useState(true); // the "Select months" panel
   const [hidden, setHidden] = useState(() => new Set()); // All months: columns the user switched off (they are not shown, printed or exported)
 
   // Printing: whatever is selected is shrunk to fit one page width (landscape; A3 when it is too wide for A4)
@@ -113,12 +113,6 @@ export default function MonthlyReport() {
           </div>
         </div>
         <div className="report-actions" style={{ display: 'flex', gap: 8 }}>
-          {data.all_year && (
-            <button type="button" className={`btn btn-secondary${pickOpen ? ' active' : ''}`} aria-expanded={pickOpen} onClick={() => setPickOpen((o) => !o)}
-              title="Choose which months are shown, printed and exported">
-              Select months ({allBlocks.length - hidden.size}/{allBlocks.length})
-            </button>
-          )}
           <a className="btn btn-secondary" href={exportHref}>Export XLSX</a>
           <button type="button" className="btn btn-secondary" onClick={() => window.print()}>Print</button>
         </div>
@@ -138,6 +132,12 @@ export default function MonthlyReport() {
               {TERMS.map((t) => <option key={t} value={t}>{t === 0 ? 'Due in the Period month' : `Due ${t} month${t === 1 ? '' : 's'} after the Period`}</option>)}
             </select>
           </div>
+          {data.all_year && (
+            <div className="form-group"><label>&nbsp;</label><button type="button" className={`btn btn-secondary${pickOpen ? ' active' : ''}`} aria-expanded={pickOpen} onClick={() => setPickOpen((o) => !o)}
+              title="Choose which months are shown, printed and exported">
+              Select months ({allBlocks.length - hidden.size}/{allBlocks.length})
+            </button></div>
+          )}
           {busy && <span className="table-toolbar-count" style={{ alignSelf: 'center' }}>Updating…</span>}
         </div>
       </div>
