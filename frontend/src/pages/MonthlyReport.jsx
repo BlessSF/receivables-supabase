@@ -147,12 +147,11 @@ export default function MonthlyReport() {
             <button type="button" className={`btn btn-secondary${data.all_year && pickOpen ? ' active' : ''}`} aria-expanded={!!data.all_year && pickOpen}
               onClick={() => {
                 if (data.all_year) { setPickOpen((o) => !o); return; }
-                // From a single month (e.g. Oct): open the month picker with what was on screen already ticked
-                // (Overdue + the months up to next month), so the report transforms and more months can be ticked.
+                // From a single month (e.g. Oct): open the month picker with just that month and the next one ticked.
+                // Overdue is NOT ticked: each month column holds what falls due in that month by its Due Date / payment terms.
+                // Tick Overdue (or earlier months) in the picker when you want them.
                 const keys = ['overdue', ...Array.from({ length: 12 }, (_, i) => `m${String(i + 1).padStart(2, '0')}`), 'after'];
-                // everything the single-month view covered stays ticked (Overdue + every month up to next month), so no balance disappears;
-                // the months before this one are now broken out column by column
-                const keep = new Set(['overdue', ...keys.filter((k) => k.startsWith('m') && Number(k.slice(1)) <= Math.min(12, mm + 1))]);
+                const keep = new Set([`m${String(mm).padStart(2, '0')}`, mm === 12 ? 'after' : `m${String(mm + 1).padStart(2, '0')}`]);
                 setHidden(new Set(keys.filter((k) => !keep.has(k))));
                 setPickOpen(true);
                 setPart(yyN, 0);
