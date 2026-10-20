@@ -25,7 +25,7 @@ function Block({ item, readOnly, companyId }) {
             : <Link className="rep-link" to={`/ledger?company_id=${companyId}&entry=${item.id}`} title="Open this entry in the Ledger">{item.soa_number}</Link>)
           : <span className="zero">—</span>}
       </td>
-      <td className="rep-center">{item.period || <span className="zero">—</span>}{item.due_label && <div className="rep-due">{item.due_label}</div>}</td>
+      <td className="rep-center">{item.period || <span className="zero">—</span>}</td>
       <td className="text-right num">{money(item.balance)}</td>
     </>
   );
@@ -65,12 +65,7 @@ export default function MonthlyReport() {
   if (err && !data) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading report…</div>;
 
-  const T = data.titles;
-  const blocks = [
-    { key: 'overdue', title: T.overdue, cls: 'rep-red', total: T.t_overdue },
-    { key: 'due1', title: T.due1, cls: 'rep-blue', total: T.t_due1 },
-    { key: 'due2', title: T.due2, cls: 'rep-blue', total: T.t_due2 },
-  ];
+  const blocks = data.block_defs; // OVERDUE | this month | next month -- or OVERDUE | Jan ... Dec | after, for All months
   const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}`;
   const empty = data.companies.length === 0;
 
@@ -130,7 +125,7 @@ export default function MonthlyReport() {
 
       <div className="panel report-panel">
         <div className="report-scroll">
-          <table className="report-table">
+          <table className={`report-table${blocks.length > 3 ? ' report-wide' : ''}`}>
             <colgroup>
               <col className="rep-col-company" />
               {blocks.map((b, i) => (
@@ -158,10 +153,10 @@ export default function MonthlyReport() {
             </thead>
             <tbody>
               {empty && (
-                <tr><td colSpan={12} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
+                <tr><td colSpan={blocks.length * 4} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
               )}
               {data.companies.map((c) => {
-                const n = Math.max(1, c.overdue.length, c.due1.length, c.due2.length);
+                const n = Math.max(1, ...blocks.map((b) => c[b.key].length));
                 return Array.from({ length: n }, (_, i) => (
                   <tr key={`${c.company_id}-${i}`} className={i === 0 ? 'rep-first' : ''}>
                     {i === 0 && (

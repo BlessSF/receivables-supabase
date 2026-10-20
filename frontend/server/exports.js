@@ -232,18 +232,13 @@ function writeMonthlySheet(wb, report, preparedBy) {
 
   const ws = wb.addWorksheet('Reports by Month', { views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }] });
   ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio, with a thin gap column between them
+  const blocks = report.block_defs.map((d, i) => ({
+    key: d.key, col: 2 + i * 4, title: d.title, color: d.cls === 'rep-red' ? RED : BLUE, totalLabel: d.total,
+  }));
   ws.columns = [
     { width: 30 },
-    { width: 14 }, { width: 17 }, { width: 20 }, { width: 3 },
-    { width: 14 }, { width: 17 }, { width: 20 }, { width: 3 },
-    { width: 14 }, { width: 17 }, { width: 20 },
-  ];
-
-  // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio
-  const blocks = [
-    { key: 'overdue', col: 2, title: report.titles.overdue, color: RED, totalLabel: report.titles.t_overdue },
-    { key: 'due1', col: 6, title: report.titles.due1, color: BLUE, totalLabel: report.titles.t_due1 },
-    { key: 'due2', col: 10, title: report.titles.due2, color: BLUE, totalLabel: report.titles.t_due2 },
+    ...blocks.flatMap((_, i) => [{ width: 14 }, { width: 17 }, { width: 20 }, ...(i < blocks.length - 1 ? [{ width: 3 }] : [])]),
   ];
 
   // ---- header rows
@@ -275,7 +270,7 @@ function writeMonthlySheet(wb, report, preparedBy) {
   // ---- one block of rows per company (as many lines as its longest column)
   let r = 3;
   for (const c of report.companies) {
-    const n = Math.max(1, c.overdue.length, c.due1.length, c.due2.length);
+    const n = Math.max(1, ...blocks.map((b) => c[b.key].length));
     if (n > 1) ws.mergeCells(r, 1, r + n - 1, 1);
     const name = ws.getCell(r, 1);
     name.value = c.company;
