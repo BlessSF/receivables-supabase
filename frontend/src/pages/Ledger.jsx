@@ -251,7 +251,7 @@ export default function Ledger() {
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
       balanceW + CELL,
       tw('0,000 days') + 30,                                  // Aging badge
-      Math.max(tw('Unpaid') + 46, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
+      Math.max(tw('Unpaid') + 46, (canSettle ? tw('Settle') + 76 : 0), rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
