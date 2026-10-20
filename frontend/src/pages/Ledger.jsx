@@ -114,6 +114,9 @@ export default function Ledger() {
   const [err, setErr] = useState('');
   const [search, setSearch] = useState('');
   const [highlightId, setHighlightId] = useState(null);
+  const [settleFor, setSettleFor] = useState(null); // ledger row whose Settle popup is open
+  const [settleBusy, setSettleBusy] = useState(false);
+  const [settleErr, setSettleErr] = useState('');
   const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
 
   const reload = useCallback(() => {
@@ -306,14 +309,31 @@ export default function Ledger() {
 
   // Settle: the client paid something but less than the receivable and the entry is closed. The leftover
   // difference is saved as a Rebate (the existing Rebate column), which brings the Balance to 0. Clear the Rebate to undo.
-  async function settleRow(r) {
-    const left = r2(Number(r.balance) || 0);
-    if (left <= 0.009) return;
-    const label = r.soa_number ? `SOA ${r.soa_number}` : 'this entry';
-    if (!confirm(`Settle ${label}?\n\nThe remaining ${peso(left)} will be saved as a Rebate and the Balance becomes 0.00.\n\nTo undo, clear the Rebate cell.`)) return;
-    try { await saveField(r.id, 'rebate', r2((Number(r.rebate) || 0) + left)); }
-    catch (e) { alert(e.message || 'Could not settle this entry.'); }
+  function settleRow(r) {
+    if (r2(Number(r.balance) || 0) <= 0.009) return;
+    setSettleErr('');
+    setSettleFor(r);
   }
+  async function confirmSettle() {
+    const r = settleFor;
+    if (!r || settleBusy) return;
+    const left = r2(Number(r.balance) || 0);
+    setSettleBusy(true); setSettleErr('');
+    try {
+      await saveField(r.id, 'rebate', r2((Number(r.rebate) || 0) + left));
+      setSettleFor(null);
+    } catch (e) {
+      setSettleErr(e.message || 'Could not settle this entry.');
+    } finally {
+      setSettleBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (!settleFor) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !settleBusy) setSettleFor(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settleFor, settleBusy]);
 
   async function deleteRow(r) {
     const label = `${r.soa_number ? `SOA ${r.soa_number}` : 'this entry'} (${peso(r.amount)})`;
@@ -594,6 +614,32 @@ export default function Ledger() {
           </div>
         )}
       </div>
+      {settleFor && (
+        <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !settleBusy) setSettleFor(null); }}>
+          <div className="pm-card settle-card" role="dialog" aria-modal="true" aria-label="Settle entry">
+            <div className="pm-head">
+              <div>
+                <h2>Settle {settleFor.soa_number ? `SOA ${settleFor.soa_number}` : 'this entry'}?</h2>
+                <div className="pm-sub">The client paid less than the receivable and this entry is closed.</div>
+              </div>
+            </div>
+            <div className="pm-summary">
+              <div><span>Receivable</span><strong className="num">{peso(settleFor.receivable_amount)}</strong></div>
+              <div><span>Paid</span><strong className="num">{peso(settleFor.paid_amount)}</strong></div>
+              <div className="is-due"><span>Remaining</span><strong className="num">{peso(settleFor.balance)}</strong></div>
+            </div>
+            <div className="settle-note">
+              The remaining <b>{peso(settleFor.balance)}</b> will be saved as a <b>Rebate</b> and the Balance becomes <b>₱0.00</b>.
+              To undo, clear the Rebate cell.
+            </div>
+            {settleErr && <div className="flash flash-error" style={{ margin: '12px 0 0' }}>{settleErr}</div>}
+            <div className="settle-actions">
+              <button type="button" className="btn btn-secondary" disabled={settleBusy} onClick={() => setSettleFor(null)}>Cancel</button>
+              <button type="button" className="btn" disabled={settleBusy} onClick={confirmSettle} autoFocus>{settleBusy ? 'Settling…' : 'Settle & close'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {payFor && (
         <PaymentsModal
           entry={payFor}

@@ -1127,3 +1127,7 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .settle-btn::before { content: "\2713"; font-size: 12px; }
 .settle-btn:hover { background: var(--teal, #0f766e); color: #fff; }
 .settle-btn:active { transform: translateY(1px); }
+
+.pm-card.settle-card { max-width: 480px; }
+.settle-note { font-size: 13.5px; color: var(--ink-soft, #334155); line-height: 1.5; background: var(--panel-alt, #f3f5f8); border-radius: 10px; padding: 12px 14px; }
+.settle-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
