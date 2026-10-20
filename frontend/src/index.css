@@ -1088,3 +1088,5 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .pm-form h3 { margin: 0 0 10px; font-size: 14px; }
 
 @media print { .report-chips { display: none; } }
+
+.rep-due { font-size: 10.5px; color: var(--slate); margin-top: 1px; }

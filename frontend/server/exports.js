@@ -241,9 +241,9 @@ function writeMonthlySheet(wb, report, preparedBy) {
 
   // blocks: first column index (1-based) of each SOA / MONTH / BALANCE trio
   const blocks = [
-    { key: 'overdue', col: 2, title: 'OVERDUE', color: RED, totalLabel: 'OVERDUE TOTAL' },
-    { key: 'due1', col: 6, title: `DUE FOR ${report.month_name.toUpperCase()} ${report.month.slice(0, 4)}`, color: BLUE, totalLabel: `${report.month_name.toUpperCase()} DUE TOTAL:` },
-    { key: 'due2', col: 10, title: `DUE FOR ${report.next_name.toUpperCase()} ${report.next_month.slice(0, 4)}`, color: BLUE, totalLabel: `${report.next_name.toUpperCase()} DUE TOTAL:` },
+    { key: 'overdue', col: 2, title: report.titles.overdue, color: RED, totalLabel: report.titles.t_overdue },
+    { key: 'due1', col: 6, title: report.titles.due1, color: BLUE, totalLabel: report.titles.t_due1 },
+    { key: 'due2', col: 10, title: report.titles.due2, color: BLUE, totalLabel: report.titles.t_due2 },
   ];
 
   // ---- header rows
@@ -366,7 +366,7 @@ export async function handleXlsx(req, res) {
   if (type === 'monthly') {
     const report = await buildMonthlyReport(auth, query);
     writeMonthlySheet(wb, report, user.full_name || user.username || '');
-    return send(`reports_by_month_${report.month}.xlsx`);
+    return send(`reports_by_month_${report.all_year ? `${report.all_year}_all_months` : report.month}.xlsx`);
   }
 
   if (type === 'aging') {

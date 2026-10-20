@@ -18,14 +18,16 @@ export const DEFAULT_TERMS_MONTHS = 3;
 /** Reads ?month=YYYY-MM and ?terms=N from the request, with safe defaults. */
 export function readMonthlyParams(query) {
   const raw = String(query.month ?? '');
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? raw : currentMonthKey();
+  // "2026-all" = the "All months" view: the whole of that year (Jan - Dec) in one report
+  const allYear = /^\d{4}-all$/.test(raw) ? Number(raw.slice(0, 4)) : null;
+  const month = allYear ? `${allYear}-01` : /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? raw : currentMonthKey();
   const terms = query.terms === undefined || query.terms === '' ? DEFAULT_TERMS_MONTHS : toInt(query.terms);
-  return { month, terms: Math.max(0, Math.min(12, terms)) };
+  return { month, terms: Math.max(0, Math.min(12, terms)), allYear };
 }
 
 export async function buildMonthlyReport(auth, query) {
-  const { month, terms } = readMonthlyParams(query);
-  const next = addMonthsKey(month, 1);
+  const { month, terms, allYear } = readMonthlyParams(query);
+  const next = allYear ? `${allYear + 1}-01` : addMonthsKey(month, 1); // All months: "next" = everything after that year
   const [bw, bp] = branchWhere(auth, 'c');
 
   let rows;
@@ -58,7 +60,11 @@ export async function buildMonthlyReport(auth, query) {
     if (!dueKey) { noPeriod.count++; noPeriod.total += balance; continue; }
 
     let block;
-    if (dueKey < month) block = 'overdue';
+    if (allYear) {
+      if (dueKey < month) block = 'overdue';           // due before the year starts
+      else if (dueKey < next) block = 'due1';          // due in any month of the year
+      else block = 'due2';                             // due after the year
+    } else if (dueKey < month) block = 'overdue';
     else if (dueKey === month) block = 'due1';
     else if (dueKey === next) block = 'due2';
     else { later.count++; later.total += balance; continue; }
@@ -68,11 +74,21 @@ export async function buildMonthlyReport(auth, query) {
       c = { company_id: toInt(r.company_id), company: r.company_name, overdue: [], due1: [], due2: [] };
       companies.set(r.company_id, c);
     }
-    c[block].push({ id: toInt(r.id), soa_number: r.soa_number || '', period: periodLabel(r.period_date), balance });
+    c[block].push({
+      id: toInt(r.id), soa_number: r.soa_number || '', period: periodLabel(r.period_date), balance,
+      ...(allYear ? { due_label: `due ${monthName(dueKey).slice(0, 3)} ${dueKey.slice(0, 4)}` } : {}),
+    });
     totals[block] += balance;
   }
 
+  const titles = allYear
+    ? { overdue: `OVERDUE (BEFORE ${allYear})`, due1: `DUE IN ${allYear} (JAN - DEC)`, due2: `DUE AFTER ${allYear}`,
+      t_overdue: 'OVERDUE TOTAL', t_due1: `${allYear} DUE TOTAL:`, t_due2: `AFTER ${allYear} TOTAL:` }
+    : { overdue: 'OVERDUE', due1: `DUE FOR ${monthName(month).toUpperCase()} ${month.slice(0, 4)}`, due2: `DUE FOR ${monthName(next).toUpperCase()} ${next.slice(0, 4)}`,
+      t_overdue: 'OVERDUE TOTAL', t_due1: `${monthName(month).toUpperCase()} DUE TOTAL:`, t_due2: `${monthName(next).toUpperCase()} DUE TOTAL:` };
+
   return {
+    all_year: allYear, titles,
     month, next_month: next, terms,
     month_name: monthName(month), month_label: monthLabel(month),
     next_name: monthName(next), next_label: monthLabel(next),

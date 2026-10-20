@@ -25,7 +25,7 @@ function Block({ item, readOnly, companyId }) {
             : <Link className="rep-link" to={`/ledger?company_id=${companyId}&entry=${item.id}`} title="Open this entry in the Ledger">{item.soa_number}</Link>)
           : <span className="zero">—</span>}
       </td>
-      <td className="rep-center">{item.period || <span className="zero">—</span>}</td>
+      <td className="rep-center">{item.period || <span className="zero">—</span>}{item.due_label && <div className="rep-due">{item.due_label}</div>}</td>
       <td className="text-right num">{money(item.balance)}</td>
     </>
   );
@@ -50,22 +50,26 @@ export default function MonthlyReport() {
     return () => { live = false; };
   }, [month, terms]);
 
-  const [yy, mm] = month.split('-').map(Number);
+  const allMonths = month.endsWith('-all'); // "All months": the whole year in one report
+  const [yy, mmRaw] = month.split('-');
+  const mm = allMonths ? 0 : Number(mmRaw);
+  const yyN = Number(yy);
   const years = useMemo(() => {
     const now = new Date().getFullYear();
-    const lo = Math.min(now - 3, yy);
-    const hi = Math.max(now + 2, yy);
+    const lo = Math.min(now - 3, yyN);
+    const hi = Math.max(now + 2, yyN);
     return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-  }, [yy]);
-  const setPart = (y, m) => setMonth(`${y}-${String(m).padStart(2, '0')}`);
+  }, [yyN]);
+  const setPart = (y, m) => setMonth(m === 0 ? `${y}-all` : `${y}-${String(m).padStart(2, '0')}`);
 
   if (err && !data) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading report…</div>;
 
+  const T = data.titles;
   const blocks = [
-    { key: 'overdue', title: 'OVERDUE', cls: 'rep-red', total: 'OVERDUE TOTAL' },
-    { key: 'due1', title: `DUE FOR ${data.month_name.toUpperCase()} ${data.month.slice(0, 4)}`, cls: 'rep-blue', total: `${data.month_name.toUpperCase()} DUE TOTAL:` },
-    { key: 'due2', title: `DUE FOR ${data.next_name.toUpperCase()} ${data.next_month.slice(0, 4)}`, cls: 'rep-blue', total: `${data.next_name.toUpperCase()} DUE TOTAL:` },
+    { key: 'overdue', title: T.overdue, cls: 'rep-red', total: T.t_overdue },
+    { key: 'due1', title: T.due1, cls: 'rep-blue', total: T.t_due1 },
+    { key: 'due2', title: T.due2, cls: 'rep-blue', total: T.t_due2 },
   ];
   const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}`;
   const empty = data.companies.length === 0;
@@ -76,7 +80,7 @@ export default function MonthlyReport() {
         <div>
           <h1>Reports by Month</h1>
           <div className="subtitle">
-            Pick a month (Jan–Dec): the report builds itself with what is overdue and who is due in that month and the next.
+            Pick a month (Jan–Dec), or All months for the whole year: the report builds itself with what is overdue and who is due.
             An entry is due on its own Due Date if it has one, otherwise {terms === 0 ? 'in its Period Date month' : `${terms} month${terms === 1 ? '' : 's'} after its Period Date`}.
           </div>
         </div>
@@ -90,7 +94,7 @@ export default function MonthlyReport() {
         <div className="filter-bar">
           <div className="form-group">
             <label htmlFor="rep-year">Year</label>
-            <select id="rep-year" value={yy} onChange={(e) => setPart(Number(e.target.value), mm)} aria-label="Year" style={{ minWidth: 100 }}>
+            <select id="rep-year" value={yyN} onChange={(e) => setPart(Number(e.target.value), mm)} aria-label="Year" style={{ minWidth: 100 }}>
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -107,9 +111,11 @@ export default function MonthlyReport() {
       {err && <div className="flash flash-error">{err}</div>}
 
       <div className="month-chips report-chips" role="tablist" aria-label="Report month">
+        <button type="button" role="tab" aria-selected={allMonths} className={allMonths ? 'on' : ''}
+          title={`Everything unpaid that is due in ${yy} (Jan - Dec), plus what is overdue before it and what falls due after it`} onClick={() => setPart(yyN, 0)}>All months</button>
         {MONTHS.map((name, i) => (
           <button key={name} type="button" role="tab" aria-selected={mm === i + 1} className={mm === i + 1 ? 'on' : ''}
-            title={`Who is overdue and who is due in ${name} ${yy}`} onClick={() => setPart(yy, i + 1)}>
+            title={`Who is overdue and who is due in ${name} ${yy}`} onClick={() => setPart(yyN, i + 1)}>
             {name.slice(0, 3)}
           </button>
         ))}
@@ -152,7 +158,7 @@ export default function MonthlyReport() {
             </thead>
             <tbody>
               {empty && (
-                <tr><td colSpan={12} className="empty-state">Nothing is overdue or due in {data.month_label} or {data.next_label}.</td></tr>
+                <tr><td colSpan={12} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
               )}
               {data.companies.map((c) => {
                 const n = Math.max(1, c.overdue.length, c.due1.length, c.due2.length);
@@ -192,7 +198,7 @@ export default function MonthlyReport() {
             <div className="report-prepared-label">Prepared by</div>
             <div className="report-prepared-name">{user?.full_name || user?.username}</div>
           </div>
-          {data.later.count > 0 && (
+          {!data.all_year && data.later.count > 0 && (
             <div className="report-later">
               Not shown: {data.later.count} entr{data.later.count === 1 ? 'y' : 'ies'} ({peso(data.later.total)}) due after {data.next_label}.
             </div>
