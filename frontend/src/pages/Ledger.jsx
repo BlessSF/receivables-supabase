@@ -104,6 +104,7 @@ export default function Ledger() {
   const { user } = useAuth();
   const staff = isStaff(user); // staff can edit only the highlighted Payment Date / Check Ref / Paid cells
   const exec = isExecutive(user); // executives edit and delete like Admin
+  const canSettle = !staff; // everyone who can edit the Rebate (not Staff) can settle a short-paid entry
   const canDelete = !!user?.is_admin || exec; // only Admin and Executive can delete; Staff and Branch cannot
   const [params, setParams] = useSearchParams();
   const companyId = params.get('company_id') || '';
@@ -301,6 +302,17 @@ export default function Ledger() {
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
     if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate'].includes(field)) reload();
+  }
+
+  // Settle: the client paid something but less than the receivable and the entry is closed. The leftover
+  // difference is saved as a Rebate (the existing Rebate column), which brings the Balance to 0. Clear the Rebate to undo.
+  async function settleRow(r) {
+    const left = r2(Number(r.balance) || 0);
+    if (left <= 0.009) return;
+    const label = r.soa_number ? `SOA ${r.soa_number}` : 'this entry';
+    if (!confirm(`Settle ${label}?\n\nThe remaining ${peso(left)} will be saved as a Rebate and the Balance becomes 0.00.\n\nTo undo, clear the Rebate cell.`)) return;
+    try { await saveField(r.id, 'rebate', r2((Number(r.rebate) || 0) + left)); }
+    catch (e) { alert(e.message || 'Could not settle this entry.'); }
   }
 
   async function deleteRow(r) {
@@ -567,7 +579,9 @@ export default function Ledger() {
                       {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td>{Number(r.balance) > 0.009
-                      ? <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
+                      ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                        <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
+                        {canSettle && Number(r.paid_amount) > 0.009 && <button type="button" className="settle-btn" title="Client paid less and this entry is closed: save the remaining balance as a Rebate" onClick={() => settleRow(r)}>Settle</button>}</div>
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                         <span className="badge badge-success" title="Balance is zero">Paid</span>
                         {r.variance > 0.009 && <span className="badge badge-warning" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
