@@ -132,12 +132,13 @@ export default function MonthlyReport() {
               {TERMS.map((t) => <option key={t} value={t}>{t === 0 ? 'Due in the Period month' : `Due ${t} month${t === 1 ? '' : 's'} after the Period`}</option>)}
             </select>
           </div>
-          {data.all_year && (
-            <div className="form-group"><label>&nbsp;</label><button type="button" className={`btn btn-secondary${pickOpen ? ' active' : ''}`} aria-expanded={pickOpen} onClick={() => setPickOpen((o) => !o)}
-              title="Choose which months are shown, printed and exported">
-              Select months ({allBlocks.length - hidden.size}/{allBlocks.length})
-            </button></div>
-          )}
+          <div className="form-group"><label>&nbsp;</label>
+            <button type="button" className={`btn btn-secondary${data.all_year && pickOpen ? ' active' : ''}`} aria-expanded={!!data.all_year && pickOpen}
+              onClick={() => { if (data.all_year) setPickOpen((o) => !o); else { setPickOpen(true); setPart(yyN, 0); } }}
+              title="Choose which months are shown, printed and exported (switches to All months)">
+              Select months{data.all_year ? ` (${allBlocks.length - hidden.size}/${allBlocks.length})` : ''}
+            </button>
+          </div>
           {busy && <span className="table-toolbar-count" style={{ alignSelf: 'center' }}>Updating…</span>}
         </div>
       </div>
