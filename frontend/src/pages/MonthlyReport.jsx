@@ -39,6 +39,7 @@ export default function MonthlyReport() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [whyFor, setWhyFor] = useState(null); // company whose total balance is explained in a popup
   const [pickOpen, setPickOpen] = useState(true); // the "Select months" panel
   const [hidden, setHidden] = useState(() => new Set()); // All months: columns the user switched off (they are not shown, printed or exported)
 
@@ -239,7 +240,9 @@ export default function MonthlyReport() {
                     {cols.map((b, bi) => (
                       <Fragment key={b.key}>
                         {b.isTotal
-                          ? (i === 0 && <td rowSpan={n} className="rep-total-col rep-total-cell text-right num">{money(rowTotal(c))}</td>)
+                          ? (i === 0 && <td rowSpan={n} className="rep-total-col rep-total-cell text-right num">
+                            <button type="button" className="why-btn" title="Click to see why this company has this balance" onClick={() => setWhyFor(c)}>{money(rowTotal(c))}</button>
+                          </td>)
                           : <Block item={c[b.key][i]} readOnly={readOnly} companyId={c.company_id} />}
                         {bi < cols.length - 1 && <td className="rep-gap" />}
                       </Fragment>
@@ -278,6 +281,52 @@ export default function MonthlyReport() {
           )}
         </div>
       </div>
+      {whyFor && (() => {
+        const rows = [];
+        blocks.filter((b) => sumKeys.includes(b.key)).forEach((b) => whyFor[b.key].forEach((it) => rows.push({ ...it, col: b.key === 'overdue' ? 'Overdue' : b.title.replace(/ \d{4}$/, '').replace(/^(\w)(\w*)/, (m, a, z) => a + z.toLowerCase()) })));
+        const sum = rows.reduce((a, r) => a + r.balance, 0);
+        const why = (r) => {
+          const bits = [];
+          if (r.paid <= 0.009) bits.push('Nothing paid yet');
+          else bits.push(`Paid ${peso(r.paid)} of ${peso(r.receivable)}`);
+          if (r.rebate > 0.009) bits.push(`after ${peso(r.rebate)} rebate`);
+          bits.push(`due ${r.due} (${r.due_basis})`);
+          return bits.join(' · ');
+        };
+        return (
+          <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget) setWhyFor(null); }}>
+            <div className="pm-card why-card" role="dialog" aria-modal="true" aria-label="Why this balance">
+              <div className="pm-head">
+                <div>
+                  <h2>{whyFor.company}</h2>
+                  <div className="pm-sub">Total remaining balance <b>{peso(sum)}</b>: the unpaid entries in the report columns that are switched on (Overdue and the ticked months). Remaining = Amount − Tax W/H + Surcharge − Rebate − Paid.</div>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setWhyFor(null)}>Close</button>
+              </div>
+              <div className="table-wrap why-wrap">
+                <table className="data-table">
+                  <thead><tr><th>Column</th><th>SOA #</th><th>Covered period</th><th className="text-right">Receivable</th><th className="text-right">Paid</th><th className="text-right">Remaining</th><th>Why it is still owed</th></tr></thead>
+                  <tbody>
+                    {rows.length === 0 && <tr><td colSpan={7} className="empty-state">Nothing in the selected columns.</td></tr>}
+                    {rows.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.col}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{readOnly || !r.soa_number ? (r.soa_number || '—') : <Link className="rep-link" to={`/ledger?company_id=${whyFor.company_id}&entry=${r.id}`}>{r.soa_number}</Link>}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{r.period || '—'}</td>
+                        <td className="text-right num">{money(r.receivable)}</td>
+                        <td className="text-right num">{money(r.paid)}</td>
+                        <td className="text-right num" style={{ fontWeight: 700 }}>{money(r.balance)}</td>
+                        <td className="why-reason">{why(r)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><td colSpan={5}>TOTAL REMAINING BALANCE</td><td className="text-right num">{money(sum)}</td><td /></tr></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

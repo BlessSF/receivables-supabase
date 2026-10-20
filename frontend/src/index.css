@@ -1145,3 +1145,12 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .report-table tbody tr:hover > td.rep-total-cell { background: #e8eef5; }
 .report-table td.rep-total-foot { background: #0f172a !important; color: #fff; box-shadow: -2px 0 0 var(--line-strong); }
 @media print { .report-table th.rep-total-col, .report-table td.rep-total-col { position: static !important; box-shadow: none !important; } }
+
+/* Click a company's total to see why */
+.report-table .why-btn { background: none; border: 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; padding: 2px 4px; border-radius: 6px; text-decoration: underline dotted; text-underline-offset: 3px; }
+.report-table .why-btn:hover { background: #dbe5f0; text-decoration: underline; }
+.pm-card.why-card { max-width: 980px; }
+.why-wrap { max-height: 56vh; overflow: auto; }
+.why-card .data-table tfoot td { position: static; }
+.why-reason { font-size: 12.5px; color: var(--ink-soft, #334155); }
+@media print { .why-card, .pm-backdrop { display: none; } }

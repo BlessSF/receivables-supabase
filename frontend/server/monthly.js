@@ -33,7 +33,7 @@ export async function buildMonthlyReport(auth, query) {
   let rows;
   try {
     rows = await all(
-      `SELECT l.id, l.company_id, l.soa_number, l.period_date, l.period_from, l.period_to, l.due_date, l.balance, c.name AS company_name
+      `SELECT l.id, l.company_id, l.soa_number, l.period_date, l.period_from, l.period_to, l.due_date, l.balance, l.amount, l.tax_withheld, l.surcharge, l.rebate, l.receivable_amount, l.paid_amount, c.name AS company_name
        FROM ledger_entries l JOIN companies c ON c.id = l.company_id
        WHERE l.balance > 0.009 ${bw}
        ORDER BY UPPER(c.name) COLLATE "C" ASC, l.period_date ASC NULLS LAST, UPPER(l.soa_number) COLLATE "C" ASC NULLS LAST, l.id ASC`, bp);
@@ -91,7 +91,13 @@ export async function buildMonthlyReport(auth, query) {
       c = { company_id: toInt(r.company_id), company: r.company_name, ...emptyBlocks() };
       companies.set(r.company_id, c);
     }
-    c[block].push({ id: toInt(r.id), soa_number: r.soa_number || '', period: coveredLabel(r), balance });
+    c[block].push({
+      id: toInt(r.id), soa_number: r.soa_number || '', period: coveredLabel(r), balance,
+      // why this entry still has a balance (shown when the company's total is clicked)
+      amount: toFloat(r.amount), tax: toFloat(r.tax_withheld), surcharge: toFloat(r.surcharge), rebate: toFloat(r.rebate),
+      receivable: toFloat(r.receivable_amount), paid: toFloat(r.paid_amount),
+      due: monthLabel(dueKey), due_basis: explicitDue !== null ? 'its Due Date' : `Period Date + ${terms} month${terms === 1 ? '' : 's'}`,
+    });
     totals[block] += balance;
   }
 
