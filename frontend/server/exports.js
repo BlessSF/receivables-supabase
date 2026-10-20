@@ -238,7 +238,7 @@ function writeMonthlySheet(wb, report, preparedBy) {
   }));
   ws.columns = [
     { width: 30 },
-    ...blocks.flatMap((_, i) => [{ width: 14 }, { width: 17 }, { width: 20 }, ...(i < blocks.length - 1 ? [{ width: 3 }] : [])]),
+    ...blocks.flatMap((_, i) => [{ width: 14 }, { width: 22 }, { width: 20 }, ...(i < blocks.length - 1 ? [{ width: 3 }] : [])]),
   ];
 
   // ---- header rows
@@ -256,7 +256,7 @@ function writeMonthlySheet(wb, report, preparedBy) {
     t.fill = fill(b.color);
     t.alignment = { horizontal: 'center', vertical: 'middle' };
     for (let i = 0; i < 3; i++) ws.getCell(1, b.col + i).border = box;
-    ['SOA NUMBER', 'MONTH', 'REMAINING BALANCE'].forEach((label, i) => {
+    ['SOA NUMBER', 'COVERED PERIOD', 'REMAINING BALANCE'].forEach((label, i) => {
       const c = ws.getCell(2, b.col + i);
       c.value = label;
       c.font = { bold: true, size: 10 };

@@ -846,7 +846,7 @@ button { font-family: inherit; }
 @media print { .report-panel > .hs-bar { display: none; } }
 .report-table.report-wide .rep-col-company { width: 190px; }
 .report-table.report-wide .rep-col-soa { width: 92px; }
-.report-table.report-wide .rep-col-month { width: 84px; }
+.report-table.report-wide .rep-col-month { width: 132px; }
 .report-table.report-wide .rep-col-bal { width: 112px; }
 .report-table thead th { background: var(--panel-tint); font-weight: 700; color: var(--ink); text-align: center; border-bottom: 1px solid var(--line-strong); }
 .report-table .rep-company-head { text-align: left; padding-left: 20px; }

@@ -207,7 +207,7 @@ export default function MonthlyReport() {
               </tr>
               <tr className="rep-sub">
                 {blocks.map((b) => (
-                  <Fragment key={b.key}><th>SOA NUMBER</th><th>MONTH</th><th className="text-right">REMAINING BALANCE</th></Fragment>
+                  <Fragment key={b.key}><th>SOA NUMBER</th><th>COVERED PERIOD</th><th className="text-right">REMAINING BALANCE</th></Fragment>
                 ))}
               </tr>
             </thead>
