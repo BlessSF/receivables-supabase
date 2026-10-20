@@ -360,6 +360,11 @@ export async function handleXlsx(req, res) {
 
   if (type === 'monthly') {
     const report = await buildMonthlyReport(auth, query);
+    if (report.all_year && query.cols) { // only the months picked on the page
+      const keep = new Set(String(query.cols).split(','));
+      report.block_defs = report.block_defs.filter((d) => keep.has(d.key));
+      report.companies = report.companies.filter((c) => report.block_defs.some((d) => c[d.key].length));
+    }
     writeMonthlySheet(wb, report, user.full_name || user.username || '');
     return send(`reports_by_month_${report.all_year ? `${report.all_year}_all_months` : report.month}.xlsx`);
   }

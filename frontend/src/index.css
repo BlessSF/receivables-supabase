@@ -1101,3 +1101,12 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 @media print { .report-chips { display: none; } }
 
 .rep-due { font-size: 10.5px; color: var(--slate); margin-top: 1px; }
+
+/* Reports by Month: pick which months to show / print / export */
+.col-picker { padding: 12px 16px; margin-bottom: 14px; }
+.col-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; }
+.col-picker-links { display: flex; gap: 12px; }
+.col-picker .link-btn { background: none; border: 0; padding: 0; color: var(--teal, #0f766e); font-weight: 600; font-size: 12.5px; cursor: pointer; }
+.col-picker .link-btn:hover { text-decoration: underline; }
+.col-picker .month-chips { margin: 0; }
+.col-picker .month-chips button[aria-pressed="true"]::before { content: "\2713\00a0"; }

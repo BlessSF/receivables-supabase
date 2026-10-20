@@ -39,6 +39,7 @@ export default function MonthlyReport() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(() => new Set()); // All months: columns the user switched off (they are not shown, printed or exported)
 
   useEffect(() => {
     let live = true;
@@ -65,9 +66,14 @@ export default function MonthlyReport() {
   if (err && !data) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading report…</div>;
 
-  const blocks = data.block_defs; // OVERDUE | this month | next month -- or OVERDUE | Jan ... Dec | after, for All months
-  const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}`;
-  const empty = data.companies.length === 0;
+  const allBlocks = data.block_defs; // OVERDUE | this month | next month -- or OVERDUE | Jan ... Dec | after, for All months
+  const blocks = data.all_year ? allBlocks.filter((b) => !hidden.has(b.key)) : allBlocks;
+  const shortName = (b) => (b.key === 'overdue' ? 'Overdue' : b.key === 'after' ? `After ${data.all_year}` : MONTHS[Number(b.key.slice(1)) - 1].slice(0, 3));
+  const toggle = (key) => setHidden((h) => { const n = new Set(h); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const exportHref = `/export_xlsx.php?type=monthly&month=${month}&terms=${terms}${data.all_year && hidden.size ? `&cols=${blocks.map((b) => b.key).join(',')}` : ''}`;
+  // With some months switched off, companies that have nothing in the remaining columns are left out
+  const companies = data.all_year && hidden.size ? data.companies.filter((c) => blocks.some((b) => c[b.key].length)) : data.companies;
+  const empty = companies.length === 0;
 
   return (
     <div className="report-page">
@@ -116,6 +122,24 @@ export default function MonthlyReport() {
         ))}
       </div>
 
+      {data.all_year && (
+        <div className="panel col-picker report-chips">
+          <div className="col-picker-head">
+            <strong>Months to show, print and export</strong>
+            <span className="col-picker-links">
+              <button type="button" className="link-btn" onClick={() => setHidden(new Set())}>All</button>
+              <button type="button" className="link-btn" onClick={() => setHidden(new Set(allBlocks.map((b) => b.key)))}>None</button>
+            </span>
+          </div>
+          <div className="month-chips">
+            {allBlocks.map((b) => (
+              <button key={b.key} type="button" aria-pressed={!hidden.has(b.key)} className={hidden.has(b.key) ? '' : 'on'} onClick={() => toggle(b.key)}
+                title={b.title}>{shortName(b)}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {data.no_period.count > 0 && (
         <div className="flash report-warn">
           <strong>{data.no_period.count} unpaid entr{data.no_period.count === 1 ? 'y' : 'ies'} ({peso(data.no_period.total)}) {data.no_period.count === 1 ? 'is' : 'are'} not in this report</strong>
@@ -125,7 +149,7 @@ export default function MonthlyReport() {
 
       <div className="panel report-panel">
         <div className="report-scroll table-wrap">
-          <table className={`report-table${blocks.length > 3 ? ' report-wide' : ''}`}>
+          {blocks.length === 0 ? <div className="empty-state">Pick at least one month above to show.</div> : <table className={`report-table${blocks.length > 3 ? ' report-wide' : ''}`}>
             <colgroup>
               <col className="rep-col-company" />
               {blocks.map((b, i) => (
@@ -155,7 +179,7 @@ export default function MonthlyReport() {
               {empty && (
                 <tr><td colSpan={blocks.length * 4} className="empty-state">{data.all_year ? `Nothing unpaid is placed in ${data.all_year}.` : `Nothing is overdue or due in ${data.month_label} or ${data.next_label}.`}</td></tr>
               )}
-              {data.companies.map((c) => {
+              {companies.map((c) => {
                 const n = Math.max(1, ...blocks.map((b) => c[b.key].length));
                 return Array.from({ length: n }, (_, i) => (
                   <tr key={`${c.company_id}-${i}`} className={i === 0 ? 'rep-first' : ''}>
@@ -186,7 +210,7 @@ export default function MonthlyReport() {
                 ))}
               </tr>
             </tfoot>
-          </table>
+          </table>}
         </div>
         <div className="report-foot">
           <div>
