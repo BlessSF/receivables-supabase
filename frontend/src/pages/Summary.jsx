@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, AGING_BADGE, isExecutive, MONTHS, coveredLabel } from '../utils';
 import { useAuth } from '../AuthContext';
-import { billingYm, buildMonths, MonthTable } from '../MonthTable';
+import { billingYm, buildMonths, sumMonths, MonthTable } from '../MonthTable';
 
 const BUCKET_OPTIONS = [
   ['', 'All statuses'],
