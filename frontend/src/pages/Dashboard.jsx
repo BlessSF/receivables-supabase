@@ -29,44 +29,111 @@ function delta(cur, prev, prevLabel) {
   return `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(Math.abs(pct) >= 10 ? 0 : 1)}% vs ${prevLabel}`;
 }
 
-/** Billed / collected bars with the unpaid balance drawn as a line over them. */
+// Series colors for the chart + legend (checked with the palette validator: distinct for color-blind readers too)
+const C_BILLED = '#4a78c2', C_COLLECTED = '#0a9078', C_UNPAID = '#c2780e';
+
+// Round an axis maximum up to a clean number (1, 2, 2.5, 5 x 10^n) and split it into 4 steps.
+function niceScale(max) {
+  const raw = Math.max(1, max) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+  return { step, top: step * 4 };
+}
+
+// Column with a 4px rounded top and a square bottom, sitting on the baseline.
+function barPath(x, yTop, w, base) {
+  const h = base - yTop;
+  if (h <= 0) return '';
+  const r = Math.min(4, h, w / 2);
+  return `M${x},${base} V${yTop + r} Q${x},${yTop} ${x + r},${yTop} H${x + w - r} Q${x + w},${yTop} ${x + w},${yTop + r} V${base} Z`;
+}
+
+/** Billed / collected columns with the unpaid balance drawn as a line over them. Hover shows every value for that period. */
 function EvolutionChart({ items, selected, onSelect, label }) {
-  const W = 1100, H = 270, PAD_L = 8, PAD_B = 28, PAD_T = 14;
-  const max = Math.max(1, ...items.flatMap((t) => [t.billed, t.collected, t.outstanding]));
-  const slot = (W - PAD_L) / items.length;
-  const barW = Math.min(26, slot / 3);
-  const y = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - v / max);
+  const [hover, setHover] = useState(null);
+  const wrap = useRef(null);
+  const [width, setWidth] = useState(1100);
+  useEffect(() => { // draw at the real width so text stays readable on phones
+    const el = wrap.current;
+    if (!el) return undefined;
+    const set = () => setWidth(Math.max(300, Math.round(el.clientWidth)));
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const W = width, H = width < 560 ? 260 : 300;
+  const PAD_L = width < 560 ? 48 : 58, PAD_R = width < 560 ? 8 : 14, PAD_B = 32, PAD_T = 18;
+  const rawMax = Math.max(1, ...items.flatMap((t) => [t.billed, t.collected, t.outstanding]));
+  const { step, top } = niceScale(rawMax);
+  const slot = (W - PAD_L - PAD_R) / items.length;
+  const barW = Math.min(22, Math.max(5, slot / 3.2));
+  const base = H - PAD_B;
+  const y = (v) => PAD_T + (base - PAD_T) * (1 - v / top);
   const cx = (i) => PAD_L + slot * i + slot / 2;
-  const line = items.map((t, i) => `${i ? 'L' : 'M'}${cx(i).toFixed(1)},${y(t.outstanding).toFixed(1)}`).join(' ');
+  const pts = items.map((t, i) => [cx(i), y(t.outstanding)]);
+  const line = pts.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
+  const area = pts.length ? `${line} L${pts[pts.length - 1][0].toFixed(1)},${base} L${pts[0][0].toFixed(1)},${base} Z` : '';
+  const ticks = [0, 1, 2, 3, 4].map((k) => k * step);
+  const h = hover !== null ? items[hover] : null;
+  const tipLeft = hover !== null ? ((cx(hover) / W) * 100) : 0;
+  const tipShift = hover === null ? '-50%' : hover <= 1 ? '-18%' : hover >= items.length - 2 ? '-82%' : '-50%';
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="exec-chart" role="img" aria-label={label}>
-      {[0.25, 0.5, 0.75, 1].map((f) => (
-        <g key={f}>
-          <line x1={PAD_L} x2={W} y1={y(max * f)} y2={y(max * f)} stroke="#e4e8eb" strokeDasharray="3 4" />
-          <text x={W - 2} y={y(max * f) - 3} textAnchor="end" className="exec-chart-label">{compact(max * f)}</text>
-        </g>
-      ))}
-      {items.map((t, i) => (
-        <g key={t.key} className="dash-chart-slot" onClick={() => onSelect(t.key)} style={{ cursor: 'pointer' }}>
-          {t.key === selected && <rect x={PAD_L + slot * i + 2} y={PAD_T - 6} width={slot - 4} height={H - PAD_B - PAD_T + 6} rx="6" fill="#e2f1ee" />}
-          <rect x={PAD_L + slot * i} y={PAD_T - 6} width={slot} height={H - PAD_T + 6} fill="transparent" />
-          <rect x={cx(i) - barW - 1} y={y(t.billed)} width={barW} height={Math.max(0, H - PAD_B - y(t.billed))} rx="3" fill="#c9d3df">
-            <title>{`${t.name} billed: ${peso(t.billed)}`}</title>
-          </rect>
-          <rect x={cx(i) + 1} y={y(t.collected)} width={barW} height={Math.max(0, H - PAD_B - y(t.collected))} rx="3" fill="#12756a">
-            <title>{`${t.name} collected: ${peso(t.collected)}`}</title>
-          </rect>
-          <text x={cx(i)} y={H - 9} textAnchor="middle" className="exec-chart-label" fontWeight={t.key === selected ? 700 : 400}>{t.short}</text>
-        </g>
-      ))}
-      <path d={line} fill="none" stroke="#e2a03a" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" />
-      {items.map((t, i) => (
-        <circle key={t.key} cx={cx(i)} cy={y(t.outstanding)} r={t.key === selected ? 4.5 : 3} fill="#e2a03a" stroke="#fff" strokeWidth="1.2" pointerEvents="none">
-          <title>{`${t.name} unpaid: ${peso(t.outstanding)}`}</title>
-        </circle>
-      ))}
-      <line x1={PAD_L} x2={W} y1={H - PAD_B} y2={H - PAD_B} stroke="#cdd5db" />
-    </svg>
+    <div className="evo" ref={wrap} onPointerLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="exec-chart" role="img" aria-label={label}>
+        {ticks.map((v) => (
+          <g key={v}>
+            <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke={v === 0 ? '#c7d0d9' : '#e8ecf0'} strokeWidth="1" />
+            <text x={PAD_L - 8} y={y(v) + 4} textAnchor="end" className="evo-axis">{v === 0 ? '0' : compact(v)}</text>
+          </g>
+        ))}
+
+        {area && <path d={area} fill={C_UNPAID} fillOpacity="0.09" pointerEvents="none" />}
+
+        {items.map((t, i) => {
+          const on = t.key === selected;
+          const hot = hover === i;
+          return (
+            <g key={t.key}>
+              {(on || hot) && <rect x={PAD_L + slot * i + 3} y={PAD_T - 8} width={slot - 6} height={base - PAD_T + 8} rx="8" fill={on ? '#e3f2ef' : '#f1f4f7'} />}
+              <path className="evo-bar" d={barPath(cx(i) - barW - 1, y(t.billed), barW, base)} fill={C_BILLED} opacity={hot || hover === null ? 1 : 0.55} />
+              <path className="evo-bar" d={barPath(cx(i) + 1, y(t.collected), barW, base)} fill={C_COLLECTED} opacity={hot || hover === null ? 1 : 0.55} />
+              <text x={cx(i)} y={H - 10} textAnchor="middle" className="evo-axis" fontWeight={on ? 700 : 500} fill={on ? '#13203a' : undefined}>{t.short}</text>
+            </g>
+          );
+        })}
+
+        <path d={line} fill="none" stroke={C_UNPAID} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" />
+        {pts.map(([px, py], i) => (
+          <circle key={items[i].key} cx={px} cy={py} r={hover === i || items[i].key === selected ? 5.5 : 4} fill={C_UNPAID} stroke="#fff" strokeWidth="2" pointerEvents="none" />
+        ))}
+
+        {/* one wide hit area per period: hover shows the readout, click / Enter focuses it */}
+        {items.map((t, i) => (
+          <rect
+            key={`hit-${t.key}`}
+            x={PAD_L + slot * i} y={PAD_T - 8} width={slot} height={base - PAD_T + 8 + PAD_B}
+            fill="transparent" style={{ cursor: 'pointer' }}
+            tabIndex={0} role="button" aria-label={`${t.name}: billed ${peso(t.billed)}, collected ${peso(t.collected)}, unpaid ${peso(t.outstanding)}`}
+            onPointerEnter={() => setHover(i)} onPointerMove={() => hover !== i && setHover(i)}
+            onFocus={() => setHover(i)} onBlur={() => setHover(null)}
+            onClick={() => onSelect(t.key)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(t.key); } }}
+          />
+        ))}
+      </svg>
+
+      {h && (
+        <div className="evo-tip" style={{ left: `${tipLeft}%`, transform: `translateX(${tipShift})` }} role="tooltip">
+          <div className="evo-tip-title">{h.name}</div>
+          <div className="evo-tip-row"><i style={{ background: C_BILLED }} /><span>Billed</span><strong>{peso(h.billed)}</strong></div>
+          <div className="evo-tip-row"><i style={{ background: C_COLLECTED }} /><span>Collected</span><strong>{peso(h.collected)}</strong></div>
+          <div className="evo-tip-row"><i className="evo-tip-line" style={{ background: C_UNPAID }} /><span>Unpaid balance</span><strong>{peso(h.outstanding)}</strong></div>
+          {h.billed > 0 && <div className="evo-tip-foot">{Math.round((h.collected / h.billed) * 100)}% of billed collected</div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -327,9 +394,9 @@ export default function Dashboard() {
         <div className="dash-panel-head">
           <h2>{isMonth ? `Month by month — ${data.year}` : isAllTime ? 'Overall — year by year' : 'Year by year'}</h2>
           <div className="exec-chart-key">
-            <span><i style={{ background: '#c9d3df' }} />Billed</span>
-            <span><i style={{ background: '#12756a' }} />Collected</span>
-            <span><i style={{ background: '#e2a03a', borderRadius: 999 }} />Unpaid balance</span>
+            <span><i style={{ background: C_BILLED }} />Billed</span>
+            <span><i style={{ background: C_COLLECTED }} />Collected</span>
+            <span><i style={{ background: C_UNPAID, height: 3, width: 16, borderRadius: 2 }} />Unpaid balance</span>
           </div>
         </div>
         <EvolutionChart items={items} selected={isMonth ? (data.month || null) : isAllTime ? null : data.year} onSelect={pickCategory}

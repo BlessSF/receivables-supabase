@@ -1248,3 +1248,25 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
   .login-input input { background: var(--paper); }
 }
 @media (prefers-reduced-motion: reduce) { .art-float-a, .art-float-b, .art-float-c, .login-mark { animation: none !important; } }
+
+/* ---------- Dashboard evolution chart ---------- */
+.evo { position: relative; }
+.evo .exec-chart { display: block; width: 100%; height: auto; }
+.evo-axis { font-size: 12px; fill: #5b6b7f; font-variant-numeric: tabular-nums; }
+.evo-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: evo-grow 0.55s cubic-bezier(.2,.8,.2,1) both; transition: opacity 0.12s ease; }
+@keyframes evo-grow { from { transform: scaleY(0.2); opacity: 0; } to { transform: none; } }
+.evo rect:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.evo-tip {
+  position: absolute; top: 6px; z-index: 5; min-width: 210px; pointer-events: none;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 10px;
+  box-shadow: 0 12px 30px rgba(15, 28, 51, 0.16); font-size: 12.5px;
+}
+.evo-tip-title { font-weight: 700; color: var(--ink); margin-bottom: 6px; font-size: 13px; }
+.evo-tip-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--slate); }
+.evo-tip-row i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.evo-tip-row i.evo-tip-line { height: 3px; width: 12px; border-radius: 2px; }
+.evo-tip-row span { flex: 1; }
+.evo-tip-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.evo-tip-foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--slate); font-size: 12px; }
+@media (max-width: 780px) { .evo-tip { min-width: 180px; } .evo-axis { font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .evo-bar { animation: none; } }
