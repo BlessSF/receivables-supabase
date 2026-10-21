@@ -147,6 +147,7 @@ export default function Dashboard() {
   const [view, setView] = useState('month');
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
+  const [fm, setFm] = useState(() => new Date().getMonth() + 1); // Yearly / All time: which month the cards show (0 = every month). Starts on this month.
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -160,7 +161,7 @@ export default function Dashboard() {
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
-    api.getCompanyDashboard({ company_id: companyId, type: scope, view, year, month })
+    api.getCompanyDashboard({ company_id: companyId, type: scope, view, year, month, fm: view === 'month' ? '' : fm })
       .then((r) => {
         if (id !== reqId.current) return;
         setData(r.data);
@@ -168,7 +169,7 @@ export default function Dashboard() {
       })
       .catch((e) => { if (id === reqId.current) setErr(e.message); })
       .finally(() => { if (id === reqId.current) setLoading(false); });
-  }, [companyId, scope, view, year, month]);
+  }, [companyId, scope, view, year, month, fm]);
 
   const wantMonthly = grouping === 'each' && !companyId && (view === 'year' || view === 'all' || (view === 'month' && month === 'all'));
   useEffect(() => {
@@ -186,13 +187,13 @@ export default function Dashboard() {
   const p = data.period;
   const isMonth = data.view === 'month';
   const isAllTime = data.view === 'all';
-  const periodName = isAllTime ? 'All time' : isMonth ? (data.month === 0 ? `All months ${data.year}` : `${MONTHS_LONG[data.month - 1]} ${data.year}`) : String(data.year);
+  const periodName = isAllTime ? (data.fm ? `${MONTHS_LONG[data.fm - 1]} · all years` : 'All time') : isMonth ? (data.month === 0 ? `All months ${data.year}` : `${MONTHS_LONG[data.month - 1]} ${data.year}`) : (data.fm ? `${MONTHS_LONG[data.fm - 1]} ${data.year}` : String(data.year));
   const pickable = companies.filter((c) => !scope || c.account_type === scope);
 
   // previous period, for the "vs" notes on the cards
   let prev = null, prevLabel = '';
   if (isMonth && data.month > 1) { prev = data.months[data.month - 2]; prevLabel = MONTHS[data.month - 2]; }
-  else if (data.view === 'year') { prev = data.years.find((y) => y.year === data.year - 1) || null; prevLabel = String(data.year - 1); }
+  else if (data.view === 'year' && !data.fm) { prev = data.years.find((y) => y.year === data.year - 1) || null; prevLabel = String(data.year - 1); }
 
   const useMonths = isMonth;
   const items = useMonths
@@ -321,6 +322,15 @@ export default function Dashboard() {
             </select>
           </div>
         )}
+        {!isMonth && (
+          <div className="dash-control">
+            <label htmlFor="dash-fm">Month</label>
+            <select id="dash-fm" className="select-inline" value={fm} onChange={(e) => setFm(Number(e.target.value))}>
+              <option value={0}>All months</option>
+              {MONTHS_LONG.map((m, i) => <option key={m} value={i + 1}>{m}{i + 1 === new Date().getMonth() + 1 ? ' (this month)' : ''}</option>)}
+            </select>
+          </div>
+        )}
         {company && (
           <div className="dash-control dash-control-end">
             {company.status !== 'ACTIVE' && <span className={`badge ${company.status === 'BANKRUPT' ? 'badge-danger' : 'badge-secondary'}`}>{company.status}</span>}
@@ -374,7 +384,7 @@ export default function Dashboard() {
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.billed ? Math.min(100, (p.outstanding / p.billed) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
             <span className="kpi-dark-left">{p.open_count} unpaid {p.open_count === 1 ? 'entry' : 'entries'}</span>
-            <span className="kpi-dark-right">{isAllTime ? 'across all periods' : `billed in ${periodName}`}</span>
+            <span className="kpi-dark-right">{isAllTime && !data.fm ? 'across all periods' : `billed in ${periodName}`}</span>
           </div>
           {splitLine('outstanding')}
         </div>
@@ -560,7 +570,7 @@ export default function Dashboard() {
         <div className="panel">
           <h2>How old is the unpaid balance? <span className="dash-sub">· {periodName}</span></h2>
           {p.outstanding <= 0 ? (
-            <div className="empty-state">Nothing unpaid for {company.name}{isAllTime ? '.' : ` in ${periodName}.`}</div>
+            <div className="empty-state">Nothing unpaid for {company.name}{isAllTime && !data.fm ? '.' : ` in ${periodName}.`}</div>
           ) : (
             <>
               <div className="aging-strip" aria-hidden="true">
@@ -587,7 +597,7 @@ export default function Dashboard() {
 
       {!eachMode && (
       <div className="panel">
-        <h2>{isAllTime ? 'Latest ledger entries' : `Entries billed in ${periodName}`} <span className="dash-sub">· {scopeName}</span></h2>
+        <h2>{isAllTime && !data.fm ? 'Latest ledger entries' : `Entries billed in ${periodName}`} <span className="dash-sub">· {scopeName}</span></h2>
         <div className="table-wrap">
           <table className="data-table">
             <thead>

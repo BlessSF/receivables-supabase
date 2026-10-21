@@ -247,6 +247,8 @@ const actions = {
     if (allMonths) month = 0;
     else if (month < 1 || month > 12) month = year === nowYear ? nowMonth : 12;
 
+    // Yearly / All time views can be narrowed to one month (1-12): that month of the chosen year, or that month in every year.
+    const fm = toInt(input.fm) >= 1 && toInt(input.fm) <= 12 ? toInt(input.fm) : 0;
     const [bw, bp] = branchWhere(auth, 'c');
     let sql = `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.soa_number,
                       l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status, c.account_type
@@ -266,7 +268,12 @@ const actions = {
       const d = new Date(ms);
       return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
     };
-    const inPeriod = (ym) => view === 'all' || (!!ym && ym.y === year && (view === 'year' || allMonths || ym.m === month));
+    const inPeriod = (ym) => {
+      if (view === 'all') return fm ? (!!ym && ym.m === fm) : true;
+      if (!ym || ym.y !== year) return false;
+      if (view === 'year') return fm ? ym.m === fm : true;
+      return allMonths || ym.m === month;
+    };
 
     const yearAgg = new Map();
     const monthAgg = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, ...blank() }));
@@ -356,7 +363,7 @@ const actions = {
       today: todayKey,
       company_id: companyId,
       type,
-      view, year, month,
+      view, year, month, fm,
       period: withRate(period),
       by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
