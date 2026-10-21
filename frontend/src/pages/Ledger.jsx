@@ -100,6 +100,8 @@ function EditableText({ value, onSave, onLive, type = 'text', align, row, col })
   );
 }
 
+const toNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+
 export default function Ledger() {
   const { user } = useAuth();
   const staff = isStaff(user); // staff can edit only the highlighted Payment Date / Check Ref / Paid cells
@@ -117,6 +119,8 @@ export default function Ledger() {
   const [settleFor, setSettleFor] = useState(null); // ledger row whose Settle popup is open
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleErr, setSettleErr] = useState('');
+  const [viewCard, setViewCard] = useState(null); // { id, x, y } company card whose View popup is open
+  const viewTimer = useRef(null);
   const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
 
   const reload = useCallback(() => {
@@ -149,6 +153,17 @@ export default function Ledger() {
   }
 
   const entries = data?.entries || [];
+  const BUCKETS = ['Not Yet Due', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'N/A'];
+  function openView(e, c) {
+    clearTimeout(viewTimer.current);
+    const r = e.currentTarget.getBoundingClientRect();
+    const w = 380;
+    const x = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    const below = window.innerHeight - r.bottom > 340;
+    setViewCard({ id: c.id, x, y: below ? r.bottom + 6 : null, bottom: below ? null : window.innerHeight - r.top + 6 });
+  }
+  function holdView() { clearTimeout(viewTimer.current); }
+  function closeViewSoon() { clearTimeout(viewTimer.current); viewTimer.current = setTimeout(() => setViewCard(null), 180); }
 
   // While a Paid amount is being typed, the row balance, the Paid / Outstanding
   // totals and the aging badges update on every keystroke (before it is saved).
@@ -459,6 +474,13 @@ export default function Ledger() {
                     {dueSoon && <span className="badge badge-warning">Due in {c.soonest_days_until_due} day{c.soonest_days_until_due === 1 ? '' : 's'}</span>}
                     {hasBalance && !overdue && !dueSoon && <span className="badge badge-secondary">No due date</span>}
                     {!hasBalance && <span className="badge badge-success">Not past due</span>}
+                    <button
+                      type="button"
+                      className="card-view-btn"
+                      onMouseEnter={(e) => openView(e, c)}
+                      onMouseLeave={closeViewSoon}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); viewCard?.id === c.id ? setViewCard(null) : openView(e, c); }}
+                    >View</button>
                   </div>
                 </Link>
               );
@@ -466,6 +488,72 @@ export default function Ledger() {
           </div>
         </div>
       ))}
+
+      {viewCard && (() => {
+        const c = (data.company_summary || []).find((x) => x.id === viewCard.id);
+        if (!c) return null;
+        const mine = entries.filter((r) => String(r.company_id) === String(c.id));
+        const unpaid = mine.filter((r) => !r.is_paid).sort((a, b) => (b.days_overdue ?? -1e9) - (a.days_overdue ?? -1e9));
+        const paid = mine.filter((r) => r.is_paid && toNum(r.paid_amount) > 0);
+        const tally = {};
+        unpaid.forEach((r) => { tally[r.aging_bucket] = (tally[r.aging_bucket] || 0) + toNum(r.balance); });
+        return (
+          <div
+            className="card-view-pop"
+            style={{ left: viewCard.x, top: viewCard.y ?? undefined, bottom: viewCard.bottom ?? undefined }}
+            onMouseEnter={holdView}
+            onMouseLeave={closeViewSoon}
+          >
+            <div className="cvp-head">
+              <div><strong>{c.name}</strong><div className="cvp-sub">{unpaid.length} unpaid · {paid.length} paid</div></div>
+              <div className="cvp-total">{peso(c.outstanding)}</div>
+              <button type="button" className="cvp-x" onClick={() => setViewCard(null)} aria-label="Close">×</button>
+            </div>
+            {Object.keys(tally).length > 0 && (
+              <div className="cvp-tally">
+                {BUCKETS.filter((b) => tally[b] > 0.009).map((b) => (
+                  <span key={b} className={`badge ${AGING_BADGE[b] || 'badge-secondary'}`}>{b}: {peso(tally[b])}</span>
+                ))}
+              </div>
+            )}
+            <div className="cvp-list">
+              {unpaid.length === 0 && <div className="cvp-empty">No unpaid entries.</div>}
+              {unpaid.map((r) => {
+                const d = r.days_overdue;
+                const tag = d === null || d === undefined ? <span className="badge badge-secondary">No due date</span>
+                  : d > 0 ? <span className="badge badge-danger">{d} day{d === 1 ? '' : 's'} aged</span>
+                  : <span className="badge badge-warning">due in {-d} day{d === -1 ? '' : 's'}</span>;
+                return (
+                  <div className="cvp-row" key={r.id}>
+                    <span className="cvp-soa">{r.soa_number || '—'}</span>
+                    <span className="cvp-bal">{peso(r.balance)}</span>
+                    {tag}
+                  </div>
+                );
+              })}
+              {paid.length > 0 && (
+                <details className="cvp-paid">
+                  <summary>Show paid ({paid.length})</summary>
+                  {paid.map((r) => (
+                    <div className="cvp-row" key={r.id}>
+                      <span className="cvp-soa">{r.soa_number || '—'}</span>
+                      <span className="cvp-bal">{peso(r.paid_amount)}</span>
+                      <span className="cvp-date">{r.payment_date ? fdate(r.payment_date) : 'paid'}</span>
+                    </div>
+                  ))}
+                </details>
+              )}
+            </div>
+            <div className="cvp-foot">
+              <Link to={`/ledger?company_id=${c.id}`}>Open ledger →</Link>
+              <button type="button" className="btn btn-sm" onClick={() => {
+                const lines = [`${c.name} — outstanding ${peso(c.outstanding)}`, ...unpaid.map((r) => `${r.soa_number || '—'}  ${peso(r.balance)}  ${r.days_overdue > 0 ? r.days_overdue + ' days aged' : r.days_overdue === null || r.days_overdue === undefined ? 'no due date' : 'due in ' + (-r.days_overdue) + ' days'}`)];
+                try { navigator.clipboard.writeText(lines.join('\n')); } catch (_) {}
+              }}>Copy</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="panel">
         <div className="table-toolbar">
