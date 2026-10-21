@@ -74,18 +74,7 @@ export default function Branches() {
             </div>
           ))}
         </div>
-        {sites && sites.length === 0 && <p className="branch-empty">No other branches yet. Set one up (steps below), then click “+ Add branch” and paste its link.</p>}
-      </div>
-
-      <div className="panel">
-        <h2>How to set up a new branch (about 10 minutes)</h2>
-        <ol className="branch-steps">
-          <li><strong>Supabase:</strong> create a new project for the branch (example: Demic Jaro). Use its own database password.</li>
-          <li><strong>Database:</strong> in that project open SQL Editor → New query, paste the file <code>database/new_branch_setup.sql</code> and Run. This creates empty tables and one login: <code>admin</code> / <code>ChangeMe123</code>.</li>
-          <li><strong>Vercel:</strong> add a new project from the same code, Root Directory <code>frontend</code>. Add <code>DATABASE_URL</code> (the new Supabase connection string) and a new <code>SESSION_SECRET</code>.</li>
-          <li><strong>Log in</strong> on the new link as <code>admin</code>, change the password under Users, then add that branch’s own users.</li>
-          <li><strong>Come back here</strong>, click “+ Add branch” and paste the new link.</li>
-        </ol>
+        {sites && sites.length === 0 && <p className="branch-empty">No other branches yet. Set one up, then click “+ Add branch” and paste its link.</p>}
       </div>
 
       {edit && (
