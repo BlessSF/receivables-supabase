@@ -29,7 +29,8 @@ export default function Login() {
           <div className="login-mark" aria-hidden="true">
             <svg {...I} width="28" height="28"><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
           </div>
-          <h1>Sign in</h1>
+          <h1>Welcome</h1>
+          <p className="login-sub">Receivables System</p>
 
           {notice && !error && <div className="login-notice" role="status">{notice}</div>}
           {error && <div className="login-error" role="alert">{error}</div>}

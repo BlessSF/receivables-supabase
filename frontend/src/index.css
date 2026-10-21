@@ -571,7 +571,8 @@ button { font-family: inherit; }
   width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; color: #fff; margin: 0 auto 18px;
   background: linear-gradient(145deg, #1a9a89, #0e5f56); box-shadow: 0 10px 24px rgba(18, 117, 106, 0.4);
 }
-.login-card h1 { font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -0.015em; margin: 0 0 24px; text-align: center; }
+.login-card h1 { font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -0.015em; margin: 0 0 4px; text-align: center; }
+.login-sub { margin: 0 0 26px; text-align: center; color: var(--slate); font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
 .login-field { margin-bottom: 16px; }
 .login-field label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
 .login-input { position: relative; display: flex; align-items: center; }
