@@ -8,6 +8,8 @@ import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
+import { monthKey, addMonthsKey } from './dates.js';
+import { DEFAULT_TERMS_MONTHS } from './monthly.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
@@ -250,7 +252,7 @@ const actions = {
     // Yearly / All time views can be narrowed to one month (1-12): that month of the chosen year, or that month in every year.
     const fm = toInt(input.fm) >= 1 && toInt(input.fm) <= 12 ? toInt(input.fm) : 0;
     const [bw, bp] = branchWhere(auth, 'c');
-    let sql = `SELECT l.id, l.company_id, l.billing_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.soa_number,
+    let sql = `SELECT l.id, l.company_id, l.billing_date, l.period_date, l.period_from, l.period_to, l.due_date, l.payment_date, l.soa_number,
                       l.amount, l.paid_amount, l.balance, c.name AS company_name, c.status AS company_status, c.account_type
                FROM ledger_entries l JOIN companies c ON c.id = l.company_id
                WHERE 1=1 ${bw}`;
@@ -322,11 +324,12 @@ const actions = {
         }
       }
       if (open) {
-        const dueYm = ymOf(dueOf(r, due));
+        // same rule as Reports by Month: its own Due Date, else Period Date + the payment terms (3 months)
+        const dk = r.due_date ? monthKey(r.due_date) : (monthKey(r.period_date) ? addMonthsKey(monthKey(r.period_date), DEFAULT_TERMS_MONTHS) : null);
+        const dueYm = dk ? { y: toInt(dk.slice(0, 4)), m: toInt(dk.slice(5, 7)) } : null;
         if (inPeriod(dueYm)) {
           dueIn.total += bal; dueIn.count++;
           dueIn.by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
-          if (!late) { dueIn.upcoming += bal; dueIn.upcoming_count++; }
         }
       }
       if (inPeriod(b)) {

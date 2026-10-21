@@ -402,10 +402,10 @@ export default function Dashboard() {
           <div className="kpi-dark-card accent-blue">
             <div className="kpi-dark-label">Due · {periodName}</div>
             <div className="kpi-dark-value">{peso(data.due_in.total)}</div>
-            <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${data.due_in.total ? Math.min(100, (data.due_in.upcoming / data.due_in.total) * 100) : 0}%` }} /></div>
+            <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.outstanding ? Math.min(100, (data.due_in.total / p.outstanding) * 100) : 0}%` }} /></div>
             <div className="kpi-dark-footer">
               <span className="kpi-dark-left">{data.due_in.count} {data.due_in.count === 1 ? 'entry' : 'entries'} due</span>
-              <span className="kpi-dark-right">{peso(data.due_in.upcoming)} not yet past due</span>
+              <span className="kpi-dark-right">by Due Date / 3-month terms</span>
             </div>
             {showSplit && (
               <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
