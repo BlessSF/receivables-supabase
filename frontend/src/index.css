@@ -245,11 +245,13 @@ button { font-family: inherit; }
 .kpi-dark-card.accent-green .kpi-dark-fill { background: #2fb585; }
 .kpi-dark-card.accent-red .kpi-dark-fill { background: #e0594a; }
 .kpi-dark-card.accent-amber .kpi-dark-fill { background: #e2a03a; }
+.kpi-dark-card.accent-blue .kpi-dark-fill { background: #3b6fd4; }
 .kpi-dark-footer { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; gap: 10px; flex-wrap: wrap; }
 .kpi-dark-footer .kpi-dark-left { color: #2f6bc9; font-weight: 600; }
 .kpi-dark-card.accent-green .kpi-dark-footer .kpi-dark-left { color: #1c8a62; }
 .kpi-dark-card.accent-red .kpi-dark-footer .kpi-dark-left { color: #c4382a; }
 .kpi-dark-card.accent-amber .kpi-dark-footer .kpi-dark-left { color: #a8691a; }
+.kpi-dark-card.accent-blue .kpi-dark-footer .kpi-dark-left { color: #2a56b0; }
 .kpi-dark-footer .kpi-dark-right { color: #5b6573; }
 
 /* ---------- Ranked list (top outstanding) ---------- */

@@ -280,6 +280,8 @@ const actions = {
     const yAgg = (y) => { if (!yearAgg.has(y)) yearAgg.set(y, { year: y, ...blank() }); return yearAgg.get(y); };
 
     const period = blank();
+    // unpaid balance whose DUE DATE falls in the selected month (not the covered period)
+    const dueIn = { total: 0, count: 0, upcoming: 0, upcoming_count: 0, by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 } };
     const bucketLabels = ['Not Yet Due', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'N/A'];
     const aging = Object.fromEntries(bucketLabels.map((l) => [l, { count: 0, total: 0 }]));
     const companies = new Map();
@@ -317,6 +319,14 @@ const actions = {
           ma.billed += amount; ma.entries++;
           if (open) { ma.outstanding += bal; ma.open_count++; }
           if (late) { ma.past_due += bal; ma.past_due_count++; }
+        }
+      }
+      if (open) {
+        const dueYm = ymOf(dueOf(r, due));
+        if (inPeriod(dueYm)) {
+          dueIn.total += bal; dueIn.count++;
+          dueIn.by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
+          if (!late) { dueIn.upcoming += bal; dueIn.upcoming_count++; }
         }
       }
       if (inPeriod(b)) {
@@ -365,6 +375,7 @@ const actions = {
       type,
       view, year, month, fm,
       period: withRate(period),
+      due_in: dueIn,
       by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),

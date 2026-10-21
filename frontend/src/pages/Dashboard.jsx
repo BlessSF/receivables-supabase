@@ -398,6 +398,23 @@ export default function Dashboard() {
           </div>
           {splitLine('past_due')}
         </div>
+        {data.due_in && (
+          <div className="kpi-dark-card accent-blue">
+            <div className="kpi-dark-label">Due · {periodName}</div>
+            <div className="kpi-dark-value">{peso(data.due_in.total)}</div>
+            <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${data.due_in.total ? Math.min(100, (data.due_in.upcoming / data.due_in.total) * 100) : 0}%` }} /></div>
+            <div className="kpi-dark-footer">
+              <span className="kpi-dark-left">{data.due_in.count} {data.due_in.count === 1 ? 'entry' : 'entries'} due</span>
+              <span className="kpi-dark-right">{peso(data.due_in.upcoming)} not yet past due</span>
+            </div>
+            {showSplit && (
+              <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
+                <span className="kpi-dark-left">HMOs {peso(data.due_in.by_type.HMO || 0)}</span>
+                <span className="kpi-dark-right">Company Charges {peso(data.due_in.by_type.CHARGE || 0)}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="panel">
