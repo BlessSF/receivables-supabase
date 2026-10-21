@@ -110,6 +110,14 @@ export default function Layout() {
   });
   const [narrow, setNarrow] = useState(() => window.innerWidth < LEDGER_NARROW_PX);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
+  const [drawer, setDrawer] = useState(false); // phone: slide-out menu
+  useEffect(() => { setDrawer(false); }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!drawer) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setDrawer(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawer]);
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth < LEDGER_NARROW_PX);
     window.addEventListener('resize', onResize);
@@ -134,7 +142,14 @@ export default function Layout() {
   }
 
   return (
-    <div className={`shell${isCollapsed ? ' is-collapsed' : ''}`}>
+    <div className={`shell${isCollapsed ? ' is-collapsed' : ''}${drawer ? ' drawer-open' : ''}`}>
+      <header className="mobile-bar">
+        <button type="button" className="mobile-menu-btn" onClick={() => setDrawer(true)} aria-label="Open menu" aria-expanded={drawer}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <span className="mobile-bar-title">{brand.name}</span>
+      </header>
+      <div className="drawer-backdrop" onClick={() => setDrawer(false)} />
       <aside className="sidebar">
         {brand.logo ? (
           <div className="brand brand-custom" data-initial={brand.initial} style={{ '--brand-color': brand.color }} title={brand.name}>

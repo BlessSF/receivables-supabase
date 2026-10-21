@@ -787,16 +787,33 @@ button { font-family: inherit; }
   .table-wrap { overflow-x: auto; }
   .data-table th { position: static; }
   .shell { flex-direction: column; align-items: stretch; }
-  .sidebar {
-    position: static; width: 100%; height: auto; flex-direction: row;
-    overflow-x: auto; overflow-y: visible; padding: 10px 12px; align-items: center;
+  /* Phone: a top bar with a menu button; the sidebar slides in as a drawer */
+  .mobile-bar {
+    display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 40;
+    background: var(--ink-deep); color: #fff; padding: 8px 12px; min-height: 52px;
   }
-  .brand, .sidebar-footer, .nav-group-label { display: none; }
-  .sidebar-nav { display: flex; flex-direction: row; flex: none; overflow: visible; }
-  .nav-link { white-space: nowrap; padding: 9px 12px; }
-  .nav-link span { display: none; }
-  .nav-link.active::before { left: 10px; right: 10px; top: auto; bottom: -2px; width: auto; height: 3px; border-radius: 3px 3px 0 0; }
-  .main { padding: 20px 16px 48px; width: 100%; }
+  .mobile-menu-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 10px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; }
+  .mobile-bar-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 60; width: min(290px, 84vw) !important; height: 100%;
+    transform: translateX(-102%); transition: transform 0.2s ease; overflow-y: auto; box-shadow: none;
+  }
+  .shell.drawer-open .sidebar { transform: none; box-shadow: 8px 0 30px rgba(0,0,0,0.35); }
+  .drawer-backdrop { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(8,16,30,0.5); }
+  .shell.drawer-open .drawer-backdrop { display: block; }
+  .nav-link { padding: 12px 12px; } /* bigger tap targets */
+  .main { padding: 18px 14px 48px; width: 100%; }
+  .page-header { flex-direction: column; }
+  .page-header .btn, .page-header select { min-height: 40px; }
+  .btn { min-height: 40px; }
+  .dash-scope { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .dash-scope button { padding: 8px 14px; white-space: nowrap; flex: 0 0 auto; }
+  .seg { max-width: 100%; overflow-x: auto; }
+  .report-chips, .month-chips { flex-wrap: wrap; }
+  .card-view-pop { left: 8px !important; right: 8px; top: auto !important; bottom: 8px !important; width: auto; max-width: none; max-height: 78vh; display: flex; flex-direction: column; }
+  .card-view-pop .cvp-list { max-height: none; flex: 1; min-height: 0; }
+  .card-view-btn { padding: 6px 16px; font-size: 13px; }
+  input, select, textarea { font-size: 16px; } /* stops iPhone zooming in on focus */
   .page-header h1 { font-size: 26px; }
   .page-header { align-items: stretch; }
   .panel { padding: 16px; }
@@ -1175,3 +1192,9 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .cvp-paid summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--teal); font-weight: 600; }
 .cvp-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 13px; }
 @media print { .card-view-btn, .card-view-pop { display: none !important; } }
+
+/* Mobile top bar / drawer controls only exist on phones */
+.mobile-bar, .drawer-backdrop { display: none; }
+@media (max-width: 780px) { .mobile-bar { display: flex; } }
+/* Tablets: keep tap targets comfortable */
+@media (pointer: coarse) { .nav-link, .btn, .card-view-btn { min-height: 40px; } }
