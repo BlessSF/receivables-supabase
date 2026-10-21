@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive, isStaff } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -42,6 +42,7 @@ const SETTINGS_GROUP = {
   label: 'System',
   items: [
     { to: '/users', label: 'Users', Icon: IconUsers },
+    { to: '/branches', label: 'Branches', Icon: IconBranches },
     { to: '/settings', label: 'Settings', Icon: IconSettings },
   ],
 };
@@ -91,6 +92,7 @@ const EXEC_NAV_GROUPS = [
   {
     label: 'System',
     items: [
+      { to: '/branches', label: 'Branches', Icon: IconBranches },
       { to: '/users', label: 'Users', Icon: IconUsers },
     ],
   },
@@ -156,14 +158,11 @@ export default function Layout() {
             <div className="brand-logo-card">
               <img src={brand.logo} alt={brand.name} />
             </div>
-            <div className="brand-sub">Receivables Management</div>
           </div>
         ) : (
           <div className="brand">
-            <span className="brand-mark" style={brand.initial.length > 1 ? { fontSize: 15, letterSpacing: '0.02em' } : undefined}>{brand.initial}</span>
             <div>
               <div className="brand-name">{brand.name}</div>
-              <div className="brand-sub">Receivables Management</div>
             </div>
           </div>
         )}
