@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import LongDateInput from '../LongDateInput';
 import MoneyInput from '../MoneyInput';
+import { useAuth } from '../AuthContext';
+import { isStaff } from '../utils';
 import { peso, fdate, coveredLabel, coveredPeriodForBilling, DEFAULT_COVERED_RULES } from '../utils';
 
 function todayLocal() {
@@ -43,6 +45,8 @@ const pickAmount = (it, basis) => {
 const STATUS_BADGE = { OPEN: 'badge-warning', POSTED: 'badge-success', VOID: 'badge-secondary' };
 
 export default function Billing() {
+  const { user } = useAuth();
+  const staff = isStaff(user); // staff can open and post billing, but not void
   const [rows, setRows] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [form, setForm] = useState(null); // null = hidden
@@ -468,7 +472,7 @@ export default function Billing() {
                       <button className="btn btn-sm" onClick={() => post(r)}>Post</button>{' '}
                       <button className="btn btn-secondary btn-sm" onClick={() => edit(r)}>Edit</button>{' '}
                     </>}
-                    {r.status !== 'VOID' && <button className="btn btn-danger btn-sm" onClick={() => voidTxn(r)}>Void</button>}
+                    {!staff && r.status !== 'VOID' && <button className="btn btn-danger btn-sm" onClick={() => voidTxn(r)}>Void</button>}
                   </td>
                 </tr>
               ))}

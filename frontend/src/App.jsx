@@ -56,6 +56,7 @@ function Gate() {
           <Route path="/companies" element={<Companies />} />
           <Route path="/hmos" element={<Hmos />} />
           <Route path="/company-charges" element={<CompanyCharges />} />
+          <Route path="/billing" element={<Billing />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="*" element={<Navigate to="/" replace />} />

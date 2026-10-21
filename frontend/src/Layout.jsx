@@ -60,6 +60,7 @@ const STAFF_NAV_GROUPS = [
       { to: '/companies', label: 'Companies', Icon: IconBuilding },
       { to: '/hmos', label: 'HMOs', Icon: IconHeart },
       { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
+      { to: '/billing', label: 'Billing', Icon: IconReceipt },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
     ],
   },

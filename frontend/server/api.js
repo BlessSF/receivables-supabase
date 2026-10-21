@@ -39,6 +39,7 @@ function userPayload(u) {
 const STAFF_ACTIONS = new Set([
   'get_dashboard', 'get_company_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
+  'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
