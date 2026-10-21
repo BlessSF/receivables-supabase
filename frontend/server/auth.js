@@ -11,7 +11,8 @@ import { parseCookies, isHttps } from './http.js';
 import { trim } from './php.js';
 
 const COOKIE = 'rv_session';
-const MAX_AGE_SECONDS = 12 * 60 * 60; // log out automatically after 12 hours
+const MAX_AGE_SECONDS = 12 * 60 * 60; // hard limit: log out 12 hours after signing in, whatever happens
+const IDLE_SECONDS = 30 * 60; // log out after 30 minutes without any activity (renewed on every request)
 
 function secret() {
   const s = process.env.SESSION_SECRET;
@@ -25,8 +26,8 @@ function sign(data) {
   return crypto.createHmac('sha256', secret()).update(data).digest('base64url');
 }
 
-/** Reads the current user from the request cookie, or null. */
-export function readSession(req) {
+/** Reads the signed session payload from the request cookie, or null. */
+function readPayload(req) {
   const raw = parseCookies(req)[COOKIE];
   if (!raw) return null;
   const dot = raw.lastIndexOf('.');
@@ -39,11 +40,25 @@ export function readSession(req) {
   }
   try {
     const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
-    if (!payload?.user || !payload.exp || payload.exp < Date.now() / 1000) return null;
-    return payload.user;
+    const now = Date.now() / 1000;
+    if (!payload?.user || !payload.exp || payload.exp < now) return null; // idle too long
+    if (payload.abs && payload.abs < now) return null; // 12-hour limit reached
+    return payload;
   } catch {
     return null;
   }
+}
+
+/** Reads the current user from the request cookie, or null. */
+export function readSession(req) {
+  return readPayload(req)?.user ?? null;
+}
+
+/** A fresh cookie with the idle clock restarted (the 12-hour limit is NOT extended). Null if not logged in. */
+export function renewCookie(req) {
+  const p = readPayload(req);
+  if (!p) return null;
+  return buildCookie(req, p.user, p.abs || p.exp);
 }
 
 function cookieAttrs(req, maxAge) {
@@ -54,7 +69,12 @@ function cookieAttrs(req, maxAge) {
 }
 
 export function sessionCookie(req, user) {
-  const payload = { user, exp: Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS };
+  return buildCookie(req, user, Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS);
+}
+
+function buildCookie(req, user, abs) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = { user, abs, exp: Math.min(now + IDLE_SECONDS, abs) };
   const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
   // No Max-Age: like PHP's session cookie it also ends when the browser closes.
   return `${COOKIE}=${data}.${sign(data)}; ${cookieAttrs(req)}`;

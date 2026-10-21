@@ -22,6 +22,9 @@ async function call(action, { method = 'GET', params = {}, body } = {}) {
     throw new Error(`Server returned an unreadable response (status ${res.status}).`);
   }
   if (!data.ok) {
+    if (res.status === 401 && action !== 'login' && action !== 'me' && action !== 'logout') {
+      window.dispatchEvent(new Event('rv:session-expired'));
+    }
     const err = new Error(data.error || 'Something went wrong.');
     if (data.code) err.code = data.code;
     throw err;

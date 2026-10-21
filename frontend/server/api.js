@@ -6,7 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
-import { readSession, sessionCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
+import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
@@ -1588,6 +1588,8 @@ export default async function handleApi(req, res) {
     const input = { ...query, ...body }; // like PHP array_merge($_GET, $body)
     const action = input.action ?? '';
     const user = readSession(req);
+    // Every request from a logged-in person restarts the 30-minute idle clock.
+    if (user && action !== 'logout') { const c = renewCookie(req); if (c) res.setHeader('Set-Cookie', c); }
 
     // ---- public (no login needed)
     if (action === 'login') {

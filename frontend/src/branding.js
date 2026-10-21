@@ -44,7 +44,7 @@ export function applyTabBranding(brand) {
   if (!brand) {
     link.type = 'image/svg+xml';
     link.href = '/favicon.svg';
-    document.title = 'Multipliers Receivables';
+    document.title = 'Receivables';
     return;
   }
   link.type = 'image/svg+xml';
