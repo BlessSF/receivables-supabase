@@ -16,6 +16,7 @@ import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
 import MonthlyReport from './pages/MonthlyReport';
 import Settings from './pages/Settings';
+import Branches from './pages/Branches';
 import Users from './pages/Users';
 import { isExecutive, isStaff } from './utils';
 
@@ -41,6 +42,7 @@ function Gate() {
           <Route path="/reports-by-month" element={<MonthlyReport />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/branches" element={<Branches />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -82,6 +84,7 @@ function Gate() {
         <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/branches" element={<Branches />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

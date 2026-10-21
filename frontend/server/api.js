@@ -13,7 +13,7 @@ import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed, releaseSoaForEntry,
+  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, getSetting, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed, releaseSoaForEntry,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -50,6 +50,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
+  'get_branch_sites', 'save_branch_sites',
 ]);
 
 function recalcRow(d) {
@@ -1159,6 +1160,34 @@ const actions = {
     await requireCompanyAccess(auth, hmoId);
     await exec('DELETE FROM hmo_partners WHERE hmo_id = ? AND company_id = ?', [hmoId, companyId]);
     return { ok: true, message: 'Partner company removed.' };
+  },
+
+  // ---------------------------------------------------------------- BRANCH SITES
+  // Other branches (for example Demic Jaro) run as their own separate copy of this app with their own
+  // database. This list only holds their names and links so Admin / Executive can jump to them.
+  async get_branch_sites(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can see branches.' }, 403);
+    let list = [];
+    try { list = JSON.parse(await getSetting('branch_sites', '[]')) || []; } catch { list = []; }
+    return { ok: true, data: Array.isArray(list) ? list : [] };
+  },
+
+  async save_branch_sites(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change branches.' }, 403);
+    const raw = Array.isArray(input.sites) ? input.sites : [];
+    if (raw.length > 30) jsonExit({ ok: false, error: 'Too many branches (limit 30).' }, 400);
+    const sites = [];
+    for (const s of raw) {
+      const name = trim(s?.name ?? '').slice(0, 80);
+      let url = trim(s?.url ?? '').slice(0, 300);
+      const note = trim(s?.note ?? '').slice(0, 200);
+      if (!name) jsonExit({ ok: false, error: 'Every branch needs a name.' }, 400);
+      if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+      if (url && !/^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url)) jsonExit({ ok: false, error: `The link for "${name}" does not look right.` }, 400);
+      sites.push({ name, url, note });
+    }
+    await setSetting('branch_sites', JSON.stringify(sites));
+    return { ok: true, data: sites, message: 'Branches saved.' };
   },
 
   async get_settings() {
