@@ -3,6 +3,7 @@ import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
+import AccountTitlesModal from '../AccountTitlesModal';
 
 const BLANK = { id: null, check_date: '', payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -19,6 +20,7 @@ export default function RunningPayables() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
+  const [manage, setManage] = useState(false);
 
   function load() {
     return api.getPayables()
@@ -38,6 +40,9 @@ export default function RunningPayables() {
     const soon = unpaid.filter((r) => r.check_date && r.check_date >= today && r.check_date <= in7);
     return { unpaid, paid, overdue, soon };
   }, [rows, today, in7]);
+
+  // Titles from the list, plus any still used by saved rows (e.g. a title that was removed later)
+  const titleOptions = useMemo(() => [...new Set([...categories, ...(rows || []).map((r) => r.category)])], [categories, rows]);
 
   const months = useMemo(() => [...new Set((rows || []).filter((r) => r.check_date).map((r) => r.check_date.slice(0, 7)))].sort().reverse(), [rows]);
 
@@ -88,7 +93,10 @@ export default function RunningPayables() {
           <h1>Running Payables</h1>
           <div className="subtitle">Every check and payable to release. The Unpaid total is your running payables figure.</div>
         </div>
-        <button type="button" className="btn" onClick={() => { setFlash(null); setForm({ ...BLANK, check_date: today }); }}>+ Add payable</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-secondary" onClick={() => setManage(true)}>Account titles</button>
+          <button type="button" className="btn" onClick={() => { setFlash(null); setForm({ ...BLANK, check_date: today }); }}>+ Add payable</button>
+        </div>
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
@@ -130,9 +138,9 @@ export default function RunningPayables() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search payee or note…" />
             </label>
-            <select className="select-inline" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
-              <option value="">All categories</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            <select className="select-inline" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Account title">
+              <option value="">All account titles</option>
+              {titleOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <select className="select-inline" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month">
               <option value="">All months</option>
@@ -147,7 +155,7 @@ export default function RunningPayables() {
               <tr>
                 <th>Check date</th>
                 <th>Payee</th>
-                <th>Category</th>
+                <th>Account title</th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
                 <th>Note</th>
@@ -195,6 +203,8 @@ export default function RunningPayables() {
         </div>
       </div>
 
+      {manage && <AccountTitlesModal titles={categories} onClose={() => setManage(false)} onSaved={(t) => { setCategories(t); setManage(false); setFlash({ type: 'success', msg: 'Account titles saved.' }); }} />}
+
       {form && (
         <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setForm(null); }}>
           <form className="pm-card settle-card pay-modal" onSubmit={submit}>
@@ -203,9 +213,9 @@ export default function RunningPayables() {
             <div className="form-grid">
               <div className="form-group"><label>Amount</label><MoneyInput required value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} placeholder="0.00" /></div>
               <div className="form-group"><label>Check date</label><LongDateInput value={form.check_date} onChange={(v) => setForm({ ...form, check_date: v })} /></div>
-              <div className="form-group"><label>Category</label>
+              <div className="form-group"><label>Account title <button type="button" className="pay-link-btn" onClick={() => setManage(true)}>Manage</button></label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {[...new Set([...categories, form.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="form-group"><label>Status</label>

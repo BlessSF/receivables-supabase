@@ -4,6 +4,7 @@ import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
+import AccountTitlesModal from '../AccountTitlesModal';
 
 const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const blankRow = (date = '') => ({ k: Math.random().toString(36).slice(2), check_date: date, payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' });
@@ -15,6 +16,7 @@ export default function PaymentRecord() {
   const [recent, setRecent] = useState(null);
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [manage, setManage] = useState(false);
 
   function loadRecent() {
     return api.getPayables().then((r) => {
@@ -62,7 +64,7 @@ export default function PaymentRecord() {
               <tr>
                 <th>Check date</th>
                 <th>Payee</th>
-                <th>Category</th>
+                <th>Account title <button type="button" className="pay-link-btn" onClick={() => setManage(true)}>Manage</button></th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
                 <th>Note</th>
@@ -76,7 +78,7 @@ export default function PaymentRecord() {
                   <td style={{ minWidth: 220 }}><input className="rec-input" value={r.payee} onChange={(e) => set(r.k, { payee: e.target.value })} placeholder="Payee name" /></td>
                   <td>
                     <select className="select-inline rec-input" value={r.category} onChange={(e) => set(r.k, { category: e.target.value })}>
-                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                      {[...new Set([...categories, r.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
                   <td style={{ minWidth: 130 }}><MoneyInput className="rec-input rec-amount" value={r.amount} onChange={(v) => set(r.k, { amount: v })} placeholder="0.00" /></td>
@@ -99,11 +101,13 @@ export default function PaymentRecord() {
         </div>
       </div>
 
+      {manage && <AccountTitlesModal titles={categories} onClose={() => setManage(false)} onSaved={(t) => { setCategories(t); setManage(false); setFlash({ type: 'success', msg: 'Account titles saved.' }); }} />}
+
       <div className="panel">
         <h2>Recently added</h2>
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Check date</th><th>Payee</th><th>Category</th><th className="text-right">Amount</th><th>Status</th></tr></thead>
+            <thead><tr><th>Check date</th><th>Payee</th><th>Account title</th><th className="text-right">Amount</th><th>Status</th></tr></thead>
             <tbody>
               {recent === null && <tr><td colSpan={5} className="empty-state">Loading…</td></tr>}
               {recent && recent.length === 0 && <tr><td colSpan={5} className="empty-state">Nothing recorded yet.</td></tr>}

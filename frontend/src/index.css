@@ -1325,3 +1325,15 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .rec-total { color: var(--slate); font-size: 14px; }
 .rec-total strong { color: var(--ink); font-size: 16px; }
 select.rec-input { min-width: 112px; }
+
+/* ---------- Account titles manager ---------- */
+.at-help { margin: 0; color: var(--slate); font-size: 13px; }
+.at-add { display: flex; gap: 8px; }
+.at-add input { flex: 1; height: 38px; padding: 0 12px; font: inherit; font-size: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.at-add input:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.at-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.at-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.at-list li:last-child { border-bottom: 0; }
+.at-empty { color: var(--slate); justify-content: center !important; }
+.pay-link-btn { border: 0; background: none; color: var(--teal-strong); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
+.pay-link-btn:hover { text-decoration: underline; }

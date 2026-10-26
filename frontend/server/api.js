@@ -178,7 +178,7 @@ async function requireCompanyAccess(auth, companyId) {
 // ======================================================================
 // ---------------------------------------------------------------- RUNNING PAYABLES (admin)
 // Table creates itself the first time it is used (same SQL is in database/running_payables.sql).
-const PAYABLE_CATEGORIES = ['Salary', "Doctor's PF", 'Supplier', 'Cash / PCF', 'Capex / Machine', 'Incorporator', 'Government / License', 'Other'];
+const DEFAULT_ACCOUNT_TITLES = ['Salary', "Doctor's PF", 'Supplier', 'Cash / PCF', 'Capex / Machine', 'Incorporator', 'Government / License', 'Other'];
 let payablesReady = false;
 async function ensurePayablesTable() {
   if (payablesReady) return;
@@ -195,6 +195,15 @@ async function ensurePayablesTable() {
   )`);
   payablesReady = true;
 }
+// Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
+async function getAccountTitles() {
+  try {
+    const list = JSON.parse(await getSetting('payable_account_titles', 'null'));
+    if (Array.isArray(list) && list.length) return list.map((t) => String(t));
+  } catch { /* fall through to defaults */ }
+  return DEFAULT_ACCOUNT_TITLES;
+}
+const cleanTitle = (v) => trim(v ?? '').replace(/\s+/g, ' ').slice(0, 60);
 function requirePayablesAdmin(auth) {
   if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can use Payables.' }, 403);
 }
@@ -1553,7 +1562,7 @@ const actions = {
       `SELECT id, check_date::text AS check_date, payee, category, amount, status, note
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
-    return { ok: true, data, categories: PAYABLE_CATEGORIES };
+    return { ok: true, data, categories: await getAccountTitles() };
   },
 
   async save_payable(input, auth) {
@@ -1563,7 +1572,7 @@ const actions = {
     if (!payee) jsonExit({ ok: false, error: 'Enter the payee name.' }, 400);
     const amount = toFloat(input.amount);
     if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter an amount greater than zero.' }, 400);
-    const category = PAYABLE_CATEGORIES.includes(input.category) ? input.category : 'Other';
+    const category = cleanTitle(input.category) || 'Other';
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
     const checkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.check_date ?? '')) ? input.check_date : null;
     const note = elvis(trim(input.note ?? '').slice(0, 300), null);
@@ -1581,6 +1590,20 @@ const actions = {
     return { ok: true, id: newId, message: 'Payable added.' };
   },
 
+  async save_account_titles(input, auth) {
+    requirePayablesAdmin(auth);
+    const seen = new Set();
+    const titles = [];
+    for (const t of Array.isArray(input.titles) ? input.titles : []) {
+      const name = cleanTitle(t);
+      if (name && !seen.has(name.toLowerCase())) { seen.add(name.toLowerCase()); titles.push(name); }
+    }
+    if (!titles.length) jsonExit({ ok: false, error: 'Keep at least one account title.' }, 400);
+    if (titles.length > 60) jsonExit({ ok: false, error: 'Too many account titles (limit 60).' }, 400);
+    await setSetting('payable_account_titles', JSON.stringify(titles));
+    return { ok: true, data: titles, message: 'Account titles saved.' };
+  },
+
   async add_payables_bulk(input, auth) {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();
@@ -1595,7 +1618,7 @@ const actions = {
       return [
         /^\d{4}-\d{2}-\d{2}$/.test(String(it?.check_date ?? '')) ? it.check_date : null,
         payee,
-        PAYABLE_CATEGORIES.includes(it?.category) ? it.category : 'Other',
+        cleanTitle(it?.category) || 'Other',
         amount,
         it?.status === 'Paid' ? 'Paid' : 'Unpaid',
         elvis(trim(it?.note ?? '').slice(0, 300), null),
