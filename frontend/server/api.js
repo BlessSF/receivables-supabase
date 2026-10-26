@@ -1581,6 +1581,34 @@ const actions = {
     return { ok: true, id: newId, message: 'Payable added.' };
   },
 
+  async add_payables_bulk(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const raw = Array.isArray(input.items) ? input.items : [];
+    if (!raw.length) jsonExit({ ok: false, error: 'Add at least one payable.' }, 400);
+    if (raw.length > 100) jsonExit({ ok: false, error: 'Too many rows at once (limit 100).' }, 400);
+    const items = raw.map((it, i) => {
+      const payee = trim(it?.payee ?? '').slice(0, 200);
+      const amount = toFloat(it?.amount);
+      if (!payee) jsonExit({ ok: false, error: `Row ${i + 1}: enter the payee name.` }, 400);
+      if (!(amount > 0)) jsonExit({ ok: false, error: `Row ${i + 1}: enter an amount greater than zero.` }, 400);
+      return [
+        /^\d{4}-\d{2}-\d{2}$/.test(String(it?.check_date ?? '')) ? it.check_date : null,
+        payee,
+        PAYABLE_CATEGORIES.includes(it?.category) ? it.category : 'Other',
+        amount,
+        it?.status === 'Paid' ? 'Paid' : 'Unpaid',
+        elvis(trim(it?.note ?? '').slice(0, 300), null),
+      ];
+    });
+    await transaction(async (client) => {
+      for (const v of items) {
+        await exec('INSERT INTO running_payables (check_date, payee, category, amount, status, note) VALUES (?,?,?,?,?,?)', v, client);
+      }
+    });
+    return { ok: true, count: items.length, message: `${items.length} ${items.length === 1 ? 'payable' : 'payables'} added to Running Payables.` };
+  },
+
   async set_payable_status(input, auth) {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();

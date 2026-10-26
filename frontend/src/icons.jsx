@@ -61,3 +61,16 @@ export const IconOpen = () => (
 export const IconLedger = () => (
   <svg {...common}><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2Z" /><path d="M5 18a2 2 0 0 1 2-2h12" /><path d="M9 8h6M9 12h6" /></svg>
 );
+// Payables module icons
+export const IconWallet = () => (
+  <svg {...common}><path d="M20 7H5a2 2 0 0 1 0-4h13v4Z" /><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1" /><path d="M16.5 14h.01" /></svg>
+);
+export const IconBook = () => (
+  <svg {...common}><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Z" /><path d="M4 19a2 2 0 0 0 2 2h13" /><path d="M9 8h6M9 12h6" /></svg>
+);
+export const IconChecklist = () => (
+  <svg {...common}><path d="m3 6 1.5 1.5L7 5" /><path d="m3 13 1.5 1.5L7 12" /><path d="m3 20 1.5 1.5L7 19" /><path d="M11 6h10M11 13h10M11 20h10" /></svg>
+);
+export const IconPenPlus = () => (
+  <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" /></svg>
+);
