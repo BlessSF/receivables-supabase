@@ -176,6 +176,29 @@ async function requireCompanyAccess(auth, companyId) {
 // Actions that need a login. Each gets (input, auth, query) and returns the
 // JSON body (or calls jsonExit for errors).
 // ======================================================================
+// ---------------------------------------------------------------- RUNNING PAYABLES (admin)
+// Table creates itself the first time it is used (same SQL is in database/running_payables.sql).
+const PAYABLE_CATEGORIES = ['Salary', "Doctor's PF", 'Supplier', 'Cash / PCF', 'Capex / Machine', 'Incorporator', 'Government / License', 'Other'];
+let payablesReady = false;
+async function ensurePayablesTable() {
+  if (payablesReady) return;
+  await exec(`CREATE TABLE IF NOT EXISTS running_payables (
+    id SERIAL PRIMARY KEY,
+    check_date DATE NULL,
+    payee TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Other',
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'Unpaid',
+    note TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  payablesReady = true;
+}
+function requirePayablesAdmin(auth) {
+  if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can use Payables.' }, 403);
+}
+
 const actions = {
 
   // ---------------------------------------------------------------- DASHBOARD
@@ -1520,6 +1543,58 @@ const actions = {
     await requireCompanyAccess(auth, toInt(cid));
     await exec('DELETE FROM monitoring_entries WHERE id=?', [id]);
     return { ok: true, message: 'Monitoring entry deleted.' };
+  },
+
+  // ---------------------------------------------------------------- RUNNING PAYABLES
+  async get_payables(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const data = await all(
+      `SELECT id, check_date::text AS check_date, payee, category, amount, status, note
+       FROM running_payables
+       ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
+    return { ok: true, data, categories: PAYABLE_CATEGORIES };
+  },
+
+  async save_payable(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const payee = trim(input.payee ?? '').slice(0, 200);
+    if (!payee) jsonExit({ ok: false, error: 'Enter the payee name.' }, 400);
+    const amount = toFloat(input.amount);
+    if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter an amount greater than zero.' }, 400);
+    const category = PAYABLE_CATEGORIES.includes(input.category) ? input.category : 'Other';
+    const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
+    const checkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.check_date ?? '')) ? input.check_date : null;
+    const note = elvis(trim(input.note ?? '').slice(0, 300), null);
+    const id = toInt(input.id);
+    if (id) {
+      const n = await exec(
+        'UPDATE running_payables SET check_date=?, payee=?, category=?, amount=?, status=?, note=?, updated_at=NOW() WHERE id=?',
+        [checkDate, payee, category, amount, status, note, id]);
+      if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
+      return { ok: true, id, message: 'Payable updated.' };
+    }
+    const newId = await insertId(
+      'INSERT INTO running_payables (check_date, payee, category, amount, status, note) VALUES (?,?,?,?,?,?)',
+      [checkDate, payee, category, amount, status, note]);
+    return { ok: true, id: newId, message: 'Payable added.' };
+  },
+
+  async set_payable_status(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
+    const n = await exec('UPDATE running_payables SET status=?, updated_at=NOW() WHERE id=?', [status, toInt(input.id)]);
+    if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
+    return { ok: true, message: `Marked ${status}.` };
+  },
+
+  async delete_payable(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    await exec('DELETE FROM running_payables WHERE id=?', [toInt(input.id)]);
+    return { ok: true, message: 'Payable deleted.' };
   },
 };
 

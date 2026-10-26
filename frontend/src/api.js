@@ -106,6 +106,12 @@ export const api = {
   deleteUser: (id) => call('delete_user', { method: 'POST', body: { id } }),
 
   // monitoring
+  // payables (admin)
+  getPayables: () => call('get_payables'),
+  savePayable: (body) => call('save_payable', { method: 'POST', body }),
+  setPayableStatus: (id, status) => call('set_payable_status', { method: 'POST', body: { id, status } }),
+  deletePayable: (id) => call('delete_payable', { method: 'POST', body: { id } }),
+
   getMonitoring: () => call('get_monitoring'),
   createMonitoring: (body) => call('create_monitoring', { method: 'POST', body }),
   updateMonitoring: (body) => call('update_monitoring', { method: 'POST', body }),

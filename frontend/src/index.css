@@ -1292,3 +1292,23 @@ button.rank-button { width: 100%; background: none; border: none; border-bottom:
 .evo-tip-foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--slate); font-size: 12px; }
 @media (max-width: 780px) { .evo-tip { min-width: 180px; } .evo-axis { font-size: 11px; } }
 @media (prefers-reduced-motion: reduce) { .evo-bar { animation: none; } }
+/* ---------- Running Payables ---------- */
+.pay-tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--panel-tint); box-shadow: inset 0 0 0 1px var(--line); }
+.pay-tab { border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: var(--slate); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.pay-tab:hover { color: var(--ink); }
+.pay-tab.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 30, 50, 0.12); }
+.pay-tab-n { margin-left: 4px; font-size: 11.5px; color: var(--slate); font-weight: 600; }
+.pay-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pay-filters .table-search { width: 240px; max-width: 100%; }
+.pay-status { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.pay-status:hover { filter: brightness(0.96); }
+.pay-overdue { margin-left: 8px; }
+.pay-cat { font-size: 12.5px; color: var(--slate); }
+.pay-note { color: var(--slate); font-size: 12.5px; max-width: 220px; }
+.pay-row-paid td { color: var(--slate); }
+.pay-row-paid td strong { font-weight: 500; }
+.pay-table tfoot td { position: sticky; bottom: 0; background: var(--panel-tint); border-top: 1px solid var(--line-strong); font-weight: 700; }
+.pay-modal { display: flex; flex-direction: column; gap: 14px; }
+.pay-modal h3 { margin: 0; }
+.pay-modal .form-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 560px) { .pay-modal .form-grid { grid-template-columns: 1fr; } }

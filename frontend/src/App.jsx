@@ -19,6 +19,7 @@ import Settings from './pages/Settings';
 import Branches from './pages/Branches';
 import Users from './pages/Users';
 import PayablesPage from './pages/PayablesPage';
+import RunningPayables from './pages/RunningPayables';
 import { isExecutive, isStaff } from './utils';
 
 function Gate() {
@@ -89,7 +90,7 @@ function Gate() {
         <Route path="/payables" element={<Navigate to="/payables/cash-position" replace />} />
         <Route path="/payables/cash-position" element={<PayablesPage title="Cash Position" note="Dashboard: bank balance, receivables, payables and net cash position." />} />
         <Route path="/payables/main" element={<PayablesPage title="Main" note="Automatic figures that can be edited: released checks, bank balances and net fund." />} />
-        <Route path="/payables/running" element={<PayablesPage title="Running Payables" note="Source list of payees, amounts, check dates and Paid / Unpaid status." />} />
+        <Route path="/payables/running" element={<RunningPayables />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
