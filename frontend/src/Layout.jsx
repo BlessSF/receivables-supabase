@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getBranding, applyTabBranding } from './branding';
@@ -33,6 +33,17 @@ const NAV_GROUPS = [
       { to: '/past-due', label: 'Past Due', Icon: IconAlert },
       { to: '/soa-tracker', label: 'SOA Tracker', Icon: IconHash },
       { to: '/monitoring', label: 'Monitoring', Icon: IconActivity },
+    ],
+  },
+];
+
+// Payables module (admin): Cash Position is the dashboard, Main is automatic but editable, Running Payables is the source list
+const PAYABLES_NAV_GROUPS = [
+  {
+    items: [
+      { to: '/payables/cash-position', label: 'Cash Position', Icon: IconDashboard },
+      { to: '/payables/main', label: 'Main', Icon: IconTable },
+      { to: '/payables/running', label: 'Running Payables', Icon: IconList },
     ],
   },
 ];
@@ -107,6 +118,22 @@ export default function Layout() {
   // collapses automatically on laptop-size windows so the grid fits; the
   // expand button still brings it back.
   const location = useLocation();
+  const navigate = useNavigate();
+  const inPayables = location.pathname.startsWith('/payables');
+  const showModuleToggle = !!user?.is_admin && !isExecutive(user) && !isStaff(user);
+  function switchModule(mod) {
+    if (mod === 'payables') {
+      let last = '/payables/cash-position';
+      try { last = localStorage.getItem('rv_last_payables_path') || last; } catch { /* ignore */ }
+      navigate(last);
+    } else {
+      navigate('/');
+    }
+  }
+  useEffect(() => {
+    if (!inPayables) return;
+    try { localStorage.setItem('rv_last_payables_path', location.pathname); } catch { /* ignore */ }
+  }, [inPayables, location.pathname]);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('rv_sidebar_collapsed') === '1'; } catch { return false; }
   });
@@ -166,8 +193,18 @@ export default function Layout() {
             </div>
           </div>
         )}
+        {showModuleToggle && (
+          <div className="module-toggle" role="tablist" aria-label="Module">
+            <button type="button" role="tab" aria-selected={!inPayables} className={'module-seg receivables' + (!inPayables ? ' active' : '')} onClick={() => switchModule('receivables')} title="Receivables">
+              <span>Receivables</span>
+            </button>
+            <button type="button" role="tab" aria-selected={inPayables} className={'module-seg payables' + (inPayables ? ' active' : '')} onClick={() => switchModule('payables')} title="Payables">
+              <span>Payables</span>
+            </button>
+          </div>
+        )}
         <nav className="sidebar-nav">
-          {(isExecutive(user) ? EXEC_NAV_GROUPS : isStaff(user) ? STAFF_NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS).map((group, i) => (
+          {(inPayables && showModuleToggle ? PAYABLES_NAV_GROUPS : isExecutive(user) ? EXEC_NAV_GROUPS : isStaff(user) ? STAFF_NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS).map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
               {group.label && <div className="nav-group-label">{group.label}</div>}
               {group.items.map(({ to, label, end, Icon }) => (
