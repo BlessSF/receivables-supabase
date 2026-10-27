@@ -5,7 +5,6 @@ import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
 
 const num = (v) => Number(rawNum(v)) || 0;
-const uid = () => Math.random().toString(36).slice(2, 10);
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
 
 // server data -> editable strings
@@ -34,8 +33,6 @@ export default function MainFund() {
   const [updated, setUpdated] = useState(null);
   const [state, setState] = useState('idle'); // idle | saving | saved | error
   const [err, setErr] = useState('');
-  const [name, setName] = useState('');
-  const [amt, setAmt] = useState('');
   const [find, setFind] = useState('');
   const dirty = useRef(false);
   const timer = useRef(null);
@@ -93,16 +90,6 @@ export default function MainFund() {
     );
   }
 
-  function addCheck(e) {
-    e.preventDefault();
-    if (!name.trim() && !amt) return;
-    const k = `${name.trim().toLowerCase()}|${num(amt).toFixed(2)}`;
-    const exists = calc.linkedKeys.has(k) || f.checks.some((c) => `${c.name.trim().toLowerCase()}|${num(c.amount).toFixed(2)}` === k);
-    if (exists) { setNotice({ type: 'error', msg: `"${name.trim()}" for ${peso(num(amt))} is already in the list.` }); return; }
-    setNotice(null);
-    edit((cur) => ({ checks: [...cur.checks, { id: uid(), name: name.trim().toUpperCase(), amount: amt }] }));
-    setName(''); setAmt('');
-  }
   async function clearLinked(c) {
     try {
       await api.clearReleasedPayable(c.id);
@@ -155,13 +142,8 @@ export default function MainFund() {
             <h2>Released check monitoring</h2>
             <span className="at-count">{calc.checksCount}</span>
           </div>
-          <p className="at-help">Checks already released but not yet cleared by the bank. Paid payables marked Released in Running Payables appear here by themselves. Remove a check once it clears.</p>
+          <p className="at-help">Filled in automatically from Running Payables: every paid check marked <strong>Released</strong> shows here. Press Cleared once the bank clears it.</p>
           {notice && <div className={`flash flash-${notice.type}`} style={{ margin: '0 0 10px' }}>{notice.msg}</div>}
-          <form className="mf-add" onSubmit={addCheck}>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Payee, e.g. CONVERGE" maxLength={160} />
-            <MoneyInput value={amt} onChange={setAmt} placeholder="0.00" />
-            <button type="submit" className="btn">Add</button>
-          </form>
           {f.checks.length + linked.length > 8 && <input className="at-find" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search checks…" />}
           <ul className="mf-list">
             {shownLinked.map((c) => (
@@ -178,7 +160,7 @@ export default function MainFund() {
                 <button type="button" className="at-x" onClick={() => edit((cur) => ({ checks: cur.checks.filter((x) => x.id !== c.id) }))} aria-label="Remove check" title="Remove">×</button>
               </li>
             ))}
-            {f.checks.length + linked.length === 0 && <li className="at-empty">No released checks. Mark a paid payable as Released, or add one above.</li>}
+            {f.checks.length + linked.length === 0 && <li className="at-empty">No released checks yet. Mark a paid payable as Released in Running Payables and it shows here.</li>}
             {f.checks.length + linked.length > 0 && shown.length + shownLinked.length === 0 && <li className="at-empty">No match.</li>}
           </ul>
           <div className="mf-total"><span>Total released checks</span><strong>{peso(calc.checksTotal)}</strong></div>
