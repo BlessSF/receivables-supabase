@@ -109,7 +109,7 @@ export const api = {
   // payables (admin)
   getPayables: () => call('get_payables'),
   savePayable: (body) => call('save_payable', { method: 'POST', body }),
-  saveAccountTitles: (titles) => call('save_account_titles', { method: 'POST', body: { titles } }),
+  saveAccountTitles: (titles, names) => call('save_account_titles', { method: 'POST', body: { titles, names } }),
   addPayablesBulk: (items) => call('add_payables_bulk', { method: 'POST', body: { items } }),
   setPayableStatus: (id, status) => call('set_payable_status', { method: 'POST', body: { id, status } }),
   deletePayable: (id) => call('delete_payable', { method: 'POST', body: { id } }),

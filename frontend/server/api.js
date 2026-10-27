@@ -203,6 +203,18 @@ async function getAccountTitles() {
   } catch { /* fall through to defaults */ }
   return DEFAULT_ACCOUNT_TITLES;
 }
+// Names saved under an account title (e.g. the suppliers under "Supplier"): { "Supplier": ["ABC Pharma", ...] }
+async function getTitleNames() {
+  try {
+    const o = JSON.parse(await getSetting('payable_title_names', '{}'));
+    if (o && typeof o === 'object' && !Array.isArray(o)) {
+      const out = {};
+      for (const [k, v] of Object.entries(o)) if (Array.isArray(v)) out[k] = v.map((x) => String(x));
+      return out;
+    }
+  } catch { /* none saved yet */ }
+  return {};
+}
 const cleanTitle = (v) => trim(v ?? '').replace(/\s+/g, ' ').slice(0, 60);
 function requirePayablesAdmin(auth) {
   if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can use Payables.' }, 403);
@@ -1562,7 +1574,7 @@ const actions = {
       `SELECT id, check_date::text AS check_date, payee, category, amount, status, note
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
-    return { ok: true, data, categories: await getAccountTitles() };
+    return { ok: true, data, categories: await getAccountTitles(), title_names: await getTitleNames() };
   },
 
   async save_payable(input, auth) {
@@ -1600,8 +1612,22 @@ const actions = {
     }
     if (!titles.length) jsonExit({ ok: false, error: 'Keep at least one account title.' }, 400);
     if (titles.length > 60) jsonExit({ ok: false, error: 'Too many account titles (limit 60).' }, 400);
+    // names under each title (only for titles that still exist)
+    const names = {};
+    const given = input.names && typeof input.names === 'object' ? input.names : {};
+    for (const t of titles) {
+      const seenN = new Set();
+      const list = [];
+      for (const n of Array.isArray(given[t]) ? given[t] : []) {
+        const nm = trim(n ?? '').replace(/\s+/g, ' ').slice(0, 120);
+        if (nm && !seenN.has(nm.toLowerCase())) { seenN.add(nm.toLowerCase()); list.push(nm); }
+      }
+      if (list.length > 300) jsonExit({ ok: false, error: `Too many names under "${t}" (limit 300).` }, 400);
+      if (list.length) names[t] = list;
+    }
     await setSetting('payable_account_titles', JSON.stringify(titles));
-    return { ok: true, data: titles, message: 'Account titles saved.' };
+    await setSetting('payable_title_names', JSON.stringify(names));
+    return { ok: true, data: titles, names, message: 'Account titles saved.' };
   },
 
   async add_payables_bulk(input, auth) {

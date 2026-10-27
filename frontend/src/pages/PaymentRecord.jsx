@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput from '../MoneyInput';
+import PayeeInput from '../PayeeInput';
 import LongDateInput from '../LongDateInput';
 
 const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -12,6 +13,7 @@ const isEmpty = (r) => !r.payee.trim() && !r.amount;
 export default function PaymentRecord() {
   const [rows, setRows] = useState(() => [blankRow(ymdLocal()), blankRow(ymdLocal()), blankRow(ymdLocal())]);
   const [categories, setCategories] = useState([]);
+  const [titleNames, setTitleNames] = useState({});
   const [recent, setRecent] = useState(null);
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -19,6 +21,7 @@ export default function PaymentRecord() {
   function loadRecent() {
     return api.getPayables().then((r) => {
       setCategories(r.categories || []);
+      setTitleNames(r.title_names || {});
       setRecent([...r.data].sort((a, b) => b.id - a.id).slice(0, 8));
     }).catch((e) => { setFlash({ type: 'error', msg: e.message }); setRecent([]); });
   }
@@ -61,8 +64,8 @@ export default function PaymentRecord() {
             <thead>
               <tr>
                 <th>Check date</th>
-                <th>Payee</th>
                 <th>Account title <Link className="pay-link-btn" to="/payables/titles">Manage</Link></th>
+                <th>Payee / name</th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
                 <th>Note</th>
@@ -73,12 +76,12 @@ export default function PaymentRecord() {
               {rows.map((r) => (
                 <tr key={r.k}>
                   <td style={{ minWidth: 190 }}><LongDateInput value={r.check_date} onChange={(v) => set(r.k, { check_date: v })} /></td>
-                  <td style={{ minWidth: 220 }}><input className="rec-input" value={r.payee} onChange={(e) => set(r.k, { payee: e.target.value })} placeholder="Payee name" /></td>
                   <td>
                     <select className="select-inline rec-input" value={r.category} onChange={(e) => set(r.k, { category: e.target.value })}>
                       {[...new Set([...categories, r.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
+                  <td style={{ minWidth: 220 }}><PayeeInput className="rec-input" value={r.payee} onChange={(v) => set(r.k, { payee: v })} category={r.category} titleNames={titleNames} /></td>
                   <td style={{ minWidth: 130 }}><MoneyInput className="rec-input rec-amount" value={r.amount} onChange={(v) => set(r.k, { amount: v })} placeholder="0.00" /></td>
                   <td>
                     <select className="select-inline rec-input" value={r.status} onChange={(e) => set(r.k, { status: e.target.value })}>

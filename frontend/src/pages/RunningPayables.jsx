@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
+import PayeeInput from '../PayeeInput';
 import LongDateInput from '../LongDateInput';
 
 const BLANK = { id: null, check_date: '', payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' };
@@ -12,6 +13,7 @@ const sumOf = (rows) => rows.reduce((t, r) => t + (Number(r.amount) || 0), 0);
 export default function RunningPayables() {
   const [rows, setRows] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [titleNames, setTitleNames] = useState({});
   const [flash, setFlash] = useState(null);
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -22,7 +24,7 @@ export default function RunningPayables() {
 
   function load() {
     return api.getPayables()
-      .then((r) => { setRows(r.data); setCategories(r.categories || []); })
+      .then((r) => { setRows(r.data); setCategories(r.categories || []); setTitleNames(r.title_names || {}); })
       .catch((e) => { setFlash({ type: 'error', msg: e.message }); setRows([]); });
   }
   useEffect(() => { load(); }, []);
@@ -205,11 +207,11 @@ export default function RunningPayables() {
         <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setForm(null); }}>
           <form className="pm-card settle-card pay-modal" onSubmit={submit}>
             <h3>{form.id ? 'Edit payable' : 'Add payable'}</h3>
-            <div className="form-group"><label>Payee</label><input autoFocus required value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} placeholder="e.g. ALPHAONE MEDICAL AND LABORATORY SUPPLIES" /></div>
+            <div className="form-group"><label>Payee / name</label><PayeeInput autoFocus required value={form.payee} onChange={(v) => setForm({ ...form, payee: v })} category={form.category} titleNames={titleNames} placeholder="e.g. ALPHAONE MEDICAL AND LABORATORY SUPPLIES" /></div>
             <div className="form-grid">
               <div className="form-group"><label>Amount</label><MoneyInput required value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} placeholder="0.00" /></div>
               <div className="form-group"><label>Check date</label><LongDateInput value={form.check_date} onChange={(v) => setForm({ ...form, check_date: v })} /></div>
-              <div className="form-group"><label>Account title <button type="button" className="pay-link-btn" onClick={() => setManage(true)}>Manage</button></label>
+              <div className="form-group"><label>Account title</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   {[...new Set([...categories, form.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>

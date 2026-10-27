@@ -1337,3 +1337,20 @@ select.rec-input { min-width: 112px; }
 .at-empty { color: var(--slate); justify-content: center !important; }
 .pay-link-btn { border: 0; background: none; color: var(--teal-strong); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
 .pay-link-btn:hover { text-decoration: underline; }
+/* ---------- Account Titles page ---------- */
+.at-page { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; align-items: start; }
+.at-col h2 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.at-col .at-help { margin: 0 0 12px; }
+.at-col .at-add { margin-bottom: 12px; }
+.at-count { font-size: 12px; font-weight: 600; color: var(--slate); background: var(--paper, #eef0f3); border-radius: 999px; padding: 2px 9px; }
+.at-titles { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.at-titles li { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
+.at-titles li.active { border-color: var(--teal); box-shadow: var(--ring); }
+.at-title-btn { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 12px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.at-title-name { font-size: 14px; font-weight: 600; color: var(--ink, #1f2937); overflow-wrap: anywhere; }
+.at-title-n { font-size: 12px; color: var(--slate); }
+.at-x { border: 0; background: none; color: var(--slate); font-size: 20px; line-height: 1; padding: 0 12px; cursor: pointer; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.at-x:hover { color: #c4382a; background: #fdf1ef; }
+.at-find { width: 100%; height: 36px; padding: 0 12px; margin-bottom: 10px; font: inherit; font-size: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.at-names { max-height: 420px; }
+@media (max-width: 760px) { .at-page { grid-template-columns: 1fr; } }
