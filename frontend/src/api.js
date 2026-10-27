@@ -114,10 +114,12 @@ export const api = {
   saveAccountTitles: (titles, names) => call('save_account_titles', { method: 'POST', body: { titles, names } }),
   addPayablesBulk: (items) => call('add_payables_bulk', { method: 'POST', body: { items } }),
   setPayableStatus: (id, status) => call('set_payable_status', { method: 'POST', body: { id, status } }),
+  setPayableRelease: (id, release_status) => call('set_payable_release', { method: 'POST', body: { id, release_status } }),
+  clearReleasedPayable: (id) => call('clear_released_payable', { method: 'POST', body: { id } }),
   deletePayable: (id) => call('delete_payable', { method: 'POST', body: { id } }),
 
   getMonitoring: () => call('get_monitoring'),
   createMonitoring: (body) => call('create_monitoring', { method: 'POST', body }),
   updateMonitoring: (body) => call('update_monitoring', { method: 'POST', body }),
   deleteMonitoring: (id) => call('delete_monitoring', { method: 'POST', body: { id } }),
-};  
+};

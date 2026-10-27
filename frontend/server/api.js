@@ -195,6 +195,9 @@ async function ensurePayablesTable() {
   )`);
   // the name picked under the account title (e.g. which supplier); added later, so older tables get it here
   await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS title_name TEXT NULL');
+  // check release tracking (separate from Paid / Unpaid): Pending Release | Released; cleared_at hides it from Main once the bank clears it
+  await exec("ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS release_status TEXT NOT NULL DEFAULT 'Pending Release'");
+  await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ NULL');
   payablesReady = true;
 }
 // Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
@@ -1600,7 +1603,7 @@ const actions = {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();
     const data = await all(
-      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, note
+      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, release_status, cleared_at::text AS cleared_at, note
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
     return { ok: true, data, categories: await getAccountTitles(), title_names: await getTitleNames() };
@@ -1616,19 +1619,23 @@ const actions = {
     const category = cleanTitle(input.category) || 'Other';
     const titleName = elvis(trim(input.title_name ?? '').replace(/\s+/g, ' ').slice(0, 120), null);
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
+    // only a Paid item can be Released
+    const release = status === 'Paid' && input.release_status === 'Released' ? 'Released' : 'Pending Release';
     const checkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.check_date ?? '')) ? input.check_date : null;
     const note = elvis(trim(input.note ?? '').slice(0, 300), null);
     const id = toInt(input.id);
     if (id) {
       const n = await exec(
-        'UPDATE running_payables SET check_date=?, payee=?, category=?, title_name=?, amount=?, status=?, note=?, updated_at=NOW() WHERE id=?',
-        [checkDate, payee, category, titleName, amount, status, note, id]);
+        `UPDATE running_payables SET check_date=?, payee=?, category=?, title_name=?, amount=?, status=?,
+           cleared_at = CASE WHEN release_status = '${release}' AND '${release}' = 'Released' THEN cleared_at ELSE NULL END,
+           release_status=?, note=?, updated_at=NOW() WHERE id=?`,
+        [checkDate, payee, category, titleName, amount, status, release, note, id]);
       if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
       return { ok: true, id, message: 'Payable updated.' };
     }
     const newId = await insertId(
-      'INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note) VALUES (?,?,?,?,?,?,?)',
-      [checkDate, payee, category, titleName, amount, status, note]);
+      'INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, release_status, note) VALUES (?,?,?,?,?,?,?,?)',
+      [checkDate, payee, category, titleName, amount, status, release, note]);
     return { ok: true, id: newId, message: 'Payable added.' };
   },
 
@@ -1637,7 +1644,14 @@ const actions = {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();
     const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
-    return { ok: true, data: await getMainFund(), running_payables: toFloat(row?.total), running_count: toInt(row?.n) };
+    // paid + released + not yet cleared payables show up in Released Check Monitoring automatically
+    const released = await all(
+      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount
+       FROM running_payables
+       WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL
+       ORDER BY check_date DESC NULLS LAST, id DESC`);
+    return { ok: true, data: await getMainFund(), running_payables: toFloat(row?.total), running_count: toInt(row?.n),
+      released_payables: released.map((r) => ({ ...r, amount: toFloat(r.amount) })) };
   },
 
   async save_main_fund(input, auth) {
@@ -1709,9 +1723,31 @@ const actions = {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
-    const n = await exec('UPDATE running_payables SET status=?, updated_at=NOW() WHERE id=?', [status, toInt(input.id)]);
+    const n = await exec("UPDATE running_payables SET status=?, release_status = CASE WHEN ? = 'Paid' THEN release_status ELSE 'Pending Release' END, cleared_at = CASE WHEN ? = 'Paid' THEN cleared_at ELSE NULL END, updated_at=NOW() WHERE id=?", [status, status, status, toInt(input.id)]);
     if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
     return { ok: true, message: `Marked ${status}.` };
+  },
+
+  // Check release status (Pending Release | Released). Only a Paid payable can be Released; marking the same one again changes nothing.
+  async set_payable_release(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const id = toInt(input.id);
+    const released = input.release_status === 'Released';
+    const [row] = await all('SELECT status, release_status FROM running_payables WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'Not found.' }, 404);
+    if (released && row.status !== 'Paid') jsonExit({ ok: false, error: 'Mark it Paid first. Only a paid check can be released.' }, 400);
+    if (released && row.release_status === 'Released') return { ok: true, message: 'Already released.' };
+    await exec('UPDATE running_payables SET release_status=?, cleared_at=NULL, updated_at=NOW() WHERE id=?', [released ? 'Released' : 'Pending Release', id]);
+    return { ok: true, message: released ? 'Marked Released. It now shows in Main under Released Check Monitoring.' : 'Marked Pending Release.' };
+  },
+
+  // Bank cleared a released check: it leaves Released Check Monitoring in Main (the payable keeps its Released status).
+  async clear_released_payable(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const n = await exec("UPDATE running_payables SET cleared_at = NOW() WHERE id = ? AND status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL", [toInt(input.id)]);
+    return { ok: true, message: n ? 'Marked cleared. Removed from Released Check Monitoring.' : 'Already cleared.' };
   },
 
   async delete_payable(input, auth) {

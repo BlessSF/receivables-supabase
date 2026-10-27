@@ -5,7 +5,7 @@ import MoneyInput from '../MoneyInput';
 import TitleNameSelect from '../TitleNameSelect';
 import LongDateInput from '../LongDateInput';
 
-const BLANK = { id: null, check_date: '', payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', note: '' };
+const BLANK = { id: null, check_date: '', payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', release_status: 'Pending Release', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const monthLabel = (key) => { const [y, m] = key.split('-'); return `${MONTHS[Number(m) - 1]} ${y}`; };
 const sumOf = (rows) => rows.reduce((t, r) => t + (Number(r.amount) || 0), 0);
@@ -21,6 +21,7 @@ export default function RunningPayables() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
+  const [rel, setRel] = useState(''); // '' | Pending Release | Released
 
   function load() {
     return api.getPayables()
@@ -50,14 +51,23 @@ export default function RunningPayables() {
     const needle = q.trim().toLowerCase();
     return (rows || []).filter((r) =>
       (tab === 'All' || r.status === tab) &&
+      (!rel || r.release_status === rel) &&
       (!cat || r.category === cat) &&
       (!month || (r.check_date || '').startsWith(month)) &&
       (!needle || r.payee.toLowerCase().includes(needle) || (r.title_name || '').toLowerCase().includes(needle) || (r.note || '').toLowerCase().includes(needle)));
-  }, [rows, tab, q, cat, month]);
+  }, [rows, tab, q, cat, month, rel]);
+
+  async function toggleRelease(r) {
+    if (r.status !== 'Paid') { setFlash({ type: 'error', msg: 'Mark it Paid first. Only a paid check can be released.' }); return; }
+    const next = r.release_status === 'Released' ? 'Pending Release' : 'Released';
+    setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, release_status: next, cleared_at: null } : x))); // instant
+    try { const res = await api.setPayableRelease(r.id, next); setFlash({ type: 'success', msg: res.message }); }
+    catch (e) { setFlash({ type: 'error', msg: e.message }); load(); }
+  }
 
   async function toggleStatus(r) {
     const next = r.status === 'Paid' ? 'Unpaid' : 'Paid';
-    setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, status: next } : x))); // instant
+    setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, status: next, ...(next === 'Unpaid' ? { release_status: 'Pending Release', cleared_at: null } : {}) } : x))); // instant
     try { await api.setPayableStatus(r.id, next); }
     catch (e) { setFlash({ type: 'error', msg: e.message }); load(); }
   }
@@ -119,7 +129,7 @@ export default function RunningPayables() {
         <div className="kpi-card accent-green">
           <div className="kpi-label">Paid</div>
           <div className="kpi-value">{peso(sumOf(stats.paid))}</div>
-          <div className="kpi-sub">{stats.paid.length} released</div>
+          <div className="kpi-sub">{stats.paid.length} paid</div>
         </div>
       </div>
 
@@ -133,6 +143,11 @@ export default function RunningPayables() {
             ))}
           </div>
           <div className="pay-filters">
+            <select className="select-inline" value={rel} onChange={(e) => setRel(e.target.value)} aria-label="Check release">
+              <option value="">All check releases</option>
+              <option value="Pending Release">Pending Release ({(rows || []).filter((r) => r.release_status !== 'Released').length})</option>
+              <option value="Released">Released ({(rows || []).filter((r) => r.release_status === 'Released').length})</option>
+            </select>
             <label className="table-search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search payee, name or note…" />
@@ -158,13 +173,14 @@ export default function RunningPayables() {
                 <th>Name / company</th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
+                <th>Check release</th>
                 <th>Note</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {rows === null && <tr><td colSpan={8} className="empty-state">Loading…</td></tr>}
-              {rows && shown.length === 0 && <tr><td colSpan={8} className="empty-state">{rows.length === 0 ? 'No payables yet. Click “+ Add payable” to start.' : 'Nothing matches these filters.'}</td></tr>}
+              {rows === null && <tr><td colSpan={9} className="empty-state">Loading…</td></tr>}
+              {rows && shown.length === 0 && <tr><td colSpan={9} className="empty-state">{rows.length === 0 ? 'No payables yet. Click “+ Add payable” to start.' : 'Nothing matches these filters.'}</td></tr>}
               {shown.map((r) => {
                 const overdue = r.status === 'Unpaid' && r.check_date && r.check_date < today;
                 return (
@@ -182,6 +198,13 @@ export default function RunningPayables() {
                         {r.status}
                       </button>
                     </td>
+                    <td>
+                      <button type="button" className={`badge pay-status ${r.release_status === 'Released' ? 'badge-success' : 'badge-secondary'} ${r.status !== 'Paid' ? 'pay-rel-off' : ''}`} onClick={() => toggleRelease(r)}
+                        title={r.status !== 'Paid' ? 'Mark it Paid first' : r.release_status === 'Released' ? 'Click to mark Pending Release' : 'Click to mark Released'}>
+                        {r.release_status === 'Released' ? 'Released' : 'Pending Release'}
+                      </button>
+                      {r.release_status === 'Released' && r.cleared_at && <span className="pay-cleared">cleared</span>}
+                    </td>
                     <td className="pay-note">{r.note || ''}</td>
                     <td className="nowrap">
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...r, amount: String(Number(r.amount)), note: r.note || '', check_date: r.check_date || '' }); }}>Edit</button>{' '}
@@ -196,7 +219,7 @@ export default function RunningPayables() {
                 <tr className="pay-total">
                   <td colSpan={4}>Total of {shown.length} shown</td>
                   <td className="num text-right">{peso(sumOf(shown))}</td>
-                  <td colSpan={3} />
+                  <td colSpan={4} />
                 </tr>
               </tfoot>
             )}
@@ -222,8 +245,13 @@ export default function RunningPayables() {
                 <TitleNameSelect category={form.category} value={form.title_name} onChange={(v) => setForm({ ...form, title_name: v })} titleNames={titleNames} />
               </div>
               <div className="form-group"><label>Status</label>
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value, ...(e.target.value !== 'Paid' ? { release_status: 'Pending Release' } : {}) })}>
                   <option>Unpaid</option><option>Paid</option>
+                </select>
+              </div>
+              <div className="form-group"><label>Check release</label>
+                <select value={form.status === 'Paid' ? form.release_status : 'Pending Release'} disabled={form.status !== 'Paid'} onChange={(e) => setForm({ ...form, release_status: e.target.value })} title={form.status !== 'Paid' ? 'Mark it Paid first' : ''}>
+                  <option>Pending Release</option><option>Released</option>
                 </select>
               </div>
             </div>
