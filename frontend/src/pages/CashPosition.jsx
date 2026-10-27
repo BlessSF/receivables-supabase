@@ -127,7 +127,7 @@ export default function CashPosition() {
           <div className="mf-block">Bank balances</div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Passbook balance · Security Bank</span><span className="mf-val">{peso(c.m.passbook)}</span></div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Sales deposit in transit</span><span className="mf-val">{peso(c.m.deposit)}</span></div>
-          <div className="mf-row mf-auto"><span className="mf-lbl">AUB account</span><span className="mf-val">{peso(c.m.aub)}</span></div>
+          <div className="mf-row mf-auto"><span className="mf-lbl">{c.m.aub_label || 'AUB account'}</span><span className="mf-val">{peso(c.m.aub)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Available bank balance</span><span className="mf-val">{peso(c.bank)}</span></div>
           <p className="at-help cp-note">These come from the <Link to="/payables/main" className="pay-link-btn">Main</Link> page. Edit them there.</p>
         </section>

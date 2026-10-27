@@ -242,6 +242,7 @@ function cleanMainFund(src) {
   }));
   return {
     passbook: money2(o.passbook), deposit: money2(o.deposit), aub: money2(o.aub),
+    aub_label: trim(o.aub_label ?? '').replace(/\s+/g, ' ').slice(0, 60),
     pull, checks,
     receivables_label: trim(o.receivables_label ?? '').slice(0, 80),
     receivables_date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.receivables_date ?? '')) ? o.receivables_date : '',

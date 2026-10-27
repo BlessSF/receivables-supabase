@@ -14,6 +14,7 @@ const toForm = (d) => ({
   passbook: d.passbook ? String(d.passbook) : '',
   deposit: d.deposit ? String(d.deposit) : '',
   aub: d.aub ? String(d.aub) : '',
+  aub_label: d.aub_label || '',
   pull: d.pull.map((p) => ({ label: p.label, amount: p.amount ? String(p.amount) : '' })),
   checks: d.checks.map((c) => ({ id: c.id, name: c.name, amount: c.amount ? String(c.amount) : '' })),
   receivables_label: d.receivables_label || '',
@@ -21,7 +22,7 @@ const toForm = (d) => ({
   receivables: d.receivables ? String(d.receivables) : '',
 });
 const toData = (f) => ({
-  passbook: num(f.passbook), deposit: num(f.deposit), aub: num(f.aub),
+  passbook: num(f.passbook), deposit: num(f.deposit), aub: num(f.aub), aub_label: f.aub_label,
   pull: f.pull.map((p) => ({ label: p.label, amount: num(p.amount) })),
   checks: f.checks.map((c) => ({ id: c.id, name: c.name, amount: num(c.amount) })),
   receivables_label: f.receivables_label, receivables_date: f.receivables_date, receivables: num(f.receivables),
@@ -182,7 +183,7 @@ export default function MainFund() {
 
           <div className="mf-block">AUB</div>
           <div className="mf-row">
-            <span className="mf-lbl">AUB account balance</span>
+            <input className="mf-lbl-in" value={f.aub_label} onChange={(e) => edit({ aub_label: e.target.value })} placeholder="AUB account (e.g. AUB 1051)" maxLength={60} aria-label="Account name" />
             <MoneyInput className="mf-in" value={f.aub} onChange={(v) => edit({ aub: v })} placeholder="0.00" />
           </div>
 
