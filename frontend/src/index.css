@@ -1364,3 +1364,48 @@ select.rec-input { min-width: 112px; }
 .tn-list li.on { font-weight: 600; color: var(--teal-strong); }
 .tn-list li.tn-none { color: var(--slate); cursor: default; font-size: 13px; }
 .tn-list li.tn-clear { color: var(--slate); font-size: 13px; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; }
+
+/* ---------- Main (cash fund) ---------- */
+.mf-state.saving { color: #a8691a; }
+.mf-state.error { color: #c4382a; font-weight: 600; }
+.mf-hero { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.mf-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.mf-card-main { background: #14213d; border-color: #14213d; color: #fff; }
+.mf-card-label { font-size: 12.5px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: .03em; }
+.mf-card-main .mf-card-label, .mf-card-main .mf-card-sub { color: #aebbd3; }
+.mf-card-value { font-family: var(--serif, Georgia, serif); font-size: 28px; margin: 8px 0 4px; font-variant-numeric: lining-nums; overflow-wrap: anywhere; }
+.mf-card-value.neg, .mf-val.neg { color: #c4382a; }
+.mf-card-main .mf-card-value { font-size: 34px; }
+.mf-card-sub { font-size: 12.5px; color: var(--slate); }
+.mf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.mf-head { display: flex; align-items: center; gap: 8px; }
+.mf-head h2 { margin: 0; }
+.mf-add { display: grid; grid-template-columns: 1fr 140px auto; gap: 8px; margin: 10px 0; }
+.mf-add input, .mf-in, .mf-name, .mf-amt, .mf-lbl-in { height: 38px; padding: 0 12px; font: inherit; font-size: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff; min-width: 0; }
+.mf-add input:focus, .mf-in:focus, .mf-name:focus, .mf-amt:focus, .mf-lbl-in:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.mf-list { list-style: none; margin: 0; padding: 0; max-height: 460px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.mf-list li { display: grid; grid-template-columns: 1fr 130px auto; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.mf-list li:last-child { border-bottom: 0; }
+.mf-list li.at-empty { display: block; padding: 14px; text-align: center; }
+.mf-list .mf-name, .mf-list .mf-amt { height: 34px; border-color: transparent; background: transparent; }
+.mf-list .mf-name:hover, .mf-list .mf-amt:hover { border-color: var(--line-strong); background: #fff; }
+.mf-list .mf-amt { text-align: right; }
+.mf-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 12px; border-top: 2px solid var(--line-strong); font-size: 15px; }
+.mf-total strong { font-size: 18px; font-variant-numeric: lining-nums; }
+.mf-block { margin: 18px 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--slate); }
+.mf-block:first-child { margin-top: 0; }
+.mf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.mf-lbl { font-size: 14px; color: #334155; }
+.mf-lbl i { font-style: normal; font-size: 11px; font-weight: 600; color: #1c8a62; background: #e4f5ee; border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+.mf-in { width: 170px; text-align: right; }
+.mf-lbl-in { flex: 1; }
+.mf-val { font-size: 15px; font-weight: 600; font-variant-numeric: lining-nums; white-space: nowrap; }
+.mf-auto .mf-val { color: #5b6573; font-weight: 500; }
+.mf-sub { background: #f3f5f8; border-radius: 8px; padding: 9px 10px; margin: 2px -10px; }
+.mf-sub .mf-lbl { font-weight: 600; color: #1f2937; }
+.mf-key .mf-val { font-size: 17px; }
+.mf-final { margin: 18px -10px 0; padding: 14px 14px; background: #14213d; border-radius: 10px; }
+.mf-final .mf-lbl { color: #cdd7ea; font-weight: 600; }
+.mf-final .mf-val { color: #fff; font-size: 22px; }
+@media (max-width: 1100px) { .mf-hero { grid-template-columns: 1fr 1fr; } .mf-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .mf-hero { grid-template-columns: 1fr; } .mf-add { grid-template-columns: 1fr 1fr; } .mf-add .btn { grid-column: 1 / -1; } .mf-in { width: 130px; } }

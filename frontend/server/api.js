@@ -222,6 +222,33 @@ function requirePayablesAdmin(auth) {
   if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can use Payables.' }, 403);
 }
 
+// ---------------------------------------------------------------- MAIN (cash fund) -- hand-typed figures live in app_settings
+const PULL_LABELS = ['Funding for upcoming payables', 'Owners / profit pull out', ''];
+const money2 = (v) => Math.round(toFloat(v) * 100) / 100;
+function cleanMainFund(src) {
+  const o = src && typeof src === 'object' ? src : {};
+  const checks = (Array.isArray(o.checks) ? o.checks : []).slice(0, 300).map((c, i) => ({
+    id: trim(c?.id ?? '').slice(0, 40) || `c${Date.now().toString(36)}${i}`,
+    name: trim(c?.name ?? '').replace(/\s+/g, ' ').slice(0, 160),
+    amount: money2(c?.amount),
+  })).filter((c) => c.name || c.amount);
+  const pullIn = Array.isArray(o.pull) ? o.pull : [];
+  const pull = PULL_LABELS.map((def, i) => ({
+    label: trim(pullIn[i]?.label ?? def).slice(0, 80) || def,
+    amount: money2(pullIn[i]?.amount),
+  }));
+  return {
+    passbook: money2(o.passbook), deposit: money2(o.deposit), aub: money2(o.aub),
+    pull, checks,
+    receivables_label: trim(o.receivables_label ?? '').slice(0, 80),
+    receivables: money2(o.receivables),
+    updated_at: trim(o.updated_at ?? '').slice(0, 40) || null,
+  };
+}
+async function getMainFund() {
+  try { return cleanMainFund(JSON.parse(await getSetting('main_fund', '{}'))); } catch { return cleanMainFund({}); }
+}
+
 const actions = {
 
   // ---------------------------------------------------------------- DASHBOARD
@@ -1603,6 +1630,22 @@ const actions = {
       'INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note) VALUES (?,?,?,?,?,?,?)',
       [checkDate, payee, category, titleName, amount, status, note]);
     return { ok: true, id: newId, message: 'Payable added.' };
+  },
+
+  // ---------------------------------------------------------------- MAIN (cash fund)
+  async get_main_fund(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
+    return { ok: true, data: await getMainFund(), running_payables: toFloat(row?.total), running_count: toInt(row?.n) };
+  },
+
+  async save_main_fund(input, auth) {
+    requirePayablesAdmin(auth);
+    const data = cleanMainFund(input.data);
+    data.updated_at = todayYmd();
+    await setSetting('main_fund', JSON.stringify(data));
+    return { ok: true, data };
   },
 
   async save_account_titles(input, auth) {

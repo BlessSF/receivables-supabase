@@ -108,6 +108,8 @@ export const api = {
   // monitoring
   // payables (admin)
   getPayables: () => call('get_payables'),
+  getMainFund: () => call('get_main_fund'),
+  saveMainFund: (data) => call('save_main_fund', { method: 'POST', body: { data } }),
   savePayable: (body) => call('save_payable', { method: 'POST', body }),
   saveAccountTitles: (titles, names) => call('save_account_titles', { method: 'POST', body: { titles, names } }),
   addPayablesBulk: (items) => call('add_payables_bulk', { method: 'POST', body: { items } }),
@@ -118,4 +120,4 @@ export const api = {
   createMonitoring: (body) => call('create_monitoring', { method: 'POST', body }),
   updateMonitoring: (body) => call('update_monitoring', { method: 'POST', body }),
   deleteMonitoring: (id) => call('delete_monitoring', { method: 'POST', body: { id } }),
-};
+};  
