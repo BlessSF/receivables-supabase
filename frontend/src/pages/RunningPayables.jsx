@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
-import PayeeInput from '../PayeeInput';
+import TitleNameSelect from '../TitleNameSelect';
 import LongDateInput from '../LongDateInput';
 
-const BLANK = { id: null, check_date: '', payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' };
+const BLANK = { id: null, check_date: '', payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const monthLabel = (key) => { const [y, m] = key.split('-'); return `${MONTHS[Number(m) - 1]} ${y}`; };
 const sumOf = (rows) => rows.reduce((t, r) => t + (Number(r.amount) || 0), 0);
@@ -52,7 +52,7 @@ export default function RunningPayables() {
       (tab === 'All' || r.status === tab) &&
       (!cat || r.category === cat) &&
       (!month || (r.check_date || '').startsWith(month)) &&
-      (!needle || r.payee.toLowerCase().includes(needle) || (r.note || '').toLowerCase().includes(needle)));
+      (!needle || r.payee.toLowerCase().includes(needle) || (r.title_name || '').toLowerCase().includes(needle) || (r.note || '').toLowerCase().includes(needle)));
   }, [rows, tab, q, cat, month]);
 
   async function toggleStatus(r) {
@@ -135,7 +135,7 @@ export default function RunningPayables() {
           <div className="pay-filters">
             <label className="table-search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search payee or note…" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search payee, name or note…" />
             </label>
             <select className="select-inline" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Account title">
               <option value="">All account titles</option>
@@ -155,6 +155,7 @@ export default function RunningPayables() {
                 <th>Check date</th>
                 <th>Payee</th>
                 <th>Account title</th>
+                <th>Name / company</th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
                 <th>Note</th>
@@ -162,8 +163,8 @@ export default function RunningPayables() {
               </tr>
             </thead>
             <tbody>
-              {rows === null && <tr><td colSpan={7} className="empty-state">Loading…</td></tr>}
-              {rows && shown.length === 0 && <tr><td colSpan={7} className="empty-state">{rows.length === 0 ? 'No payables yet. Click “+ Add payable” to start.' : 'Nothing matches these filters.'}</td></tr>}
+              {rows === null && <tr><td colSpan={8} className="empty-state">Loading…</td></tr>}
+              {rows && shown.length === 0 && <tr><td colSpan={8} className="empty-state">{rows.length === 0 ? 'No payables yet. Click “+ Add payable” to start.' : 'Nothing matches these filters.'}</td></tr>}
               {shown.map((r) => {
                 const overdue = r.status === 'Unpaid' && r.check_date && r.check_date < today;
                 return (
@@ -174,6 +175,7 @@ export default function RunningPayables() {
                     </td>
                     <td><strong>{r.payee}</strong></td>
                     <td><span className="pay-cat">{r.category}</span></td>
+                    <td>{r.title_name || '—'}</td>
                     <td className="num text-right">{peso(r.amount)}</td>
                     <td>
                       <button type="button" className={`badge pay-status ${r.status === 'Paid' ? 'badge-success' : 'badge-warning'}`} onClick={() => toggleStatus(r)} title={r.status === 'Paid' ? 'Click to mark Unpaid' : 'Click to mark Paid'}>
@@ -192,7 +194,7 @@ export default function RunningPayables() {
             {rows && shown.length > 0 && (
               <tfoot>
                 <tr className="pay-total">
-                  <td colSpan={3}>Total of {shown.length} shown</td>
+                  <td colSpan={4}>Total of {shown.length} shown</td>
                   <td className="num text-right">{peso(sumOf(shown))}</td>
                   <td colSpan={3} />
                 </tr>
@@ -207,14 +209,17 @@ export default function RunningPayables() {
         <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setForm(null); }}>
           <form className="pm-card settle-card pay-modal" onSubmit={submit}>
             <h3>{form.id ? 'Edit payable' : 'Add payable'}</h3>
-            <div className="form-group"><label>Payee / name</label><PayeeInput autoFocus required value={form.payee} onChange={(v) => setForm({ ...form, payee: v })} category={form.category} titleNames={titleNames} placeholder="e.g. ALPHAONE MEDICAL AND LABORATORY SUPPLIES" /></div>
+            <div className="form-group"><label>Payee</label><input autoFocus required value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} placeholder="e.g. ALPHAONE MEDICAL AND LABORATORY SUPPLIES" /></div>
             <div className="form-grid">
               <div className="form-group"><label>Amount</label><MoneyInput required value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} placeholder="0.00" /></div>
               <div className="form-group"><label>Check date</label><LongDateInput value={form.check_date} onChange={(v) => setForm({ ...form, check_date: v })} /></div>
               <div className="form-group"><label>Account title</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value, title_name: '' })}>
                   {[...new Set([...categories, form.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+              </div>
+              <div className="form-group"><label>Name / company</label>
+                <TitleNameSelect category={form.category} value={form.title_name} onChange={(v) => setForm({ ...form, title_name: v })} titleNames={titleNames} />
               </div>
               <div className="form-group"><label>Status</label>
                 <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>

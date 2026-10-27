@@ -193,6 +193,8 @@ async function ensurePayablesTable() {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  // the name picked under the account title (e.g. which supplier); added later, so older tables get it here
+  await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS title_name TEXT NULL');
   payablesReady = true;
 }
 // Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
@@ -1571,7 +1573,7 @@ const actions = {
     requirePayablesAdmin(auth);
     await ensurePayablesTable();
     const data = await all(
-      `SELECT id, check_date::text AS check_date, payee, category, amount, status, note
+      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, note
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
     return { ok: true, data, categories: await getAccountTitles(), title_names: await getTitleNames() };
@@ -1585,20 +1587,21 @@ const actions = {
     const amount = toFloat(input.amount);
     if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter an amount greater than zero.' }, 400);
     const category = cleanTitle(input.category) || 'Other';
+    const titleName = elvis(trim(input.title_name ?? '').replace(/\s+/g, ' ').slice(0, 120), null);
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
     const checkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.check_date ?? '')) ? input.check_date : null;
     const note = elvis(trim(input.note ?? '').slice(0, 300), null);
     const id = toInt(input.id);
     if (id) {
       const n = await exec(
-        'UPDATE running_payables SET check_date=?, payee=?, category=?, amount=?, status=?, note=?, updated_at=NOW() WHERE id=?',
-        [checkDate, payee, category, amount, status, note, id]);
+        'UPDATE running_payables SET check_date=?, payee=?, category=?, title_name=?, amount=?, status=?, note=?, updated_at=NOW() WHERE id=?',
+        [checkDate, payee, category, titleName, amount, status, note, id]);
       if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
       return { ok: true, id, message: 'Payable updated.' };
     }
     const newId = await insertId(
-      'INSERT INTO running_payables (check_date, payee, category, amount, status, note) VALUES (?,?,?,?,?,?)',
-      [checkDate, payee, category, amount, status, note]);
+      'INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note) VALUES (?,?,?,?,?,?,?)',
+      [checkDate, payee, category, titleName, amount, status, note]);
     return { ok: true, id: newId, message: 'Payable added.' };
   },
 
@@ -1645,6 +1648,7 @@ const actions = {
         /^\d{4}-\d{2}-\d{2}$/.test(String(it?.check_date ?? '')) ? it.check_date : null,
         payee,
         cleanTitle(it?.category) || 'Other',
+        elvis(trim(it?.title_name ?? '').replace(/\s+/g, ' ').slice(0, 120), null),
         amount,
         it?.status === 'Paid' ? 'Paid' : 'Unpaid',
         elvis(trim(it?.note ?? '').slice(0, 300), null),
@@ -1652,7 +1656,7 @@ const actions = {
     });
     await transaction(async (client) => {
       for (const v of items) {
-        await exec('INSERT INTO running_payables (check_date, payee, category, amount, status, note) VALUES (?,?,?,?,?,?)', v, client);
+        await exec('INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note) VALUES (?,?,?,?,?,?,?)', v, client);
       }
     });
     return { ok: true, count: items.length, message: `${items.length} ${items.length === 1 ? 'payable' : 'payables'} added to Running Payables.` };
