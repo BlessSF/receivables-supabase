@@ -16,7 +16,7 @@ export default function RunningPayables() {
   const [flash, setFlash] = useState(null);
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState('Unpaid'); // Unpaid | Paid | All
+  const [tab, setTab] = useState('All'); // All | Paid | Unpaid
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
@@ -81,9 +81,9 @@ export default function RunningPayables() {
   }
 
   const tabs = [
-    ['Unpaid', stats.unpaid.length],
-    ['Paid', stats.paid.length],
     ['All', (rows || []).length],
+    ['Paid', stats.paid.length],
+    ['Unpaid', stats.unpaid.length],
   ];
 
   return (
