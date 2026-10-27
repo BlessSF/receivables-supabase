@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 
 const squash = (v) => v.trim().replace(/\s+/g, ' ');
 
 /** Account titles (e.g. Supplier, Salary) and, under each, the names that can be picked on Payment Record. */
 export default function AccountTitles() {
-  const [saved, setSaved] = useState(null); // { titles, names } as last saved
+  const [saved, setSaved] = useState(null); // { titles, names } as last saved (null while loading)
+  const chain = useRef(Promise.resolve());
   const [titles, setTitles] = useState([]);
   const [names, setNames] = useState({});   // { title: [name, ...] }
   const [sel, setSel] = useState('');
@@ -13,7 +14,7 @@ export default function AccountTitles() {
   const [newName, setNewName] = useState('');
   const [find, setFind] = useState('');
   const [flash, setFlash] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(0); // saves in flight
 
   useEffect(() => {
     api.getPayables()
@@ -24,56 +25,64 @@ export default function AccountTitles() {
       .catch((e) => { setFlash({ type: 'error', msg: e.message }); setSaved({ titles: [], names: {} }); });
   }, []);
 
-  const dirty = saved !== null && JSON.stringify([saved.titles, saved.names]) !== JSON.stringify([titles, names]);
   const list = names[sel] || [];
   const shown = useMemo(() => list.filter((n) => n.toLowerCase().includes(find.trim().toLowerCase())), [list, find]);
+
+  // every change is saved straight away (one save at a time, in order)
+  function commit(nextTitles, nextNames, okMsg) {
+    const prev = { titles, names };
+    setTitles(nextTitles); setNames(nextNames); setFlash(null);
+    setBusy((n) => n + 1);
+    chain.current = chain.current.then(async () => {
+      try {
+        const r = await api.saveAccountTitles(nextTitles, nextNames);
+        setSaved({ titles: r.data, names: r.names || {} });
+        if (okMsg) setFlash({ type: 'success', msg: okMsg });
+      } catch (e) {
+        setTitles(prev.titles); setNames(prev.names);
+        setFlash({ type: 'error', msg: `Not saved: ${e.message || 'could not save.'}` });
+      }
+      setBusy((n) => n - 1);
+    });
+  }
 
   function addTitle(e) {
     e.preventDefault();
     const t = squash(newTitle);
     if (!t) return;
     if (titles.some((x) => x.toLowerCase() === t.toLowerCase())) { setFlash({ type: 'error', msg: `"${t}" is already on the list.` }); return; }
-    setFlash(null); setTitles([...titles, t]); setSel(t); setNewTitle('');
+    setSel(t); setNewTitle('');
+    commit([...titles, t], names);
   }
   function removeTitle(t) {
+    if (titles.length <= 1) { setFlash({ type: 'error', msg: 'Keep at least one account title.' }); return; }
     const n = (names[t] || []).length;
     if (!confirm(n ? `Remove "${t}" and its ${n} saved name${n === 1 ? '' : 's'}? Payables already saved are not changed.` : `Remove "${t}"? Payables already saved are not changed.`)) return;
     const rest = titles.filter((x) => x !== t);
     const { [t]: _gone, ...keep } = names; // eslint-disable-line no-unused-vars
-    setTitles(rest); setNames(keep); if (sel === t) setSel(rest[0] || '');
+    if (sel === t) setSel(rest[0] || '');
+    commit(rest, keep);
   }
   function addName(e) {
     e.preventDefault();
     const n = squash(newName);
     if (!n || !sel) return;
     if (list.some((x) => x.toLowerCase() === n.toLowerCase())) { setFlash({ type: 'error', msg: `"${n}" is already under ${sel}.` }); return; }
-    setFlash(null); setNames({ ...names, [sel]: [...list, n].sort((a, b) => a.localeCompare(b)) }); setNewName('');
+    setNewName('');
+    commit(titles, { ...names, [sel]: [...list, n].sort((a, b) => a.localeCompare(b)) });
   }
-  function removeName(n) { setNames({ ...names, [sel]: list.filter((x) => x !== n) }); }
-
-  async function save() {
-    if (!titles.length) { setFlash({ type: 'error', msg: 'Keep at least one account title.' }); return; }
-    setBusy(true); setFlash(null);
-    try {
-      const r = await api.saveAccountTitles(titles, names);
-      setSaved({ titles: r.data, names: r.names || {} }); setTitles(r.data); setNames(r.names || {});
-      if (!r.data.includes(sel)) setSel(r.data[0] || '');
-      setFlash({ type: 'success', msg: 'Saved. The names now show up on Payment Record and Running Payables.' });
-    } catch (e) { setFlash({ type: 'error', msg: e.message || 'Could not save.' }); }
-    setBusy(false);
-  }
+  function removeName(n) { commit(titles, { ...names, [sel]: list.filter((x) => x !== n) }); }
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>Account Titles</h1>
-          <div className="subtitle">Group your payables by account title. Under a title you can save names (for example the suppliers under Supplier) so they can be picked on Payment Record.</div>
+          <div className="subtitle">Group your payables by account title. Under a title you can save names (for example the suppliers under Supplier) so they can be picked on Payment Record. Changes save automatically.</div>
         </div>
-        <button type="button" className="btn" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
+        <span className="at-status">{busy ? 'Saving…' : saved ? 'All changes saved automatically' : ''}</span>
       </div>
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
-      {dirty && !flash && <div className="flash flash-warning">You have unsaved changes. Press Save changes to keep them.</div>}
 
       <div className="at-page">
         <section className="panel at-col">

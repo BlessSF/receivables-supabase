@@ -1354,3 +1354,4 @@ select.rec-input { min-width: 112px; }
 .at-find { width: 100%; height: 36px; padding: 0 12px; margin-bottom: 10px; font: inherit; font-size: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
 .at-names { max-height: 420px; }
 @media (max-width: 760px) { .at-page { grid-template-columns: 1fr; } }
+.at-status { font-size: 13px; color: var(--slate); white-space: nowrap; align-self: center; }
