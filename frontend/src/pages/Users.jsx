@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 
@@ -10,21 +10,41 @@ const PAGE_LABEL = {
   '/': 'Dashboard', '/summary': 'Summary', '/reports-by-month': 'Reports by Month', '/companies': 'Companies', '/hmos': 'HMOs',
   '/company-charges': 'Company Charges', '/billing': 'Billing', '/ledger': 'Ledger', '/aging': 'Aging Report',
   '/past-due': 'Past Due', '/soa-tracker': 'SOA Tracker', '/monitoring': 'Monitoring',
+  '/payables/cash-position': 'Cash Position', '/payables/main': 'Main', '/payables/running': 'Running Payables',
+  '/payables/record': 'Payment Record', '/payables/titles': 'Account Titles',
 };
+const ACCESS_GROUPS = [
+  { module: 'Receivables', groups: [
+    { label: 'Overview', pages: ['/', '/summary', '/reports-by-month'] },
+    { label: 'Accounts', pages: ['/companies', '/hmos', '/company-charges', '/billing', '/ledger'] },
+    { label: 'Collections', pages: ['/aging', '/past-due', '/soa-tracker', '/monitoring'] },
+  ] },
+  { module: 'Payables', groups: [
+    { label: 'Cash', pages: ['/payables/cash-position', '/payables/main'] },
+    { label: 'Payables', pages: ['/payables/running', '/payables/record'] },
+    { label: 'Setup', pages: ['/payables/titles'] },
+  ] },
+];
 const ACCESS_ROLES = [['accounting', 'Accounting'], ['staff', 'Staff'], ['executive', 'Executive'], ['branch', 'Branch']];
+const isPayPage = (p) => p.startsWith('/payables');
 
-/** Which sidebar pages each role can open. Only Admin and Executive see this. */
+/** Which sidebar pages each role can open, in both Receivables and Payables. Only Admin and Executive see this. */
 function SidebarAccess() {
   const { refreshUser } = useAuth();
   const [d, setD] = useState(null);
+  const [saved, setSaved] = useState({});
   const [access, setAccess] = useState({});
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.getNavAccess().then((r) => { setD(r.data); setAccess(r.data.access); }).catch((e) => setMsg({ type: 'error', msg: e.message }));
+    api.getNavAccess().then((r) => { setD(r.data); setAccess(r.data.access); setSaved(r.data.access); }).catch((e) => setMsg({ type: 'error', msg: e.message }));
   }, []);
 
+  const norm = (a) => JSON.stringify(ACCESS_ROLES.map(([r]) => [...(a[r] || [])].sort()));
+  const dirty = d && norm(access) !== norm(saved);
+
+  const baseOf = (role) => (d.base[role] || []).filter((p) => p !== '/');
   function toggle(role, path) {
     setMsg(null);
     setAccess((a) => {
@@ -32,12 +52,22 @@ function SidebarAccess() {
       return { ...a, [role]: cur.includes(path) ? cur.filter((p) => p !== path) : [...cur, path] };
     });
   }
+  function setAll(role, on) {
+    setMsg(null);
+    setAccess((a) => ({ ...a, [role]: on ? ['/', ...baseOf(role)] : ['/'] }));
+  }
+  function resetDefault() {
+    setMsg(null);
+    const next = {};
+    ACCESS_ROLES.forEach(([r]) => { next[r] = ['/', ...baseOf(r).filter((p) => !isPayPage(p))]; });
+    setAccess(next);
+  }
   async function save() {
     setBusy(true); setMsg(null);
     try {
       const r = await api.saveNavAccess(access);
-      setAccess(r.data.access);
-      setMsg({ type: 'success', msg: 'Sidebar access saved. People see the change the next time they open or refresh the page.' });
+      setAccess(r.data.access); setSaved(r.data.access);
+      setMsg({ type: 'success', msg: 'Saved. People see the change the next time they open or refresh the page.' });
       refreshUser();
     } catch (ex) { setMsg({ type: 'error', msg: ex.message }); }
     setBusy(false);
@@ -45,44 +75,77 @@ function SidebarAccess() {
 
   if (!d) return msg ? <div className={`flash flash-${msg.type}`}>{msg.msg}</div> : null;
   return (
-    <div className="panel">
-      <h2>Sidebar access</h2>
-      <div className="subtitle" style={{ margin: '0 24px 12px' }}>
-        Tick the pages each role sees in the sidebar. Admin always sees everything. A dash (—) means that role cannot use the page at all.
+    <div className="panel sa-panel">
+      <div className="sa-head">
+        <div>
+          <h2>Sidebar access</h2>
+          <p className="sa-sub">Choose which pages each role can see and open, in Receivables and in Payables. Admin always has everything. A dash (—) means that role can never use that page. Payables starts switched off for everyone except Admin.</p>
+        </div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={resetDefault}>Reset to default</button>
       </div>
-      {msg && <div className={`flash flash-${msg.type}`} style={{ margin: '0 24px 12px' }}>{msg.msg}</div>}
-      <div className="table-wrap">
-        <table className="data-table">
+
+      {msg && <div className={`flash flash-${msg.type}`} style={{ margin: '0 24px 14px' }}>{msg.msg}</div>}
+
+      <div className="sa-scroll">
+        <table className="sa-table">
           <thead>
-            <tr><th>Page</th>{ACCESS_ROLES.map(([r, l]) => <th key={r} className="text-center">{l}</th>)}</tr>
+            <tr>
+              <th className="sa-page-col">Page</th>
+              {ACCESS_ROLES.map(([r, l]) => {
+                const base = baseOf(r);
+                const on = base.filter((p) => (access[r] || []).includes(p)).length;
+                return (
+                  <th key={r} className="sa-role-col">
+                    <div className="sa-role-name">{l}</div>
+                    <div className="sa-role-count">{on} of {base.length} pages</div>
+                    <div className="sa-role-links">
+                      <button type="button" onClick={() => setAll(r, true)}>All</button>
+                      <span>·</span>
+                      <button type="button" onClick={() => setAll(r, false)}>None</button>
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
           </thead>
-          <tbody>
-            {d.pages.map((path) => (
-              <tr key={path}>
-                <td><strong>{PAGE_LABEL[path] || path}</strong></td>
-                {ACCESS_ROLES.map(([r]) => {
-                  const inBase = (d.base[r] || []).includes(path);
-                  return (
-                    <td key={r} className="text-center">
-                      {!inBase ? <span style={{ color: 'var(--slate)' }}>—</span> : (
-                        <input
-                          type="checkbox"
-                          checked={path === '/' || (access[r] || []).includes(path)}
-                          disabled={path === '/'}
-                          onChange={() => toggle(r, path)}
-                          aria-label={`${PAGE_LABEL[path]} for ${r}`}
-                        />
-                      )}
-                    </td>
-                  );
-                })}
+          {ACCESS_GROUPS.map((m) => (
+            <tbody key={m.module}>
+              <tr className={'sa-module-row' + (m.module === 'Payables' ? ' pay' : '')}>
+                <td colSpan={ACCESS_ROLES.length + 1}><span className="sa-module-dot" />{m.module}</td>
               </tr>
-            ))}
-          </tbody>
+              {m.groups.map((g) => (
+                <Fragment key={m.module + g.label}>
+                  <tr className="sa-group-row"><td colSpan={ACCESS_ROLES.length + 1}>{g.label}</td></tr>
+                  {g.pages.map((path) => (
+                    <tr key={path} className="sa-row">
+                      <td className="sa-page">{PAGE_LABEL[path] || path}</td>
+                      {ACCESS_ROLES.map(([r, l]) => {
+                        const inBase = path === '/' || (d.base[r] || []).includes(path);
+                        const locked = path === '/';
+                        const checked = locked || (access[r] || []).includes(path);
+                        return (
+                          <td key={r} className="sa-cell">
+                            {!inBase ? <span className="sa-none" title={`${l} cannot use this page`}>—</span> : (
+                              <label className={'sa-switch' + (locked ? ' locked' : '')} title={locked ? 'The dashboard is always on' : ''}>
+                                <input type="checkbox" checked={checked} disabled={locked} onChange={() => toggle(r, path)} aria-label={`${PAGE_LABEL[path]} for ${l}`} />
+                                <span className="sa-track"><span className="sa-thumb" /></span>
+                              </label>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
-      <div style={{ marginTop: 14 }}>
-        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save sidebar access'}</button>
+
+      <div className="sa-foot">
+        <span className={'sa-state' + (dirty ? ' dirty' : '')}>{dirty ? 'You have unsaved changes' : 'All changes saved'}</span>
+        <button className="btn" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save sidebar access'}</button>
       </div>
     </div>
   );

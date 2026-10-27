@@ -51,6 +51,12 @@ function Gate() {
           <Route path="/ledger" element={g("/ledger", <Ledger />)} />
           <Route path="/users" element={<Users />} />
           <Route path="/branches" element={<Branches />} />
+          <Route path="/payables" element={<Navigate to="/" replace />} />
+          <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />
+          <Route path="/payables/main" element={g("/payables/main", <MainFund />)} />
+          <Route path="/payables/running" element={g("/payables/running", <RunningPayables />)} />
+          <Route path="/payables/record" element={g("/payables/record", <PaymentRecord />)} />
+          <Route path="/payables/titles" element={g("/payables/titles", <AccountTitles />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -69,6 +75,12 @@ function Gate() {
           <Route path="/billing" element={g("/billing", <Billing />)} />
           <Route path="/ledger" element={g("/ledger", <Ledger />)} />
           <Route path="/reports-by-month" element={g("/reports-by-month", <MonthlyReport />)} />
+          <Route path="/payables" element={<Navigate to="/" replace />} />
+          <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />
+          <Route path="/payables/main" element={g("/payables/main", <MainFund />)} />
+          <Route path="/payables/running" element={g("/payables/running", <RunningPayables />)} />
+          <Route path="/payables/record" element={g("/payables/record", <PaymentRecord />)} />
+          <Route path="/payables/titles" element={g("/payables/titles", <AccountTitles />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -92,6 +104,12 @@ function Gate() {
           <Route path="/past-due" element={g("/past-due", <PastDue />)} />
           <Route path="/soa-tracker" element={g("/soa-tracker", <SoaTracker />)} />
           <Route path="/monitoring" element={g("/monitoring", <Monitoring />)} />
+          <Route path="/payables" element={<Navigate to="/" replace />} />
+          <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />
+          <Route path="/payables/main" element={g("/payables/main", <MainFund />)} />
+          <Route path="/payables/running" element={g("/payables/running", <RunningPayables />)} />
+          <Route path="/payables/record" element={g("/payables/record", <PaymentRecord />)} />
+          <Route path="/payables/titles" element={g("/payables/titles", <AccountTitles />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -117,11 +135,11 @@ function Gate() {
         <Route path="/users" element={<Users />} />
         <Route path="/branches" element={<Branches />} />
         <Route path="/payables" element={<Navigate to="/payables/cash-position" replace />} />
-        <Route path="/payables/cash-position" element={<CashPosition />} />
-        <Route path="/payables/main" element={<MainFund />} />
-        <Route path="/payables/running" element={<RunningPayables />} />
-        <Route path="/payables/record" element={<PaymentRecord />} />
-        <Route path="/payables/titles" element={<AccountTitles />} />
+        <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />
+        <Route path="/payables/main" element={g("/payables/main", <MainFund />)} />
+        <Route path="/payables/running" element={g("/payables/running", <RunningPayables />)} />
+        <Route path="/payables/record" element={g("/payables/record", <PaymentRecord />)} />
+        <Route path="/payables/titles" element={g("/payables/titles", <AccountTitles />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

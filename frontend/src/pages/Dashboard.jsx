@@ -5,7 +5,7 @@ import { peso, fdate, numClass, coveredLabel } from '../utils';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 import { useAuth } from '../AuthContext';
-import { isStaff, isExecutive } from '../utils';
+import { isStaff, isExecutive, navAllowed } from '../utils';
 import { billingYm, buildMonths, MonthTable } from '../MonthTable';
 
 // Evolving dashboard: pick Overall / Companies / HMOs, optionally one account,
@@ -439,7 +439,7 @@ export default function Dashboard() {
                 <span className="kpi-dark-right">Company Charges {peso(data.due_in.by_type.CHARGE || 0)}</span>
               </div>
             )}
-            {user?.is_admin && !user?.is_accounting && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
+            {navAllowed(user, '/payables/cash-position') && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
           </div>
         )}
       </div>

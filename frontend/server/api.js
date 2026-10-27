@@ -28,12 +28,15 @@ const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 
 // Sidebar pages a role may be given (Settings > Users > Sidebar access). Admin always sees everything.
 // A role can only be switched on/off inside its own list; pages outside it stay closed for that role.
-const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring'];
+const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring',
+  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles'];
+// Payables pages start switched OFF for every role except Admin until Admin / Executive ticks them.
+const NAV_DEFAULT_OFF = NAV_PAGES.filter((p) => p.startsWith('/payables'));
 const NAV_BASE = {
   accounting: NAV_PAGES,
   branch: NAV_PAGES,
-  staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
-  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger'],
+  staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', ...NAV_DEFAULT_OFF],
+  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger', ...NAV_DEFAULT_OFF],
 };
 
 async function getNavAccess() {
@@ -42,7 +45,7 @@ async function getNavAccess() {
   const out = {};
   for (const role of Object.keys(NAV_BASE)) {
     const base = NAV_BASE[role];
-    out[role] = Array.isArray(saved[role]) ? base.filter((p) => p === '/' || saved[role].includes(p)) : base.slice();
+    out[role] = Array.isArray(saved[role]) ? base.filter((p) => p === '/' || saved[role].includes(p)) : base.filter((p) => !NAV_DEFAULT_OFF.includes(p));
   }
   return out;
 }
@@ -68,6 +71,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
+  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -78,6 +82,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access',
+  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable',
 ]);
 
 function recalcRow(d) {
@@ -246,8 +251,11 @@ async function getTitleNames() {
   return {};
 }
 const cleanTitle = (v) => trim(v ?? '').replace(/\s+/g, ' ').slice(0, 60);
-function requirePayablesAdmin(auth) {
-  if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can use Payables.' }, 403);
+// Admin always; any other role only when Sidebar access gives it at least one of these Payables pages.
+async function requirePayablesAdmin(auth, ...pages) {
+  if (auth.isAdmin()) return;
+  const allowed = (await getNavAccess())[auth.user?.role] || [];
+  if (!pages.some((pg) => allowed.includes(pg))) jsonExit({ ok: false, error: 'You do not have access to this Payables page.' }, 403);
 }
 
 // ---------------------------------------------------------------- MAIN (cash fund) -- hand-typed figures live in app_settings
@@ -1635,7 +1643,7 @@ const actions = {
     const raw = input.access && typeof input.access === 'object' ? input.access : {};
     const clean = {};
     for (const role of Object.keys(NAV_BASE)) {
-      const want = Array.isArray(raw[role]) ? raw[role] : NAV_BASE[role];
+      const want = Array.isArray(raw[role]) ? raw[role] : NAV_BASE[role].filter((p) => !NAV_DEFAULT_OFF.includes(p));
       clean[role] = NAV_BASE[role].filter((p) => p === '/' || want.includes(p));
     }
     await setSetting('nav_access', JSON.stringify(clean));
@@ -1667,7 +1675,7 @@ const actions = {
 
   // ---------------------------------------------------------------- RUNNING PAYABLES
   async get_payables(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/running', '/payables/record', '/payables/titles');
     await ensurePayablesTable();
     const data = await all(
       `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, release_status, cleared_at::text AS cleared_at, note
@@ -1677,7 +1685,7 @@ const actions = {
   },
 
   async save_payable(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
     const payee = trim(input.payee ?? '').slice(0, 200);
     if (!payee) jsonExit({ ok: false, error: 'Enter the payee name.' }, 400);
@@ -1708,7 +1716,7 @@ const actions = {
 
   // ---------------------------------------------------------------- MAIN (cash fund)
   async get_main_fund(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/main');
     await ensurePayablesTable();
     const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
     // paid + released + not yet cleared payables show up in Released Check Monitoring automatically
@@ -1722,7 +1730,7 @@ const actions = {
   },
 
   async save_main_fund(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/main');
     const data = cleanMainFund(input.data);
     data.updated_at = todayYmd();
     await setSetting('main_fund', JSON.stringify(data));
@@ -1731,7 +1739,7 @@ const actions = {
 
   // ---------------------------------------------------------------- CASH POSITION
   async get_cash_position(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/cash-position');
     await ensurePayablesTable();
     const [bw, bp] = branchWhere(auth, 'c');
     // receivables, split with the same due rule as Reports by Month: its own Due Date, else Period Date + 3 months
@@ -1754,14 +1762,14 @@ const actions = {
   },
 
   async save_cash_position(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/cash-position');
     const future = cleanFuture(input.future);
     await setSetting('cash_position', JSON.stringify({ future }));
     return { ok: true, future };
   },
 
   async save_account_titles(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/titles');
     const seen = new Set();
     const titles = [];
     for (const t of Array.isArray(input.titles) ? input.titles : []) {
@@ -1789,7 +1797,7 @@ const actions = {
   },
 
   async add_payables_bulk(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/record');
     await ensurePayablesTable();
     const raw = Array.isArray(input.items) ? input.items : [];
     if (!raw.length) jsonExit({ ok: false, error: 'Add at least one payable.' }, 400);
@@ -1818,7 +1826,7 @@ const actions = {
   },
 
   async set_payable_status(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
     const n = await exec("UPDATE running_payables SET status=?, release_status = CASE WHEN ? = 'Paid' THEN release_status ELSE 'Pending Release' END, cleared_at = CASE WHEN ? = 'Paid' THEN cleared_at ELSE NULL END, updated_at=NOW() WHERE id=?", [status, status, status, toInt(input.id)]);
@@ -1828,7 +1836,7 @@ const actions = {
 
   // Check release status (Pending Release | Released). Only a Paid payable can be Released; marking the same one again changes nothing.
   async set_payable_release(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
     const id = toInt(input.id);
     const released = input.release_status === 'Released';
@@ -1842,14 +1850,14 @@ const actions = {
 
   // Bank cleared a released check: it leaves Released Check Monitoring in Main (the payable keeps its Released status).
   async clear_released_payable(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/main');
     await ensurePayablesTable();
     const n = await exec("UPDATE running_payables SET cleared_at = NOW() WHERE id = ? AND status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL", [toInt(input.id)]);
     return { ok: true, message: n ? 'Marked cleared. Removed from Released Check Monitoring.' : 'Already cleared.' };
   },
 
   async delete_payable(input, auth) {
-    requirePayablesAdmin(auth);
+    await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
     await exec('DELETE FROM running_payables WHERE id=?', [toInt(input.id)]);
     return { ok: true, message: 'Payable deleted.' };

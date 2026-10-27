@@ -132,10 +132,12 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const inPayables = location.pathname.startsWith('/payables');
-  const showModuleToggle = !!user?.is_admin && !isExecutive(user) && !isStaff(user) && !isAccounting(user);
+  // Admin always has both modules; other roles get the Payables tab only when Sidebar access gives them a Payables page
+  const payablesPages = ['/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles'].filter((p) => navAllowed(user, p));
+  const showModuleToggle = user?.role === 'admin' || payablesPages.length > 0;
   function switchModule(mod) {
     if (mod === 'payables') {
-      navigate('/payables/cash-position'); // Payables always opens on Cash Position
+      navigate(payablesPages[0] || '/payables/cash-position'); // Payables opens on Cash Position (or the first page this person may use)
     } else {
       navigate('/');
     }
