@@ -19,6 +19,7 @@ import Settings from './pages/Settings';
 import Branches from './pages/Branches';
 import Users from './pages/Users';
 import PayablesPage from './pages/PayablesPage';
+import AccountTitles from './pages/AccountTitles';
 import RunningPayables from './pages/RunningPayables';
 import PaymentRecord from './pages/PaymentRecord';
 import { isExecutive, isStaff } from './utils';
@@ -93,6 +94,7 @@ function Gate() {
         <Route path="/payables/main" element={<PayablesPage title="Main" note="Automatic figures that can be edited: released checks, bank balances and net fund." />} />
         <Route path="/payables/running" element={<RunningPayables />} />
         <Route path="/payables/record" element={<PaymentRecord />} />
+        <Route path="/payables/titles" element={<AccountTitles />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

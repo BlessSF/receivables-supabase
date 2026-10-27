@@ -4,7 +4,6 @@ import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
-import AccountTitlesModal from '../AccountTitlesModal';
 
 const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const blankRow = (date = '') => ({ k: Math.random().toString(36).slice(2), check_date: date, payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' });
@@ -16,7 +15,6 @@ export default function PaymentRecord() {
   const [recent, setRecent] = useState(null);
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [manage, setManage] = useState(false);
 
   function loadRecent() {
     return api.getPayables().then((r) => {
@@ -64,7 +62,7 @@ export default function PaymentRecord() {
               <tr>
                 <th>Check date</th>
                 <th>Payee</th>
-                <th>Account title <button type="button" className="pay-link-btn" onClick={() => setManage(true)}>Manage</button></th>
+                <th>Account title <Link className="pay-link-btn" to="/payables/titles">Manage</Link></th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
                 <th>Note</th>
@@ -101,7 +99,6 @@ export default function PaymentRecord() {
         </div>
       </div>
 
-      {manage && <AccountTitlesModal titles={categories} onClose={() => setManage(false)} onSaved={(t) => { setCategories(t); setManage(false); setFlash({ type: 'success', msg: 'Account titles saved.' }); }} />}
 
       <div className="panel">
         <h2>Recently added</h2>

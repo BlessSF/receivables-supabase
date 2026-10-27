@@ -3,7 +3,6 @@ import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
-import AccountTitlesModal from '../AccountTitlesModal';
 
 const BLANK = { id: null, check_date: '', payee: '', category: 'Other', amount: '', status: 'Unpaid', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -20,7 +19,6 @@ export default function RunningPayables() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
-  const [manage, setManage] = useState(false);
 
   function load() {
     return api.getPayables()
@@ -94,7 +92,6 @@ export default function RunningPayables() {
           <div className="subtitle">Every check and payable to release. The Unpaid total is your running payables figure.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="btn btn-secondary" onClick={() => setManage(true)}>Account titles</button>
           <button type="button" className="btn" onClick={() => { setFlash(null); setForm({ ...BLANK, check_date: today }); }}>+ Add payable</button>
         </div>
       </div>
@@ -203,7 +200,6 @@ export default function RunningPayables() {
         </div>
       </div>
 
-      {manage && <AccountTitlesModal titles={categories} onClose={() => setManage(false)} onSaved={(t) => { setCategories(t); setManage(false); setFlash({ type: 'success', msg: 'Account titles saved.' }); }} />}
 
       {form && (
         <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setForm(null); }}>
