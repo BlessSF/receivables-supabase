@@ -1422,3 +1422,19 @@ select.rec-input { min-width: 112px; }
 .mf-list li.mf-dup { opacity: .6; }
 .pay-tab { white-space: nowrap; }
 .pay-tabs { max-width: 100%; overflow-x: auto; }
+
+/* Running Payables: status pills + icon actions */
+.pay-pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 999px; padding: 4px 11px 4px 8px; font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer; transition: background .15s, box-shadow .15s, transform .1s; }
+.pay-pill:hover { box-shadow: 0 1px 4px rgba(30, 41, 59, 0.18); }
+.pay-pill:active { transform: scale(0.97); }
+.pay-pill.is-paid { background: #e4f5ee; color: #1c7a58; border-color: #bfe6d5; }
+.pay-pill.is-unpaid { background: #fdf1d9; color: #9a5f12; border-color: #f0d9a8; }
+.pay-pill.is-released { background: #e3edfb; color: #2a56b0; border-color: #bfd2f2; }
+.pay-pill.is-pending { background: #eef0f3; color: #5b6573; border-color: #d9dee5; }
+.pay-pill.pay-rel-off { opacity: .5; }
+.pay-actions { display: inline-flex; gap: 6px; }
+.pay-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: #475569; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.pay-icon-btn svg { width: 16px; height: 16px; }
+.pay-icon-btn:hover { background: #eef3fb; color: #2a56b0; border-color: #bfd2f2; }
+.pay-icon-btn.danger { color: #c4382a; border-color: #f1c9c4; }
+.pay-icon-btn.danger:hover { background: #fdf1ef; color: #a52b1f; border-color: #e7a89f; }

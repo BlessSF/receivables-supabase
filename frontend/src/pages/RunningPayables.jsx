@@ -4,6 +4,13 @@ import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
 import TitleNameSelect from '../TitleNameSelect';
 import LongDateInput from '../LongDateInput';
+import { IconEdit, IconTrash } from '../icons';
+
+const PillIcon = ({ kind }) => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {kind === 'done' ? <path d="m5 12.5 4.5 4.5L19 7.5" /> : <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>}
+  </svg>
+);
 
 const BLANK = { id: null, check_date: '', payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', release_status: 'Pending Release', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -189,21 +196,23 @@ export default function RunningPayables() {
                     <td>{r.title_name || '—'}</td>
                     <td className="num text-right">{peso(r.amount)}</td>
                     <td>
-                      <button type="button" className={`badge pay-status ${r.status === 'Paid' ? 'badge-success' : 'badge-warning'}`} onClick={() => toggleStatus(r)} title={r.status === 'Paid' ? 'Click to mark Unpaid' : 'Click to mark Paid'}>
-                        {r.status}
+                      <button type="button" className={`pay-pill ${r.status === 'Paid' ? 'is-paid' : 'is-unpaid'}`} onClick={() => toggleStatus(r)} title={r.status === 'Paid' ? 'Paid · click to mark Unpaid' : 'Unpaid · click to mark Paid'}>
+                        <PillIcon kind={r.status === 'Paid' ? 'done' : 'wait'} />{r.status}
                       </button>
                     </td>
                     <td>
-                      <button type="button" className={`badge pay-status ${r.release_status === 'Released' ? 'badge-success' : 'badge-secondary'} ${r.status !== 'Paid' ? 'pay-rel-off' : ''}`} onClick={() => toggleRelease(r)}
-                        title={r.status !== 'Paid' ? 'Mark it Paid first' : r.release_status === 'Released' ? 'Click to mark Pending Release' : 'Click to mark Released'}>
-                        {r.release_status === 'Released' ? 'Released' : 'Pending Release'}
+                      <button type="button" className={`pay-pill ${r.release_status === 'Released' ? 'is-released' : 'is-pending'} ${r.status !== 'Paid' ? 'pay-rel-off' : ''}`} onClick={() => toggleRelease(r)}
+                        title={r.status !== 'Paid' ? 'Mark it Paid first' : r.release_status === 'Released' ? 'Released · click to mark Pending Release' : 'Pending Release · click to mark Released'}>
+                        <PillIcon kind={r.release_status === 'Released' ? 'done' : 'wait'} />{r.release_status === 'Released' ? 'Released' : 'Pending Release'}
                       </button>
                       {r.release_status === 'Released' && r.cleared_at && <span className="pay-cleared">cleared</span>}
                     </td>
                     <td className="pay-note">{r.note || ''}</td>
                     <td className="nowrap">
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFlash(null); setForm({ ...BLANK, ...r, amount: String(Number(r.amount)), note: r.note || '', check_date: r.check_date || '' }); }}>Edit</button>{' '}
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(r)}>Delete</button>
+                      <div className="pay-actions">
+                        <button type="button" className="pay-icon-btn" aria-label="Edit" title="Edit" onClick={() => { setFlash(null); setForm({ ...BLANK, ...r, amount: String(Number(r.amount)), note: r.note || '', check_date: r.check_date || '' }); }}><IconEdit /></button>
+                        <button type="button" className="pay-icon-btn danger" aria-label="Delete" title="Delete" onClick={() => remove(r)}><IconTrash /></button>
+                      </div>
                     </td>
                   </tr>
                 );
