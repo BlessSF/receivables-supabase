@@ -83,7 +83,7 @@ export default function PaymentRecord() {
                       {[...new Set([...categories, r.category])].map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
-                  <td style={{ minWidth: 200 }}><TitleNameSelect className="select-inline rec-input" category={r.category} value={r.title_name} onChange={(v) => set(r.k, { title_name: v })} titleNames={titleNames} /></td>
+                  <td style={{ minWidth: 200 }}><TitleNameSelect className="rec-input" category={r.category} value={r.title_name} onChange={(v) => set(r.k, { title_name: v })} titleNames={titleNames} /></td>
                   <td style={{ minWidth: 130 }}><MoneyInput className="rec-input rec-amount" value={r.amount} onChange={(v) => set(r.k, { amount: v })} placeholder="0.00" /></td>
                   <td>
                     <select className="select-inline rec-input" value={r.status} onChange={(e) => set(r.k, { status: e.target.value })}>
