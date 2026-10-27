@@ -85,7 +85,7 @@ const STAFF_NAV_GROUPS = [
       { to: '/hmos', label: 'HMOs', Icon: IconHeart },
       { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
       { to: '/billing', label: 'Billing', Icon: IconReceipt },
-      { to: '/ledger', label: 'Ledger', Icon: IconTable },
+      { to: '/ledger', label: 'Ledger', Icon: IconTable},
     ],
   },
 ];
@@ -135,17 +135,11 @@ export default function Layout() {
   const showModuleToggle = !!user?.is_admin && !isExecutive(user) && !isStaff(user);
   function switchModule(mod) {
     if (mod === 'payables') {
-      let last = '/payables/cash-position';
-      try { last = localStorage.getItem('rv_last_payables_path') || last; } catch { /* ignore */ }
-      navigate(last);
+      navigate('/payables/cash-position'); // Payables always opens on Cash Position
     } else {
       navigate('/');
     }
   }
-  useEffect(() => {
-    if (!inPayables) return;
-    try { localStorage.setItem('rv_last_payables_path', location.pathname); } catch { /* ignore */ }
-  }, [inPayables, location.pathname]);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('rv_sidebar_collapsed') === '1'; } catch { return false; }
   });
@@ -255,3 +249,4 @@ export default function Layout() {
     </div>
   );
 }
+/*for changening */
