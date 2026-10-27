@@ -1438,3 +1438,29 @@ select.rec-input { min-width: 112px; }
 .pay-icon-btn:hover { background: #eef3fb; color: #2a56b0; border-color: #bfd2f2; }
 .pay-icon-btn.danger { color: #c4382a; border-color: #f1c9c4; }
 .pay-icon-btn.danger:hover { background: #fdf1ef; color: #a52b1f; border-color: #e7a89f; }
+
+/* ---------- Cash Position ---------- */
+.cp-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cp-bars h2 { margin-bottom: 12px; }
+.cp-bars ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cp-bars li { display: grid; grid-template-columns: 170px 1fr 150px; align-items: center; gap: 12px; }
+.cp-bar-label { font-size: 13.5px; color: #334155; }
+.cp-bar-track { height: 10px; border-radius: 999px; background: #eceef1; overflow: hidden; }
+.cp-bar { display: block; height: 100%; border-radius: 999px; }
+.cp-bar.cash { background: #3b6fd4; } .cp-bar.in { background: #2fb585; } .cp-bar.in2 { background: #8fd5bb; }
+.cp-bar.out { background: #e2a03a; } .cp-bar.out2 { background: #b97a1c; }
+.cp-bar-val { text-align: right; font-size: 14px; font-weight: 600; font-variant-numeric: lining-nums; }
+.cp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.cp-note { margin: 12px 0 0; }
+.cp-split { height: 8px; margin-top: 14px; border-radius: 999px; background: #8fd5bb; overflow: hidden; }
+.cp-split i { display: block; height: 100%; background: #2fb585; }
+.cp-split-key { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--slate); }
+.cp-edit { margin-left: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #1c8a62; }
+.cp-future { list-style: none; margin: 8px 0 10px; padding: 0; display: grid; gap: 8px; }
+.cp-future li { display: grid; grid-template-columns: 1fr 34px 120px auto; gap: 6px; align-items: center; }
+.cp-future li.at-empty { display: block; text-align: center; padding: 10px; }
+.cp-future .mf-in { width: 100%; }
+.cp-sign { height: 38px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff; font-size: 18px; line-height: 1; color: #1c8a62; cursor: pointer; }
+.cp-sign.neg { color: #c4382a; }
+@media (max-width: 1200px) { .cp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .cp-hero { grid-template-columns: 1fr; } .cp-bars li { grid-template-columns: 1fr 110px; } .cp-bars .cp-bar-track { grid-column: 1 / -1; grid-row: 2; } }

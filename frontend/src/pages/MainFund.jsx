@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
+import { computeMain } from '../mainCalc';
 
 const num = (v) => Number(rawNum(v)) || 0;
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
@@ -63,23 +64,7 @@ export default function MainFund() {
   }
   useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) flush(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const calc = useMemo(() => {
-    if (!f) return null;
-    // a typed check that is the same payee + amount as a released payable is not counted twice
-    const key = (n, a) => `${String(n).trim().toLowerCase()}|${Number(a).toFixed(2)}`;
-    const linkedKeys = new Set(linked.map((c) => key(c.payee, c.amount)));
-    const dupIds = new Set(f.checks.filter((c) => linkedKeys.has(key(c.name, num(c.amount)))).map((c) => c.id));
-    const linkedTotal = linked.reduce((t, c) => t + c.amount, 0);
-    const manualTotal = f.checks.reduce((t, c) => (dupIds.has(c.id) ? t : t + num(c.amount)), 0);
-    const checksTotal = linkedTotal + manualTotal;
-    const checksCount = linked.length + f.checks.length - dupIds.size;
-    const available = num(f.passbook) - checksTotal;
-    const excess = available + num(f.deposit) - running;
-    const pulls = f.pull.reduce((t, p) => t + num(p.amount), 0);
-    const after = num(f.aub) + excess - pulls;
-    const total = after + num(f.receivables);
-    return { checksTotal, checksCount, dupIds, linkedKeys, available, excess, pulls, after, total };
-  }, [f, running, linked]);
+  const calc = useMemo(() => (f ? computeMain(toData(f), linked, running) : null), [f, running, linked]);
 
   if (!f || !calc) {
     return (

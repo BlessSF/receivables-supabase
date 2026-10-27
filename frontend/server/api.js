@@ -8,7 +8,7 @@ import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { monthKey, addMonthsKey } from './dates.js';
+import { monthKey, addMonthsKey, currentMonthKey } from './dates.js';
 import { DEFAULT_TERMS_MONTHS } from './monthly.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
@@ -250,6 +250,18 @@ function cleanMainFund(src) {
 }
 async function getMainFund() {
   try { return cleanMainFund(JSON.parse(await getSetting('main_fund', '{}'))); } catch { return cleanMainFund({}); }
+}
+
+// ---------------------------------------------------------------- CASH POSITION -- future payables are hand-typed and live in app_settings
+function cleanFuture(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 100).map((x, i) => ({
+    id: trim(x?.id ?? '').slice(0, 40) || `f${Date.now().toString(36)}${i}`,
+    label: trim(x?.label ?? '').replace(/\s+/g, ' ').slice(0, 120),
+    amount: money2(x?.amount), // may be negative (a deduction)
+  })).filter((x) => x.label || x.amount);
+}
+async function getCashPositionSettings() {
+  try { const o = JSON.parse(await getSetting('cash_position', '{}')); return { future: cleanFuture(o?.future) }; } catch { return { future: [] }; }
 }
 
 const actions = {
@@ -1660,6 +1672,37 @@ const actions = {
     data.updated_at = todayYmd();
     await setSetting('main_fund', JSON.stringify(data));
     return { ok: true, data };
+  },
+
+  // ---------------------------------------------------------------- CASH POSITION
+  async get_cash_position(input, auth) {
+    requirePayablesAdmin(auth);
+    await ensurePayablesTable();
+    const [bw, bp] = branchWhere(auth, 'c');
+    // receivables, split with the same due rule as Reports by Month: its own Due Date, else Period Date + 3 months
+    const rows = await all(`SELECT l.balance, l.period_date, l.due_date FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0.009 ${bw}`, bp);
+    const nowKey = currentMonthKey();
+    const rec = { due: 0, due_count: 0, not_yet: 0, not_yet_count: 0, unplaced: 0, unplaced_count: 0 };
+    for (const r of rows) {
+      const bal = toFloat(r.balance);
+      const pk = monthKey(r.period_date);
+      const dueKey = r.due_date ? monthKey(r.due_date) : (pk ? addMonthsKey(pk, DEFAULT_TERMS_MONTHS) : null);
+      if (!dueKey) { rec.unplaced += bal; rec.unplaced_count++; rec.not_yet += bal; rec.not_yet_count++; continue; }
+      if (dueKey <= nowKey) { rec.due += bal; rec.due_count++; } else { rec.not_yet += bal; rec.not_yet_count++; }
+    }
+    const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
+    const released = await all(
+      `SELECT id, payee, amount FROM running_payables WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL`);
+    return { ok: true, as_of: todayYmd(), receivables: rec, main: await getMainFund(), future: (await getCashPositionSettings()).future,
+      running_payables: toFloat(row?.total), running_count: toInt(row?.n),
+      released_payables: released.map((r) => ({ id: toInt(r.id), payee: r.payee, amount: toFloat(r.amount) })) };
+  },
+
+  async save_cash_position(input, auth) {
+    requirePayablesAdmin(auth);
+    const future = cleanFuture(input.future);
+    await setSetting('cash_position', JSON.stringify({ future }));
+    return { ok: true, future };
   },
 
   async save_account_titles(input, auth) {

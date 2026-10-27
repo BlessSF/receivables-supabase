@@ -108,6 +108,8 @@ export const api = {
   // monitoring
   // payables (admin)
   getPayables: () => call('get_payables'),
+  getCashPosition: () => call('get_cash_position'),
+  saveCashPosition: (future) => call('save_cash_position', { method: 'POST', body: { future } }),
   getMainFund: () => call('get_main_fund'),
   saveMainFund: (data) => call('save_main_fund', { method: 'POST', body: { data } }),
   savePayable: (body) => call('save_payable', { method: 'POST', body }),
