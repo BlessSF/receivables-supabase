@@ -1420,3 +1420,5 @@ select.rec-input { min-width: 112px; }
 .mf-list li.mf-linked .mf-linkamt { text-align: right; font-size: 14px; padding-right: 12px; font-variant-numeric: lining-nums; }
 .mf-clear { font-size: 12px; padding: 4px 10px; }
 .mf-list li.mf-dup { opacity: .6; }
+.pay-tab { white-space: nowrap; }
+.pay-tabs { max-width: 100%; overflow-x: auto; }

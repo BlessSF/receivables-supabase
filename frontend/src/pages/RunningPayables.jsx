@@ -17,11 +17,10 @@ export default function RunningPayables() {
   const [flash, setFlash] = useState(null);
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState('All'); // All | Paid | Unpaid
+  const [tab, setTab] = useState('All'); // All | Paid | Unpaid | Released | Pending Release
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
-  const [rel, setRel] = useState(''); // '' | Pending Release | Released
 
   function load() {
     return api.getPayables()
@@ -50,12 +49,11 @@ export default function RunningPayables() {
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (rows || []).filter((r) =>
-      (tab === 'All' || r.status === tab) &&
-      (!rel || r.release_status === rel) &&
+      (tab === 'All' || (tab === 'Released' || tab === 'Pending Release' ? (r.release_status === 'Released') === (tab === 'Released') : r.status === tab)) &&
       (!cat || r.category === cat) &&
       (!month || (r.check_date || '').startsWith(month)) &&
       (!needle || r.payee.toLowerCase().includes(needle) || (r.title_name || '').toLowerCase().includes(needle) || (r.note || '').toLowerCase().includes(needle)));
-  }, [rows, tab, q, cat, month, rel]);
+  }, [rows, tab, q, cat, month]);
 
   async function toggleRelease(r) {
     if (r.status !== 'Paid') { setFlash({ type: 'error', msg: 'Mark it Paid first. Only a paid check can be released.' }); return; }
@@ -94,6 +92,8 @@ export default function RunningPayables() {
     ['All', (rows || []).length],
     ['Paid', stats.paid.length],
     ['Unpaid', stats.unpaid.length],
+    ['Released', (rows || []).filter((r) => r.release_status === 'Released').length],
+    ['Pending Release', (rows || []).filter((r) => r.release_status !== 'Released').length],
   ];
 
   return (
@@ -143,11 +143,6 @@ export default function RunningPayables() {
             ))}
           </div>
           <div className="pay-filters">
-            <select className="select-inline" value={rel} onChange={(e) => setRel(e.target.value)} aria-label="Check release">
-              <option value="">All check releases</option>
-              <option value="Pending Release">Pending Release ({(rows || []).filter((r) => r.release_status !== 'Released').length})</option>
-              <option value="Released">Released ({(rows || []).filter((r) => r.release_status === 'Released').length})</option>
-            </select>
             <label className="table-search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search payee, name or note…" />
