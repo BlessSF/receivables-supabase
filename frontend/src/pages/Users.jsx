@@ -2,8 +2,91 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 
-const ROLE_LABEL = { admin: 'Admin', staff: 'Staff', branch: 'Branch', executive: 'Executive' };
-const ROLE_BADGE = { admin: 'badge-info', staff: 'badge-success', branch: 'badge-secondary', executive: 'badge-warning' };
+const ROLE_LABEL = { admin: 'Admin', accounting: 'Accounting', staff: 'Staff', branch: 'Branch', executive: 'Executive' };
+const ROLE_BADGE = { admin: 'badge-info', accounting: 'badge-info', staff: 'badge-success', branch: 'badge-secondary', executive: 'badge-warning' };
+const MANAGED = ['staff', 'accounting']; // roles that can be edited / deleted on this page
+
+const PAGE_LABEL = {
+  '/': 'Dashboard', '/summary': 'Summary', '/reports-by-month': 'Reports by Month', '/companies': 'Companies', '/hmos': 'HMOs',
+  '/company-charges': 'Company Charges', '/billing': 'Billing', '/ledger': 'Ledger', '/aging': 'Aging Report',
+  '/past-due': 'Past Due', '/soa-tracker': 'SOA Tracker', '/monitoring': 'Monitoring',
+};
+const ACCESS_ROLES = [['accounting', 'Accounting'], ['staff', 'Staff'], ['executive', 'Executive'], ['branch', 'Branch']];
+
+/** Which sidebar pages each role can open. Only Admin and Executive see this. */
+function SidebarAccess() {
+  const { refreshUser } = useAuth();
+  const [d, setD] = useState(null);
+  const [access, setAccess] = useState({});
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getNavAccess().then((r) => { setD(r.data); setAccess(r.data.access); }).catch((e) => setMsg({ type: 'error', msg: e.message }));
+  }, []);
+
+  function toggle(role, path) {
+    setMsg(null);
+    setAccess((a) => {
+      const cur = a[role] || [];
+      return { ...a, [role]: cur.includes(path) ? cur.filter((p) => p !== path) : [...cur, path] };
+    });
+  }
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveNavAccess(access);
+      setAccess(r.data.access);
+      setMsg({ type: 'success', msg: 'Sidebar access saved. People see the change the next time they open or refresh the page.' });
+      refreshUser();
+    } catch (ex) { setMsg({ type: 'error', msg: ex.message }); }
+    setBusy(false);
+  }
+
+  if (!d) return msg ? <div className={`flash flash-${msg.type}`}>{msg.msg}</div> : null;
+  return (
+    <div className="panel">
+      <h2>Sidebar access</h2>
+      <div className="subtitle" style={{ margin: '0 24px 12px' }}>
+        Tick the pages each role sees in the sidebar. Admin always sees everything. A dash (—) means that role cannot use the page at all.
+      </div>
+      {msg && <div className={`flash flash-${msg.type}`} style={{ margin: '0 24px 12px' }}>{msg.msg}</div>}
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr><th>Page</th>{ACCESS_ROLES.map(([r, l]) => <th key={r} className="text-center">{l}</th>)}</tr>
+          </thead>
+          <tbody>
+            {d.pages.map((path) => (
+              <tr key={path}>
+                <td><strong>{PAGE_LABEL[path] || path}</strong></td>
+                {ACCESS_ROLES.map(([r]) => {
+                  const inBase = (d.base[r] || []).includes(path);
+                  return (
+                    <td key={r} className="text-center">
+                      {!inBase ? <span style={{ color: 'var(--slate)' }}>—</span> : (
+                        <input
+                          type="checkbox"
+                          checked={path === '/' || (access[r] || []).includes(path)}
+                          disabled={path === '/'}
+                          onChange={() => toggle(r, path)}
+                          aria-label={`${PAGE_LABEL[path]} for ${r}`}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save sidebar access'}</button>
+      </div>
+    </div>
+  );
+}
 
 function PasswordInput({ value, onChange, placeholder, autoComplete = 'new-password' }) {
   const [show, setShow] = useState(false);
@@ -79,7 +162,7 @@ export default function Users() {
   }
 
   async function remove(u) {
-    if (!window.confirm(`Delete the staff account "${u.username}"? They will be logged out and can no longer sign in.`)) return;
+    if (!window.confirm(`Delete the account "${u.username}"? They will be logged out and can no longer sign in.`)) return;
     setFlash(null);
     try {
       const r = await api.deleteUser(u.id);
@@ -101,7 +184,7 @@ export default function Users() {
       <div className="page-header">
         <div>
           <h1>Users</h1>
-          <div className="subtitle">Create Admin or Staff accounts. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
+          <div className="subtitle">Create Admin, Accounting or Staff accounts. Accounting can use everything in Receivables except Users, Branches, Settings and Payables. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
         </div>
       </div>
 
@@ -135,6 +218,7 @@ export default function Users() {
               <label>Role</label>
               <select value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="staff">Staff</option>
+                <option value="accounting">Accounting</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -146,7 +230,7 @@ export default function Users() {
       </div>
 
       <div className="panel">
-        <h2>All users <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--slate)' }}>· {staffCount} staff</span></h2>
+        <h2>All users <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--slate)' }}>· {staffCount} staff · {users.filter((u) => u.role === 'accounting').length} accounting</span></h2>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -154,7 +238,7 @@ export default function Users() {
             </thead>
             <tbody>
               {users.map((u) => {
-                const isStaffRow = u.role === 'staff';
+                const isStaffRow = MANAGED.includes(u.role);
                 const editing = editId === u.id;
                 return (
                   <tr key={u.id}>
@@ -190,6 +274,8 @@ export default function Users() {
           </table>
         </div>
       </div>
+
+      <SidebarAccess />
     </div>
   );
 }

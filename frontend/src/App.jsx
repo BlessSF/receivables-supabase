@@ -23,7 +23,7 @@ import MainFund from './pages/MainFund';
 import AccountTitles from './pages/AccountTitles';
 import RunningPayables from './pages/RunningPayables';
 import PaymentRecord from './pages/PaymentRecord';
-import { isExecutive, isStaff } from './utils';
+import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 
 function Gate() {
   const { user } = useAuth();
@@ -35,17 +35,20 @@ function Gate() {
     return <Login />;
   }
 
+  // A page the person's sidebar access has switched off sends them back to the dashboard
+  const g = (path, el) => (navAllowed(user, path) ? el : <Navigate to="/" replace />);
+
   // Owner / accounting accounts: report pages only
   if (isExecutive(user)) {
     return (
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<ExecDashboard />} />
-          <Route path="/summary" element={<Summary />} />
-          <Route path="/past-due" element={<PastDue />} />
-          <Route path="/aging" element={<Aging />} />
-          <Route path="/reports-by-month" element={<MonthlyReport />} />
-          <Route path="/ledger" element={<Ledger />} />
+          <Route path="/summary" element={g("/summary", <Summary />)} />
+          <Route path="/past-due" element={g("/past-due", <PastDue />)} />
+          <Route path="/aging" element={g("/aging", <Aging />)} />
+          <Route path="/reports-by-month" element={g("/reports-by-month", <MonthlyReport />)} />
+          <Route path="/ledger" element={g("/ledger", <Ledger />)} />
           <Route path="/users" element={<Users />} />
           <Route path="/branches" element={<Branches />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -60,12 +63,35 @@ function Gate() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/companies" element={<Companies />} />
-          <Route path="/hmos" element={<Hmos />} />
-          <Route path="/company-charges" element={<CompanyCharges />} />
-          <Route path="/billing" element={<Billing />} />
-          <Route path="/ledger" element={<Ledger />} />
-          <Route path="/reports-by-month" element={<MonthlyReport />} />
+          <Route path="/companies" element={g("/companies", <Companies />)} />
+          <Route path="/hmos" element={g("/hmos", <Hmos />)} />
+          <Route path="/company-charges" element={g("/company-charges", <CompanyCharges />)} />
+          <Route path="/billing" element={g("/billing", <Billing />)} />
+          <Route path="/ledger" element={g("/ledger", <Ledger />)} />
+          <Route path="/reports-by-month" element={g("/reports-by-month", <MonthlyReport />)} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
+
+  // Accounting accounts: all of Receivables, but not Users, Branches, Settings or Payables
+  if (isAccounting(user)) {
+    return (
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/summary" element={g("/summary", <Summary />)} />
+          <Route path="/reports-by-month" element={g("/reports-by-month", <MonthlyReport />)} />
+          <Route path="/companies" element={g("/companies", <Companies />)} />
+          <Route path="/hmos" element={g("/hmos", <Hmos />)} />
+          <Route path="/company-charges" element={g("/company-charges", <CompanyCharges />)} />
+          <Route path="/billing" element={g("/billing", <Billing />)} />
+          <Route path="/ledger" element={g("/ledger", <Ledger />)} />
+          <Route path="/aging" element={g("/aging", <Aging />)} />
+          <Route path="/past-due" element={g("/past-due", <PastDue />)} />
+          <Route path="/soa-tracker" element={g("/soa-tracker", <SoaTracker />)} />
+          <Route path="/monitoring" element={g("/monitoring", <Monitoring />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -76,17 +102,17 @@ function Gate() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/summary" element={<Summary />} />
-        <Route path="/reports-by-month" element={<MonthlyReport />} />
-        <Route path="/companies" element={<Companies />} />
-        <Route path="/hmos" element={<Hmos />} />
-          <Route path="/company-charges" element={<CompanyCharges />} />
-        <Route path="/billing" element={<Billing />} />
-        <Route path="/ledger" element={<Ledger />} />
-        <Route path="/aging" element={<Aging />} />
-        <Route path="/past-due" element={<PastDue />} />
-        <Route path="/soa-tracker" element={<SoaTracker />} />
-        <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/summary" element={g("/summary", <Summary />)} />
+        <Route path="/reports-by-month" element={g("/reports-by-month", <MonthlyReport />)} />
+        <Route path="/companies" element={g("/companies", <Companies />)} />
+        <Route path="/hmos" element={g("/hmos", <Hmos />)} />
+          <Route path="/company-charges" element={g("/company-charges", <CompanyCharges />)} />
+        <Route path="/billing" element={g("/billing", <Billing />)} />
+        <Route path="/ledger" element={g("/ledger", <Ledger />)} />
+        <Route path="/aging" element={g("/aging", <Aging />)} />
+        <Route path="/past-due" element={g("/past-due", <PastDue />)} />
+        <Route path="/soa-tracker" element={g("/soa-tracker", <SoaTracker />)} />
+        <Route path="/monitoring" element={g("/monitoring", <Monitoring />)} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<Users />} />
         <Route path="/branches" element={<Branches />} />

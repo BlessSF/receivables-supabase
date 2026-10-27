@@ -26,11 +26,36 @@ const STATUSES = ['ACTIVE', 'INACTIVE', 'BANKRUPT'];
 const isSet = (v) => v !== undefined && v !== null;
 const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 
-function userPayload(u) {
+// Sidebar pages a role may be given (Settings > Users > Sidebar access). Admin always sees everything.
+// A role can only be switched on/off inside its own list; pages outside it stay closed for that role.
+const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring'];
+const NAV_BASE = {
+  accounting: NAV_PAGES,
+  branch: NAV_PAGES,
+  staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
+  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger'],
+};
+
+async function getNavAccess() {
+  let saved = {};
+  try { saved = JSON.parse(await getSetting('nav_access', '{}')) || {}; } catch { saved = {}; }
+  const out = {};
+  for (const role of Object.keys(NAV_BASE)) {
+    const base = NAV_BASE[role];
+    out[role] = Array.isArray(saved[role]) ? base.filter((p) => p === '/' || saved[role].includes(p)) : base.slice();
+  }
+  return out;
+}
+
+async function userPayload(u) {
   if (!u) return null;
+  const access = u.role === 'admin' ? null : (await getNavAccess())[u.role] || null;
   return {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
-    is_admin: u.role === 'admin',
+    nav_access: access,
+    // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
+    is_admin: u.role === 'admin' || u.role === 'accounting',
+    is_accounting: u.role === 'accounting',
     is_executive: u.role === 'executive',
     is_staff: u.role === 'staff',
   };
@@ -52,7 +77,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
-  'get_branch_sites', 'save_branch_sites',
+  'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access',
 ]);
 
 function recalcRow(d) {
@@ -693,7 +718,7 @@ const actions = {
   async get_branches(input, auth) {
     const branches = await all(`SELECT username, full_name FROM users WHERE role = 'branch' ORDER BY UPPER(username) COLLATE "C" ASC`);
     const stats = {};
-    if (auth.isAdmin()) {
+    if (auth.isAdmin() || auth.isAccounting()) {
       const rows = await all(
         `SELECT c.branch, COUNT(DISTINCT c.id) AS company_count, COALESCE(SUM(l.balance),0) AS outstanding
          FROM companies c LEFT JOIN ledger_entries l ON l.company_id = c.id
@@ -991,8 +1016,8 @@ const actions = {
 
   async delete_ledger(input, auth) {
     // Only Admin and Executive accounts may delete ledger data. Staff and Branch accounts may not.
-    if (!auth.isAdmin() && !auth.isExecutive()) {
-      jsonExit({ ok: false, error: 'Only Admin and Executive accounts can delete ledger entries.' }, 403);
+    if (!auth.isAdmin() && !auth.isExecutive() && !auth.isAccounting()) {
+      jsonExit({ ok: false, error: 'Only Admin, Accounting and Executive accounts can delete ledger entries.' }, 403);
     }
     const id = toInt(input.id);
     const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id=?', [id]);
@@ -1559,7 +1584,7 @@ const actions = {
     const username = trim(input.username ?? '');
     const password = String(input.password ?? '');
     const fullName = elvis(trim(input.full_name ?? ''), username);
-    const role = input.role === 'admin' ? 'admin' : 'staff'; // admins and executives may add Admin or Staff accounts
+    const role = ['admin', 'accounting'].includes(input.role) ? input.role : 'staff'; // admins and executives may add Admin, Accounting or Staff accounts
     if (!/^[A-Za-z0-9._-]{3,50}$/.test(username)) {
       jsonExit({ ok: false, error: 'Username must be 3-50 characters: letters, numbers, dot, dash or underscore.' }, 400);
     }
@@ -1569,7 +1594,7 @@ const actions = {
     }
     const hash = await bcrypt.hash(password, 10);
     const id = await insertId('INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)', [username, hash, fullName, role]);
-    return { ok: true, id, message: `${role === 'admin' ? 'Admin' : 'Staff'} account "${username}" created.` };
+    return { ok: true, id, message: `${role === 'admin' ? 'Admin' : role === 'accounting' ? 'Accounting' : 'Staff'} account "${username}" created.` };
   },
 
   async update_user(input, auth) {
@@ -1577,7 +1602,7 @@ const actions = {
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
-    if (row.role !== 'staff') jsonExit({ ok: false, error: 'Only Staff accounts can be edited here.' }, 403);
+    if (!['staff', 'accounting'].includes(row.role)) jsonExit({ ok: false, error: 'Only Staff and Accounting accounts can be edited here.' }, 403);
     const fullName = elvis(trim(input.full_name ?? ''), row.username);
     const password = String(input.password ?? '');
     if (password !== '') {
@@ -1586,7 +1611,7 @@ const actions = {
     } else {
       await exec('UPDATE users SET full_name = ? WHERE id = ?', [fullName, id]);
     }
-    return { ok: true, message: `Staff account "${row.username}" updated.` };
+    return { ok: true, message: `Account "${row.username}" updated.` };
   },
 
   async delete_user(input, auth) {
@@ -1594,9 +1619,27 @@ const actions = {
     const id = toInt(input.id);
     const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
     if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
-    if (row.role !== 'staff') jsonExit({ ok: false, error: 'Only Staff accounts can be deleted here.' }, 403);
+    if (!['staff', 'accounting'].includes(row.role)) jsonExit({ ok: false, error: 'Only Staff and Accounting accounts can be deleted here.' }, 403);
     await exec('DELETE FROM users WHERE id = ?', [id]);
-    return { ok: true, message: `Staff account "${row.username}" deleted.` };
+    return { ok: true, message: `Account "${row.username}" deleted.` };
+  },
+
+  // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
+  async get_nav_access(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change sidebar access.' }, 403);
+    return { ok: true, data: { access: await getNavAccess(), base: NAV_BASE, pages: NAV_PAGES } };
+  },
+
+  async save_nav_access(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change sidebar access.' }, 403);
+    const raw = input.access && typeof input.access === 'object' ? input.access : {};
+    const clean = {};
+    for (const role of Object.keys(NAV_BASE)) {
+      const want = Array.isArray(raw[role]) ? raw[role] : NAV_BASE[role];
+      clean[role] = NAV_BASE[role].filter((p) => p === '/' || want.includes(p));
+    }
+    await setSetting('nav_access', JSON.stringify(clean));
+    return { ok: true, data: { access: await getNavAccess() }, message: 'Sidebar access saved.' };
   },
 
   // ---------------------------------------------------------------- MONITORING
@@ -1822,7 +1865,7 @@ async function saveCompany(input, auth, action) {
   const number = trim(input.contact_number ?? '');
   const email = trim(input.email_address ?? '');
   const remarks = trim(input.remarks ?? '');
-  const branch = auth.isAdmin() ? elvis(trim(input.branch ?? ''), null) : auth.branch();
+  const branch = (auth.isAdmin() || auth.isAccounting()) ? elvis(trim(input.branch ?? ''), null) : auth.branch();
 
   if (name === '') jsonExit({ ok: false, error: 'Company name is required.' }, 400);
 
@@ -1905,15 +1948,15 @@ export default async function handleApi(req, res) {
     // ---- public (no login needed)
     if (action === 'login') {
       const u = await attemptLogin(trim(input.username ?? ''), String(input.password ?? ''));
-      if (u) return sendJson(res, 200, { ok: true, user: userPayload(u) }, { 'Set-Cookie': sessionCookie(req, u) });
+      if (u) return sendJson(res, 200, { ok: true, user: await userPayload(u) }, { 'Set-Cookie': sessionCookie(req, u) });
       return sendJson(res, 401, { ok: false, error: 'Invalid username or password.' });
     }
     if (action === 'me') {
       // A deleted staff account must not stay logged in from an old cookie.
-      if (user?.role === 'staff' && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, 'staff'])) === '0') {
+      if (['staff', 'accounting'].includes(user?.role) && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, user.role])) === '0') {
         return sendJson(res, 200, { ok: true, user: null }, { 'Set-Cookie': clearCookie(req) });
       }
-      return sendJson(res, 200, { ok: true, user: userPayload(user) });
+      return sendJson(res, 200, { ok: true, user: await userPayload(user) });
     }
     if (action === 'logout') return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie(req) });
 
@@ -1934,8 +1977,15 @@ export default async function handleApi(req, res) {
         return sendJson(res, 403, { ok: false, error: 'Your staff account cannot do that.' });
       }
     }
+    // Accounting: re-check the account still exists (deleting it locks the person out at once).
+    if (user.role === 'accounting') {
+      const current = await one('SELECT role FROM users WHERE id = ?', [user.id]);
+      if (!current || current.role !== 'accounting') {
+        return sendJson(res, 401, { ok: false, error: 'Not logged in.' }, { 'Set-Cookie': clearCookie(req) });
+      }
+    }
     // The executive dashboard is for owner / accounting accounts only.
-    if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin') {
+    if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin' && user.role !== 'accounting') {
       return sendJson(res, 403, { ok: false, error: 'Not available for this account.' });
     }
 

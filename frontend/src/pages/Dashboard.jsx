@@ -439,7 +439,7 @@ export default function Dashboard() {
                 <span className="kpi-dark-right">Company Charges {peso(data.due_in.by_type.CHARGE || 0)}</span>
               </div>
             )}
-            {user?.is_admin && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
+            {user?.is_admin && !user?.is_accounting && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
           </div>
         )}
       </div>

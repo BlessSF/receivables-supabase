@@ -112,7 +112,9 @@ export function makeAuth(user) {
     // "staff" = office staff: sees every company's ledger, but may only edit
     // Payment Date, Check Ref and Paid (enforced in api.js).
     isStaff: () => role === 'staff',
+    // "accounting" = full Receivables access like an admin, but no Users, Branches, Settings or Payables.
+    isAccounting: () => role === 'accounting',
     // Admins, executives and staff see every branch; a branch account only its own (username).
-    branch: () => (!user ? null : role === 'admin' || role === 'executive' || role === 'staff' ? null : user.username),
+    branch: () => (!user ? null : role === 'admin' || role === 'executive' || role === 'staff' || role === 'accounting' ? null : user.username),
   };
 }

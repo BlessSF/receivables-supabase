@@ -93,6 +93,9 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Re-read the signed-in person (e.g. after sidebar access was changed)
+  const refreshUser = useCallback(() => api.me().then((r) => setUser(r.user)).catch(() => {}), []);
+
   async function logout() {
     await api.logout().catch(() => {});
     setNotice('');
@@ -100,7 +103,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, error, setError, notice }}>
+    <AuthContext.Provider value={{ user, refreshUser, login, logout, error, setError, notice }}>
       {children}
       {user && warnLeft !== null && (
         <div className="pm-backdrop idle-backdrop" role="alertdialog" aria-modal="true" aria-label="Session about to end">

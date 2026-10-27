@@ -115,6 +115,17 @@ export function coveredPeriodForBilling(billingDate, rules = DEFAULT_COVERED_RUL
   };
   return { from: at(rule.from_offset, rule.from_day), to: at(rule.to_offset, rule.to_day) };
 }
+/** Accounting accounts: everything in Receivables except Users, Branches, Settings and Payables. */
+export function isAccounting(user) {
+  return user?.role === 'accounting';
+}
+// Sidebar pages that can be switched on / off per role (Users > Sidebar access).
+export const NAV_PAGE_PATHS = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring'];
+/** May this person open this sidebar page? (Admin and anything not switchable is always yes.) */
+export function navAllowed(user, path) {
+  if (!user?.nav_access || !NAV_PAGE_PATHS.includes(path)) return true;
+  return path === '/' || user.nav_access.includes(path);
+}
 /** Staff accounts: see every company's ledger, edit only Payment Date, Check Ref and Paid. */
 export function isStaff(user) {
   return user?.role === 'staff';
