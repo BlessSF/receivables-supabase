@@ -1477,3 +1477,9 @@ select.rec-input { min-width: 112px; }
 .cp-split ~ .dash-due-link { margin-top: 8px; }
 .mf-date { flex: 1; min-width: 0; }
 .mf-date input { width: 100%; }
+.kpi-dark-card.accent-orange .kpi-dark-fill { background: #e0763a; }
+.kpi-dark-card.accent-orange .kpi-dark-footer .kpi-dark-left { color: #b2531a; }
+/* six cards: three per row on laptops, one row on wide screens */
+.kpi-dark-grid:has(> .kpi-dark-card:nth-child(6)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 1700px) { .kpi-dark-grid:has(> .kpi-dark-card:nth-child(6)) { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .kpi-dark-grid:has(> .kpi-dark-card:nth-child(6)) { grid-template-columns: 1fr; } }

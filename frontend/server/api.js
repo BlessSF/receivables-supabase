@@ -373,12 +373,14 @@ const actions = {
 
     const period = blank();
     // unpaid balance whose DUE DATE falls in the selected month (not the covered period)
-    const dueIn = { total: 0, count: 0, upcoming: 0, upcoming_count: 0, by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 }, before: 0, before_count: 0 };
+    const dueIn = { total: 0, count: 0, upcoming: 0, upcoming_count: 0, by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 }, before: 0, before_count: 0, before_by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 }, before_start: null, before_year_only: false };
     // overdue from EARLIER than the selected period (so Due + this = what Cash Position calls Due Receivables); only when the period has a known start
     const pad = (n) => String(n).padStart(2, '0');
     const periodStart = view === 'all' ? null
       : view === 'month' ? `${year}-${allMonths ? '01' : pad(month)}`
       : `${year}-${fm ? pad(fm) : '01'}`;
+    dueIn.before_start = periodStart;
+    dueIn.before_year_only = !!periodStart && ((view === 'month' && allMonths) || (view === 'year' && !fm));
     const bucketLabels = ['Not Yet Due', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'N/A'];
     const aging = Object.fromEntries(bucketLabels.map((l) => [l, { count: 0, total: 0 }]));
     const companies = new Map();
@@ -427,6 +429,7 @@ const actions = {
           dueIn.by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
         } else if (periodStart && dk && dk < periodStart) {
           dueIn.before += bal; dueIn.before_count++;
+          dueIn.before_by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
         }
       }
       if (inPeriod(b)) {

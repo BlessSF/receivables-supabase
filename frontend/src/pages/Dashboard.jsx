@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, numClass, coveredLabel } from '../utils';
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 import { useAuth } from '../AuthContext';
 import { isStaff, isExecutive } from '../utils';
 import { billingYm, buildMonths, MonthTable } from '../MonthTable';
@@ -250,6 +252,8 @@ export default function Dashboard() {
   const eachMode = !company && grouping === 'each'; // one block per account instead of the combined view
   // HMOs vs Company Charges breakdown shown under each total (overall view only)
   const showSplit = !company && !scope && !!data.by_type;
+  const bs = data.due_in?.before_start; // "YYYY-MM"
+  const beforeName = bs ? (data.due_in.before_year_only ? bs.slice(0, 4) : `${MONTH_NAMES[Number(bs.slice(5, 7)) - 1]} ${bs.slice(0, 4)}`) : '';
   const splitLine = (field) => showSplit && (
     <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
       <span className="kpi-dark-left">HMOs {peso(data.by_type.HMO?.[field] || 0)}</span>
@@ -398,6 +402,23 @@ export default function Dashboard() {
           </div>
           {splitLine('past_due')}
         </div>
+        {data.due_in && data.due_in.before_start && (
+          <div className="kpi-dark-card accent-orange">
+            <div className="kpi-dark-label">Overdue before {beforeName}</div>
+            <div className="kpi-dark-value">{peso(data.due_in.before)}</div>
+            <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${data.due_in.before + data.due_in.total ? Math.min(100, (data.due_in.before / (data.due_in.before + data.due_in.total)) * 100) : 0}%` }} /></div>
+            <div className="kpi-dark-footer">
+              <span className="kpi-dark-left">{data.due_in.before_count} overdue {data.due_in.before_count === 1 ? 'entry' : 'entries'}</span>
+              <span className="kpi-dark-right">due before {beforeName}</span>
+            </div>
+            {showSplit && (
+              <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
+                <span className="kpi-dark-left">HMOs {peso(data.due_in.before_by_type?.HMO || 0)}</span>
+                <span className="kpi-dark-right">Company Charges {peso(data.due_in.before_by_type?.CHARGE || 0)}</span>
+              </div>
+            )}
+          </div>
+        )}
         {data.due_in && (
           <div className="kpi-dark-card accent-blue">
             <div className="kpi-dark-label">Due · {periodName}</div>
@@ -409,8 +430,7 @@ export default function Dashboard() {
             </div>
             {data.due_in.before > 0.009 && (
               <div className="dash-due-plus">
-                <div><span>+ Earlier overdue</span><strong>{peso(data.due_in.before)}</strong></div>
-                <div className="tot"><span>Total due now</span><strong>{peso(data.due_in.total + data.due_in.before)}</strong></div>
+                <div className="tot"><span>Total due now (with overdue)</span><strong>{peso(data.due_in.total + data.due_in.before)}</strong></div>
               </div>
             )}
             {showSplit && (
