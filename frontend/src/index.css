@@ -234,7 +234,7 @@ button { font-family: inherit; }
 
 /* ---------- Dashboard position band (light grey) ---------- */
 .kpi-dark-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
   gap: 1px; margin-bottom: 24px; border-radius: 14px; overflow: hidden;
   background: #d5d9df;
   border: 1px solid #d5d9df;
@@ -1464,3 +1464,16 @@ select.rec-input { min-width: 112px; }
 .cp-sign.neg { color: #c4382a; }
 @media (max-width: 1200px) { .cp-grid { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .cp-hero { grid-template-columns: 1fr; } .cp-bars li { grid-template-columns: 1fr 110px; } .cp-bars .cp-bar-track { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Dashboard Due card <-> Cash Position */
+.dash-due-plus { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #c3cad4; display: grid; gap: 4px; font-size: 12.5px; }
+.dash-due-plus > div { display: flex; justify-content: space-between; gap: 10px; }
+.dash-due-plus span { color: #a8691a; }
+.dash-due-plus strong { font-variant-numeric: lining-nums; color: #1f2937; }
+.dash-due-plus .tot span { color: #2a56b0; font-weight: 600; }
+.dash-due-plus .tot strong { font-size: 14px; color: #2a56b0; }
+.dash-due-link { display: inline-block; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: #2a56b0; text-decoration: none; }
+.dash-due-link:hover { text-decoration: underline; }
+.cp-split ~ .dash-due-link { margin-top: 8px; }
+.mf-date { flex: 1; min-width: 0; }
+.mf-date input { width: 100%; }

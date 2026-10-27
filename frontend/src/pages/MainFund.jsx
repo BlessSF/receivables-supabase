@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
+import LongDateInput from '../LongDateInput';
 import { computeMain } from '../mainCalc';
 
 const num = (v) => Number(rawNum(v)) || 0;
@@ -16,13 +17,14 @@ const toForm = (d) => ({
   pull: d.pull.map((p) => ({ label: p.label, amount: p.amount ? String(p.amount) : '' })),
   checks: d.checks.map((c) => ({ id: c.id, name: c.name, amount: c.amount ? String(c.amount) : '' })),
   receivables_label: d.receivables_label || '',
+  receivables_date: d.receivables_date || '',
   receivables: d.receivables ? String(d.receivables) : '',
 });
 const toData = (f) => ({
   passbook: num(f.passbook), deposit: num(f.deposit), aub: num(f.aub),
   pull: f.pull.map((p) => ({ label: p.label, amount: num(p.amount) })),
   checks: f.checks.map((c) => ({ id: c.id, name: c.name, amount: num(c.amount) })),
-  receivables_label: f.receivables_label, receivables: num(f.receivables),
+  receivables_label: f.receivables_label, receivables_date: f.receivables_date, receivables: num(f.receivables),
 });
 
 export default function MainFund() {
@@ -198,7 +200,8 @@ export default function MainFund() {
 
           <div className="mf-block">Add</div>
           <div className="mf-row">
-            <input className="mf-lbl-in" value={f.receivables_label} onChange={(e) => edit({ receivables_label: e.target.value })} placeholder="Receivables (e.g. Oct 25, 2026)" aria-label="Receivables label" />
+            <span className="mf-lbl">Receivables as of</span>
+            <span className="mf-date"><LongDateInput value={f.receivables_date} onChange={(v) => edit({ receivables_date: v })} ariaLabel="Receivables date" /></span>
             <MoneyInput className="mf-in" value={f.receivables} onChange={(v) => edit({ receivables: v })} placeholder="0.00" />
           </div>
           <div className="mf-row mf-final">
