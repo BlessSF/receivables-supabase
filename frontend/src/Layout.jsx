@@ -43,8 +43,18 @@ const PAYABLES_NAV_GROUPS = [
     items: [
       { to: '/payables/cash-position', label: 'Cash Position', Icon: IconWallet },
       { to: '/payables/main', label: 'Main', Icon: IconBook },
+    ],
+  },
+  {
+    label: 'Payables',
+    items: [
       { to: '/payables/running', label: 'Running Payables', Icon: IconChecklist },
       { to: '/payables/record', label: 'Payment Record', Icon: IconPenPlus },
+    ],
+  },
+  {
+    label: 'Setup',
+    items: [
       { to: '/payables/titles', label: 'Account Titles', Icon: IconList },
     ],
   },
