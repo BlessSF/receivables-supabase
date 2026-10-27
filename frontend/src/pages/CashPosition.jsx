@@ -137,6 +137,7 @@ export default function CashPosition() {
           <div className="mf-row mf-auto"><span className="mf-lbl">Due receivables <i>auto</i></span><span className="mf-val">{peso(c.due)}</span></div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Not yet due receivables <i>auto</i></span><span className="mf-val">{peso(c.notYet)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total account receivables</span><span className="mf-val">{peso(c.totalAR)}</span></div>
+          <Link className="dash-due-link" to="/">View in Dashboard →</Link>
           <div className="cp-split" title={`${dueShare.toFixed(0)}% of receivables are already due`}>
             <i style={{ width: `${dueShare}%` }} />
           </div>

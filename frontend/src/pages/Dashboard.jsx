@@ -407,12 +407,19 @@ export default function Dashboard() {
               <span className="kpi-dark-left">{data.due_in.count} {data.due_in.count === 1 ? 'entry' : 'entries'} due</span>
               <span className="kpi-dark-right">by Due Date / 3-month terms</span>
             </div>
+            {data.due_in.before > 0.009 && (
+              <div className="dash-due-plus">
+                <div><span>+ Earlier overdue</span><strong>{peso(data.due_in.before)}</strong></div>
+                <div className="tot"><span>Total due now</span><strong>{peso(data.due_in.total + data.due_in.before)}</strong></div>
+              </div>
+            )}
             {showSplit && (
               <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
                 <span className="kpi-dark-left">HMOs {peso(data.due_in.by_type.HMO || 0)}</span>
                 <span className="kpi-dark-right">Company Charges {peso(data.due_in.by_type.CHARGE || 0)}</span>
               </div>
             )}
+            {user?.is_admin && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
           </div>
         )}
       </div>
