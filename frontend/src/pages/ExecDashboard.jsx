@@ -4,6 +4,7 @@ import { api } from '../api';
 import { peso, fdate } from '../utils';
 import { useAuth } from '../AuthContext';
 import { computeMain } from '../mainCalc';
+import { IconAlert, IconClock, IconCalendar, IconCoins, IconList, IconWallet } from '../icons';
 
 // Dashboard for the owner / accounting accounts (read-only).
 // Answers four questions at a glance: how much is owed, how late it is,
@@ -86,7 +87,7 @@ function PayablesPulse() {
   return (
     <section className="panel exec-pay">
       <div className="exec-section-head">
-        <h2>Payables &amp; cash <span className="dlc-badge sm" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span></h2>
+        <h2><span className="exec-h-ico"><IconWallet /></span>Payables &amp; cash <span className="dlc-badge sm" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span></h2>
         <Link className="exec-link" to="/payables/cash-position">Open Cash Position →</Link>
       </div>
       <div className="exec-pay-nets">
@@ -174,31 +175,52 @@ export default function ExecDashboard() {
   return (
     <div className="exec">
       <section className="exec-hero">
-        <div className="exec-hero-date">{fdate(data.today, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
-        <h1>{greeting()}, {name}.</h1>
-        <p className="exec-hero-line">
-          <strong>{peso(t.past_due)}</strong> is past due across <strong>{t.companies_past_due} {t.companies_past_due === 1 ? 'company' : 'companies'}</strong>
-          {' '}— that's <strong>{t.past_due_share}%</strong> of everything still owed.
-        </p>
+        <div className="exec-hero-main">
+          <div className="exec-hero-date">{fdate(data.today, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
+          <h1>{greeting()}, {name}.</h1>
+          <p className="exec-hero-line">
+            <strong>{peso(t.past_due)}</strong> is past due across <strong>{t.companies_past_due} {t.companies_past_due === 1 ? 'company' : 'companies'}</strong>
+            {' '}— that's <strong>{t.past_due_share}%</strong> of everything still owed.
+          </p>
+          <div className="exec-hero-chips">
+            <Link to="/past-due" className="exec-chip danger"><IconAlert /> {t.past_due_count} past-due entries</Link>
+            <Link to="/aging" className="exec-chip"><IconClock /> Oldest {oldest.toLocaleString()} days late</Link>
+            <Link to="/reports-by-month" className="exec-chip good"><IconCalendar /> Last 3 months: {billed3 > 0 ? Math.round((collected3 / billed3) * 100) : 0}% collected</Link>
+          </div>
+        </div>
+        <div className="exec-ring" title={`${t.collection_rate}% of everything billed has been collected`}>
+          <svg viewBox="0 0 90 90" width="132" height="132" role="img" aria-label={`Collection rate ${t.collection_rate}%`}>
+            <circle cx="45" cy="45" r="37" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="9" />
+            <circle cx="45" cy="45" r="37" fill="none" stroke="#3ddbb8" strokeWidth="9" strokeLinecap="round"
+              strokeDasharray={`${(Math.min(100, Number(t.collection_rate) || 0) / 100) * 232.5} 232.5`} transform="rotate(-90 45 45)" />
+          </svg>
+          <div className="exec-ring-text"><b>{t.collection_rate}%</b><span>collected</span></div>
+        </div>
       </section>
 
       <div className="exec-kpis">
         <div className="exec-kpi">
+          <span className="exec-kpi-ico"><IconList /></span>
           <div className="exec-kpi-label">Still owed</div>
           <div className="exec-kpi-value">{peso(t.outstanding)}</div>
           <div className="exec-kpi-sub">{t.open_count} unpaid entries</div>
         </div>
         <div className="exec-kpi is-danger">
+          <span className="exec-kpi-ico"><IconAlert /></span>
           <div className="exec-kpi-label">Past due</div>
           <div className="exec-kpi-value">{peso(t.past_due)}</div>
+          <div className="exec-kpi-bar"><div style={{ width: `${Math.min(100, Number(t.past_due_share) || 0)}%` }} /></div>
           <div className="exec-kpi-sub">{t.past_due_count} entries · {t.past_due_share}% of what's owed</div>
         </div>
         <div className="exec-kpi is-good">
+          <span className="exec-kpi-ico"><IconCoins /></span>
           <div className="exec-kpi-label">Collected so far</div>
           <div className="exec-kpi-value">{peso(t.collected)}</div>
+          <div className="exec-kpi-bar"><div style={{ width: `${Math.min(100, Number(t.collection_rate) || 0)}%` }} /></div>
           <div className="exec-kpi-sub">{t.collection_rate}% of {peso(t.billed)} billed</div>
         </div>
-        <div className="exec-kpi">
+        <div className="exec-kpi is-warn">
+          <span className="exec-kpi-ico"><IconClock /></span>
           <div className="exec-kpi-label">Oldest unpaid</div>
           <div className="exec-kpi-value">{oldest.toLocaleString()} <span className="exec-kpi-unit">days</span></div>
           <div className="exec-kpi-sub">past its due date</div>

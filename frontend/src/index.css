@@ -670,26 +670,57 @@ button { font-family: inherit; }
 
 /* ---------- Executive dashboard (owner / accounting) ---------- */
 .exec-hero {
-  background: linear-gradient(135deg, #fdfaf3 0%, #f4efe2 100%);
-  border: 1px solid #e8dfc8; border-radius: 14px; padding: 26px 30px; margin-bottom: 20px;
+  position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  background: linear-gradient(135deg, #0f1c36 0%, #16305f 55%, #12756a 130%);
+  border-radius: 18px; padding: 28px 32px; margin-bottom: 20px; color: #fff;
+  box-shadow: 0 12px 32px rgba(15, 28, 54, .25);
 }
-.exec-hero-date { font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a7a55; }
-.exec-hero h1 { margin: 6px 0 8px; font-size: clamp(26px, 2.4vw, 34px); }
-.exec-hero-line { margin: 0; font-size: 16px; color: var(--ink-soft); max-width: 760px; line-height: 1.55; }
-.exec-hero-line strong { color: var(--ink); }
+.exec-hero::before { content: ""; position: absolute; right: -80px; top: -90px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(61, 219, 184, .28), transparent 68%); pointer-events: none; }
+.exec-hero::after { content: ""; position: absolute; left: 35%; bottom: -120px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(245, 184, 61, .14), transparent 70%); pointer-events: none; }
+.exec-hero-main { position: relative; z-index: 1; min-width: 0; }
+.exec-hero-date { font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, .62); }
+.exec-hero h1 { margin: 6px 0 8px; font-size: clamp(26px, 2.4vw, 34px); color: #fff; }
+.exec-hero-line { margin: 0; font-size: 16px; color: rgba(255, 255, 255, .82); max-width: 760px; line-height: 1.55; }
+.exec-hero-line strong { color: #fff; }
+.exec-hero-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.exec-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; text-decoration: none; color: #fff; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); transition: background .15s; }
+.exec-chip:hover { background: rgba(255, 255, 255, .2); }
+.exec-chip svg { width: 15px; height: 15px; }
+.exec-chip.danger { background: rgba(255, 120, 105, .2); border-color: rgba(255, 140, 125, .4); }
+.exec-chip.good { background: rgba(61, 219, 184, .18); border-color: rgba(61, 219, 184, .4); }
+.exec-ring { position: relative; z-index: 1; flex: none; width: 132px; height: 132px; display: grid; place-items: center; }
+.exec-ring svg { grid-area: 1 / 1; }
+.exec-ring-text { grid-area: 1 / 1; text-align: center; display: flex; flex-direction: column; line-height: 1.1; }
+.exec-ring-text b { font-family: var(--font-display); font-size: 26px; }
+.exec-ring-text span { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .65); margin-top: 3px; }
+@media (max-width: 760px) { .exec-ring { display: none; } .exec-hero { padding: 22px; } }
 
 .exec-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .exec-kpi {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
-  border-top: 3px solid var(--slate);
+  position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px;
+  border-top: 3px solid var(--slate); box-shadow: 0 1px 2px rgba(15, 30, 55, .04), 0 8px 22px rgba(15, 30, 55, .05);
+  transition: transform .15s, box-shadow .15s;
 }
+.exec-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(15, 30, 55, .1); }
+.exec-kpi-ico { position: absolute; right: 16px; top: 16px; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: var(--slate-soft); color: var(--slate); }
+.exec-kpi-ico svg { width: 18px; height: 18px; }
 .exec-kpi.is-danger { border-top-color: var(--brick); }
 .exec-kpi.is-danger .exec-kpi-value { color: var(--brick); }
+.exec-kpi.is-danger .exec-kpi-ico { background: var(--brick-soft); color: var(--brick); }
 .exec-kpi.is-good { border-top-color: var(--teal); }
-.exec-kpi-label { font-size: 12.5px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; }
-.exec-kpi-value { font-family: var(--font-display); font-size: clamp(22px, 1.9vw, 30px); margin: 6px 0 4px; font-variant-numeric: lining-nums; overflow-wrap: anywhere; }
+.exec-kpi.is-good .exec-kpi-ico { background: var(--teal-soft); color: var(--teal-strong); }
+.exec-kpi.is-warn { border-top-color: #d49b22; }
+.exec-kpi.is-warn .exec-kpi-ico { background: var(--amber-soft); color: var(--amber); }
+.exec-kpi-bar { height: 6px; border-radius: 999px; background: var(--slate-soft); overflow: hidden; margin: 2px 0 8px; }
+.exec-kpi-bar > div { height: 100%; border-radius: 999px; background: var(--brick); }
+.exec-kpi.is-good .exec-kpi-bar > div { background: var(--teal); }
+.exec-kpi-label { font-size: 12.5px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; padding-right: 44px; }
+.exec-kpi-value { font-family: var(--font-display); font-size: clamp(22px, 1.9vw, 30px); margin: 6px 0 6px; font-variant-numeric: lining-nums; overflow-wrap: anywhere; }
 .exec-kpi-unit { font-family: var(--font-ui); font-size: 14px; color: var(--slate); }
 .exec-kpi-sub { font-size: 12.5px; color: var(--slate); }
+.exec .panel { border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 30, 55, .04), 0 8px 22px rgba(15, 30, 55, .05); }
+.exec-h-ico { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; margin-right: 10px; background: var(--teal-soft); color: var(--teal-strong); vertical-align: middle; }
+.exec-h-ico svg { width: 16px; height: 16px; }
 
 .exec-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .exec-section-head h2 { margin: 0; }
