@@ -38,7 +38,7 @@ const NAV_DEFAULT = {
   accounting: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
   branch: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
   staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
-  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger'],
+  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger', '/payables/cash-position'],
 };
 // What a Staff / Executive account may call once a page is switched on for them (on top of their normal list).
 // Void billing and everything that changes company records stay out: those pages are view-only for them.

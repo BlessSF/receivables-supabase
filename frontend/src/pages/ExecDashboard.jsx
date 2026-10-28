@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 import { useAuth } from '../AuthContext';
+import { computeMain } from '../mainCalc';
 
 // Dashboard for the owner / accounting accounts (read-only).
 // Answers four questions at a glance: how much is owed, how late it is,
@@ -61,6 +62,58 @@ function TrendChart({ trend }) {
       })}
       <line x1={PAD_L} x2={W} y1={H - PAD_B} y2={H - PAD_B} stroke="#cdd5db" />
     </svg>
+  );
+}
+
+// Payables side of the owner's dashboard: the same numbers as Payables > Cash Position (hidden if this account has no Payables access)
+function PayablesPulse() {
+  const [d, setD] = useState(null);
+  useEffect(() => { api.getCashPosition().then(setD).catch(() => setD(false)); }, []);
+  if (!d) return null;
+  const m = d.main;
+  const main = computeMain(m, d.released_payables, d.running_payables);
+  const bank = m.passbook + m.deposit + m.aub;
+  const due = d.receivables.due;
+  const totalAR = due + d.receivables.not_yet;
+  const released = main.checksTotal;
+  const running = d.running_payables;
+  const current = released + running;
+  const future = (d.future || []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
+  const net1 = bank - current;
+  const net2 = bank + due - current;
+  const net3 = bank + totalAR - (current + future);
+  const sgn = (v) => (v < 0 ? `−${peso(Math.abs(v))}` : peso(v));
+  return (
+    <section className="panel exec-pay">
+      <div className="exec-section-head">
+        <h2>Payables &amp; cash <span className="dlc-badge sm" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span></h2>
+        <Link className="exec-link" to="/payables/cash-position">Open Cash Position →</Link>
+      </div>
+      <div className="exec-pay-nets">
+        <div className="exec-pay-net">
+          <div className="exec-kpi-label">Bank less current payables</div>
+          <div className={'exec-pay-val' + (net1 < 0 ? ' neg' : '')}>{sgn(net1)}</div>
+          <div className="exec-kpi-sub">What is left today if every current payable is paid</div>
+        </div>
+        <div className="exec-pay-net">
+          <div className="exec-kpi-label">Including due receivables</div>
+          <div className={'exec-pay-val' + (net2 < 0 ? ' neg' : '')}>{sgn(net2)}</div>
+          <div className="exec-kpi-sub">Bank + due receivables − current payables</div>
+        </div>
+        <div className="exec-pay-net dark">
+          <div className="exec-kpi-label">After all receivables and payables</div>
+          <div className="exec-pay-val">{sgn(net3)}</div>
+          <div className="exec-kpi-sub">Bank + all receivables − all payables incl. future</div>
+        </div>
+      </div>
+      <div className="exec-pay-stats">
+        <div><span>Bank balance</span><b>{peso(bank)}</b></div>
+        <div><span>Due receivables</span><b>{peso(due)}</b></div>
+        <div><span>Released checks</span><b>{peso(released)}</b></div>
+        <div><span>Payables for releasing</span><b>{peso(running)}</b></div>
+        <div><span>Future payables</span><b>{peso(future)}</b></div>
+      </div>
+    </section>
   );
 }
 
@@ -151,6 +204,8 @@ export default function ExecDashboard() {
           <div className="exec-kpi-sub">past its due date</div>
         </div>
       </div>
+
+      <PayablesPulse />
 
       {typeCards.length > 0 && (
         <section className="panel">
