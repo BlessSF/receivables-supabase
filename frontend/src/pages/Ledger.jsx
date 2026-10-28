@@ -683,16 +683,16 @@ export default function Ledger() {
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span style={{ color: 'var(--slate)' }}>—</span>}
-                      {!r.is_paid && r.is_overdue && <span className="badge badge-danger" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
-                      {!r.is_paid && !r.is_overdue && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
+                      {!r.is_paid && r.is_overdue && <span className="badge badge-danger ic-overdue" title={`${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} past due`}>{r.days_overdue.toLocaleString()} day{r.days_overdue === 1 ? '' : 's'}</span>}
+                      {!r.is_paid && !r.is_overdue && <span className={`badge ic-clock ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                     </td>
                     <td>{Number(r.balance) > 0.009
                       ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-                        <span className="badge badge-danger" title="Still has a balance">Unpaid</span>
+                        <span className="badge badge-danger ic-unpaid" title="Still has a balance">Unpaid</span>
                         {canSettle && Number(r.paid_amount) > 0.009 && <button type="button" className="settle-btn" title="Client paid less and this entry is closed: save the remaining balance as a Rebate" onClick={() => settleRow(r)}>Settle</button>}</div>
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-                        <span className="badge badge-success" title="Balance is zero">Paid</span>
-                        {r.variance > 0.009 && <span className="badge badge-warning" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
+                        <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
+                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
