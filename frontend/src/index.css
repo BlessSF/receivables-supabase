@@ -1552,3 +1552,9 @@ select.rec-input { min-width: 112px; }
 .role-select:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
 
 .ledger-table td .badge { white-space: nowrap; }
+
+/* Sidebar brand: mark + name + current module */
+.brand:not(.brand-custom) { position: relative; overflow: hidden; }
+.brand:not(.brand-custom)::after { content: ""; position: absolute; right: -28px; top: -28px; width: 90px; height: 90px; border-radius: 50%; background: radial-gradient(circle, rgba(43, 181, 162, 0.28), transparent 70%); pointer-events: none; }
+.brand:not(.brand-custom) .brand-mark { font-size: 19px; letter-spacing: 0; }
+.shell.is-collapsed .brand:not(.brand-custom) .brand-mark { width: 40px; height: 40px; }

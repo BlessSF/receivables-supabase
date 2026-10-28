@@ -196,8 +196,10 @@ export default function Layout() {
           </div>
         ) : (
           <div className="brand">
+            <span className="brand-mark" aria-hidden="true">{brand.initial}</span>
             <div>
               <div className="brand-name">{brand.name}</div>
+              <div className="brand-sub">{inPayables ? 'Payables' : 'Receivables'}</div>
             </div>
           </div>
         )}
