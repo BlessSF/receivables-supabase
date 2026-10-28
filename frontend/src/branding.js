@@ -6,7 +6,7 @@
 
 const CUSTOM_BRANDS = {
   demic: {
-    name: 'Project DL',
+    name: 'Project DLC',
     mark: 'DL', // letters shown in the small badge next to the name
     logo: null, // no logo image
     color: '#0a1fd8',
@@ -20,6 +20,10 @@ export function getBranding(user) {
   const custom = CUSTOM_BRANDS[key];
   const displayName = user?.full_name || user?.username || '';
   const initial = (displayName.trim().charAt(0) || 'M').toUpperCase();
+  // Everyone on the main system (admin, accounting, executive, staff) sees the same name; branch accounts keep their own
+  if (user && user.role && user.role !== 'branch') {
+    return { name: 'Project DLC', mark: 'DL', logo: null, color: '#0a1fd8', initial: 'DL', displayName };
+  }
   if (custom) return { ...custom, initial: custom.mark || initial, displayName };
   return { name: 'Multipliers', logo: null, color: DEFAULT_COLOR, initial, displayName };
 }
