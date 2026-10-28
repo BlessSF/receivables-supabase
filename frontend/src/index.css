@@ -1520,3 +1520,13 @@ select.rec-input { min-width: 112px; }
 .sa-state { font-size: 13px; color: var(--slate); }
 .sa-state.dirty { color: #9a5b12; font-weight: 600; }
 @media (max-width: 700px) { .sa-head { flex-direction: column; } }
+
+/* Main + Cash Position: editable boxes have a soft grey fill so it is clear where to type */
+.mf-add input, .mf-in, .mf-name, .mf-amt, .mf-lbl-in, .mf-date input { background: #e9edf0; border-color: #c3ccd3; }
+.mf-add input:hover, .mf-in:hover, .mf-name:hover, .mf-amt:hover, .mf-lbl-in:hover, .mf-date input:hover { background: #e2e7eb; }
+.mf-add input:focus, .mf-in:focus, .mf-name:focus, .mf-amt:focus, .mf-lbl-in:focus, .mf-date input:focus { background: #fff; }
+.mf-in::placeholder, .mf-lbl-in::placeholder, .mf-name::placeholder { color: #8b979f; }
+.mf-date .long-date > input[type="text"] { background: #e9edf0; border-color: #c3ccd3; }
+.mf-date .long-date > input[type="text"]:hover { background: #e2e7eb; }
+.mf-date .long-date > input[type="text"]:focus { background: #fff; border-color: var(--teal); }
+.mf-date .long-date { min-width: 0; }
