@@ -1521,15 +1521,30 @@ select.rec-input { min-width: 112px; }
 .sa-state.dirty { color: #9a5b12; font-weight: 600; }
 @media (max-width: 700px) { .sa-head { flex-direction: column; } }
 
-/* Main + Cash Position: editable boxes have a soft grey fill so it is clear where to type */
-.mf-add input, .mf-in, .mf-name, .mf-amt, .mf-lbl-in, .mf-date input { background: #e9edf0; border-color: #c3ccd3; }
-.mf-add input:hover, .mf-in:hover, .mf-name:hover, .mf-amt:hover, .mf-lbl-in:hover, .mf-date input:hover { background: #e2e7eb; }
-.mf-add input:focus, .mf-in:focus, .mf-name:focus, .mf-amt:focus, .mf-lbl-in:focus, .mf-date input:focus { background: #fff; }
-.mf-in::placeholder, .mf-lbl-in::placeholder, .mf-name::placeholder { color: #8b979f; }
-.mf-date .long-date > input[type="text"] { background: #e9edf0; border-color: #c3ccd3; }
-.mf-date .long-date > input[type="text"]:hover { background: #e2e7eb; }
-.mf-date .long-date > input[type="text"]:focus { background: #fff; border-color: var(--teal); }
-.mf-date .long-date { min-width: 0; }
+/* Main + Cash Position: editable boxes glow yellow, like the editable cells in the Ledger */
+.mf-add input, .mf-in, .mf-name, .mf-amt, .mf-lbl-in, .mf-date .long-date > input[type="text"] {
+  background: #fff3c4; border: 1px solid #f0c93a;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.28), 0 0 12px rgba(250, 204, 21, 0.55);
+}
+.mf-add input:hover, .mf-in:hover, .mf-name:hover, .mf-amt:hover, .mf-lbl-in:hover, .mf-date .long-date > input[type="text"]:hover { background: #fff3b8; border-color: #e6b422; }
+.mf-add input:focus, .mf-in:focus, .mf-name:focus, .mf-amt:focus, .mf-lbl-in:focus, .mf-date .long-date > input[type="text"]:focus {
+  background: #fffbe8; border-color: #d9a406; outline: none;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.45), 0 0 14px rgba(250, 204, 21, 0.7);
+}
+.mf-in::placeholder, .mf-lbl-in::placeholder, .mf-name::placeholder { color: #a8935a; }
+.mf-date .long-date { min-width: 188px; }
+.mf-date { flex: 0 0 188px; }
+
+/* DLC MAIN label above the page title (Main + Cash Position) */
+.cp-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 10px; margin-bottom: 8px; border-radius: 999px; background: linear-gradient(135deg, #12756a, #0d5f56); color: #fff; font-size: 11.5px; font-weight: 700; letter-spacing: .14em; box-shadow: 0 2px 8px rgba(18, 117, 106, .28); }
+.cp-eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: #f5b83d; box-shadow: 0 0 0 3px rgba(245, 184, 61, .3); }
+
+/* Cash Position: a little more polish */
+.cp .mf-card { transition: transform .15s, box-shadow .15s; }
+.cp .mf-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(15, 30, 55, .1); }
+.cp .mf-hero .mf-card:first-child { border-top: 3px solid #3b6fd4; }
+.cp .mf-hero .mf-card:nth-child(2) { border-top: 3px solid #2eb88a; }
+.cp .page-header h1 { letter-spacing: -0.01em; }
 
 .role-select { height: 32px; padding: 0 28px 0 10px; font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background-color: #fff; cursor: pointer; }
 .role-select:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }

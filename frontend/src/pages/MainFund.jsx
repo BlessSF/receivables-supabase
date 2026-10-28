@@ -92,8 +92,9 @@ export default function MainFund() {
     <div className="mf">
       <div className="page-header">
         <div>
+          <div className="cp-eyebrow"><span className="cp-eyebrow-dot" />DLC MAIN</div>
           <h1>Main</h1>
-          <div className="subtitle">Demic Lab Main · cash fund{updated ? ` · last updated ${fdate(updated)}` : ''}</div>
+          <div className="subtitle">Cash fund{updated ? ` · last updated ${fdate(updated)}` : ''}</div>
         </div>
         <span className={`at-status mf-state ${state}`}>
           {state === 'saving' ? 'Saving…' : state === 'error' ? 'Not saved' : 'Saved automatically'}
