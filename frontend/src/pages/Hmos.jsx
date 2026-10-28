@@ -2,7 +2,7 @@ import { IconOpen, IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, fdate, coveredLabel, isStaff } from '../utils';
+import { peso, fdate, coveredLabel, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BLANK = { name: '', code: '', account_type: 'HMO', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
@@ -12,7 +12,7 @@ const n = (v) => Number(v) || 0;
 export default function Hmos() {
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
-  const staff = isStaff(user); // staff can look but not add / edit
+  const staff = isStaff(user) || isExecutive(user); // staff can look but not add / edit
   const [hmos, setHmos] = useState(null);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');
@@ -226,7 +226,7 @@ export default function Hmos() {
 
 function HmoDetail({ id, onBack, onEdit }) {
   const { user } = useAuth();
-  const staff = isStaff(user);
+  const staff = isStaff(user) || isExecutive(user);
   const [data, setData] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [addId, setAddId] = useState('');

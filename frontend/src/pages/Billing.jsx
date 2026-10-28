@@ -4,7 +4,7 @@ import { api } from '../api';
 import LongDateInput from '../LongDateInput';
 import MoneyInput from '../MoneyInput';
 import { useAuth } from '../AuthContext';
-import { isStaff } from '../utils';
+import { isStaff, isExecutive } from '../utils';
 import { peso, fdate, coveredLabel, coveredPeriodForBilling, DEFAULT_COVERED_RULES } from '../utils';
 
 function todayLocal() {
@@ -46,7 +46,7 @@ const STATUS_BADGE = { OPEN: 'badge-warning', POSTED: 'badge-success', VOID: 'ba
 
 export default function Billing() {
   const { user } = useAuth();
-  const staff = isStaff(user); // staff can open and post billing, but not void
+  const staff = isStaff(user) || isExecutive(user); // staff can open and post billing, but not void
   const [rows, setRows] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [form, setForm] = useState(null); // null = hidden

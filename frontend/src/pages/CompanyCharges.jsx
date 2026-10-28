@@ -2,7 +2,7 @@ import { IconOpen, IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, isStaff } from '../utils';
+import { peso, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
 
 // "Company Charges": the companies that get charged directly (instead of through an HMO).
@@ -12,7 +12,7 @@ const BLANK = { name: '', code: '', account_type: 'CHARGE', status: 'ACTIVE', co
 export default function CompanyCharges() {
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
-  const staff = isStaff(user); // staff can look but not add / edit
+  const staff = isStaff(user) || isExecutive(user); // staff can look but not add / edit
   const [rows, setRows] = useState(null);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');

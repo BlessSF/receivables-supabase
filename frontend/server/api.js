@@ -32,12 +32,33 @@ const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', 
   '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles'];
 // Payables pages start switched OFF for every role except Admin until Admin / Executive ticks them.
 const NAV_DEFAULT_OFF = NAV_PAGES.filter((p) => p.startsWith('/payables'));
-const NAV_BASE = {
-  accounting: NAV_PAGES,
-  branch: NAV_PAGES,
-  staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', ...NAV_DEFAULT_OFF],
-  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger', ...NAV_DEFAULT_OFF],
+// Every role can be given every page. NAV_DEFAULT is what a role has until Admin / Executive changes it.
+const NAV_BASE = { accounting: NAV_PAGES, branch: NAV_PAGES, staff: NAV_PAGES, executive: NAV_PAGES };
+const NAV_DEFAULT = {
+  accounting: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
+  branch: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
+  staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
+  executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger'],
 };
+// What a Staff / Executive account may call once a page is switched on for them (on top of their normal list).
+// Void billing and everything that changes company records stay out: those pages are view-only for them.
+const NAV_PAGE_ACTIONS = {
+  '/summary': ['get_summary', 'get_companies'],
+  '/reports-by-month': ['get_monthly_report'],
+  '/companies': ['get_companies', 'get_company'],
+  '/hmos': ['get_hmos', 'get_hmo', 'get_companies'],
+  '/company-charges': ['get_companies'],
+  '/billing': ['get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', 'get_companies'],
+  '/ledger': ['get_ledger', 'inline_update_ledger', 'get_companies', 'get_payments', 'add_payment', 'update_payment', 'delete_payment'],
+  '/aging': ['get_aging', 'get_companies'],
+  '/past-due': ['get_past_due', 'get_companies'],
+  '/soa-tracker': ['get_soa_tracker', 'soa_generate', 'soa_update_entry', 'soa_delete', 'soa_check', 'get_companies'],
+  '/monitoring': ['get_monitoring', 'create_monitoring', 'update_monitoring', 'delete_monitoring', 'get_companies'],
+};
+async function navActionAllowed(role, action) {
+  const pages = (await getNavAccess())[role] || [];
+  return pages.some((p) => (NAV_PAGE_ACTIONS[p] || []).includes(action));
+}
 
 async function getNavAccess() {
   let saved = {};
@@ -45,7 +66,7 @@ async function getNavAccess() {
   const out = {};
   for (const role of Object.keys(NAV_BASE)) {
     const base = NAV_BASE[role];
-    out[role] = Array.isArray(saved[role]) ? base.filter((p) => p === '/' || saved[role].includes(p)) : base.filter((p) => !NAV_DEFAULT_OFF.includes(p));
+    out[role] = Array.isArray(saved[role]) ? base.filter((p) => p === '/' || saved[role].includes(p)) : (NAV_DEFAULT[role] || []).slice();
   }
   return out;
 }
@@ -1654,7 +1675,7 @@ const actions = {
   // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
   async get_nav_access(input, auth) {
     if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change sidebar access.' }, 403);
-    return { ok: true, data: { access: await getNavAccess(), base: NAV_BASE, pages: NAV_PAGES } };
+    return { ok: true, data: { access: await getNavAccess(), base: NAV_BASE, defaults: NAV_DEFAULT, pages: NAV_PAGES } };
   },
 
   async save_nav_access(input, auth) {
@@ -1662,7 +1683,7 @@ const actions = {
     const raw = input.access && typeof input.access === 'object' ? input.access : {};
     const clean = {};
     for (const role of Object.keys(NAV_BASE)) {
-      const want = Array.isArray(raw[role]) ? raw[role] : NAV_BASE[role].filter((p) => !NAV_DEFAULT_OFF.includes(p));
+      const want = Array.isArray(raw[role]) ? raw[role] : NAV_DEFAULT[role];
       clean[role] = NAV_BASE[role].filter((p) => p === '/' || want.includes(p));
     }
     await setSetting('nav_access', JSON.stringify(clean));
@@ -1990,7 +2011,7 @@ export default async function handleApi(req, res) {
     // ---- everything else needs a login
     if (!user) return sendJson(res, 401, { ok: false, error: 'Not logged in.' });
 
-    if (user.role === 'executive' && !EXECUTIVE_ACTIONS.has(action)) {
+    if (user.role === 'executive' && !EXECUTIVE_ACTIONS.has(action) && !(await navActionAllowed('executive', action))) {
       return sendJson(res, 403, { ok: false, error: 'Your account can view reports only.' });
     }
     // Staff: re-check the account still exists as Staff (so deleting a user locks them out at once),
@@ -2000,7 +2021,7 @@ export default async function handleApi(req, res) {
       if (!current || current.role !== 'staff') {
         return sendJson(res, 401, { ok: false, error: 'Not logged in.' }, { 'Set-Cookie': clearCookie(req) });
       }
-      if (!STAFF_ACTIONS.has(action)) {
+      if (!STAFF_ACTIONS.has(action) && !(await navActionAllowed('staff', action))) {
         return sendJson(res, 403, { ok: false, error: 'Your staff account cannot do that.' });
       }
     }

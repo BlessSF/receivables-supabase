@@ -121,6 +121,9 @@ const EXEC_NAV_GROUPS = [
   },
 ];
 
+// Executive accounts also keep Branches and Users (their other pages follow Sidebar access)
+const EXEC_SYSTEM_GROUP = EXEC_NAV_GROUPS[EXEC_NAV_GROUPS.length - 1];
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const brand = getBranding(user);
@@ -214,7 +217,7 @@ export default function Layout() {
           </div>
         )}
         <nav className="sidebar-nav">
-          {(inPayables && showModuleToggle ? PAYABLES_NAV_GROUPS : isExecutive(user) ? EXEC_NAV_GROUPS : isStaff(user) ? STAFF_NAV_GROUPS : isAccounting(user) ? NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS)
+          {(inPayables && showModuleToggle ? PAYABLES_NAV_GROUPS : isExecutive(user) ? [...NAV_GROUPS, EXEC_SYSTEM_GROUP] : isStaff(user) ? NAV_GROUPS : isAccounting(user) ? NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS)
             .map((g) => ({ ...g, items: g.items.filter((it) => navAllowed(user, it.to)) })).filter((g) => g.items.length).map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
               {group.label && <div className="nav-group-label">{group.label}</div>}

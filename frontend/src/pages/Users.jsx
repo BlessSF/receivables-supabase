@@ -83,7 +83,7 @@ function SidebarAccess() {
   function resetDefault() {
     setMsg(null);
     const next = {};
-    ACCESS_ROLES.forEach(([r]) => { next[r] = ['/', ...baseOf(r).filter((p) => !isPayPage(p))]; });
+    ACCESS_ROLES.forEach(([r]) => { next[r] = [...(d.defaults?.[r] || ['/'])]; });
     setAccess(next);
   }
   async function save() {
@@ -107,7 +107,7 @@ function SidebarAccess() {
       <div className="sa-head">
         <div>
           <h2>Sidebar access</h2>
-          <p className="sa-sub">Choose which pages each role can see and open. Admin always has everything. A lock means that role can never use the page. Payables starts switched off for everyone except Admin.</p>
+          <p className="sa-sub">Choose which pages each role can see and open. Admin always has everything. Payables starts switched off for everyone except Admin.</p>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={resetDefault}>Reset to default</button>
       </div>

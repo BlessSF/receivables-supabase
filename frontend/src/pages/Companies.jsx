@@ -2,14 +2,14 @@ import { IconEdit, IconTrash } from '../icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { peso, isStaff } from '../utils';
+import { peso, isStaff, isExecutive } from '../utils';
 import { useAuth } from '../AuthContext';
 
 const BLANK = { name: '', code: '', account_type: 'COMPANY', linked_company_id: '', status: 'ACTIVE', contact_person: '', contact_number: '', email_address: '', remarks: '', branch: '' };
 
 export default function Companies() {
   const { user } = useAuth();
-  const staff = isStaff(user); // staff can look but not add / edit / delete
+  const staff = isStaff(user) || isExecutive(user); // staff can look but not add / edit / delete
   const [companies, setCompanies] = useState(null);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState('');
