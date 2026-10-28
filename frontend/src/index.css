@@ -1530,3 +1530,6 @@ select.rec-input { min-width: 112px; }
 .mf-date .long-date > input[type="text"]:hover { background: #e2e7eb; }
 .mf-date .long-date > input[type="text"]:focus { background: #fff; border-color: var(--teal); }
 .mf-date .long-date { min-width: 0; }
+
+.role-select { height: 32px; padding: 0 28px 0 10px; font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background-color: #fff; cursor: pointer; }
+.role-select:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }

@@ -79,6 +79,7 @@ export const api = {
   returnEntryToHmo: (id) => call('return_entry_to_hmo', { method: 'POST', body: { id } }),
   deleteLedger: (id) => call('delete_ledger', { method: 'POST', body: { id } }),
   getSettings: () => call('get_settings'),
+  changeUserRole: (id, role) => call('change_user_role', { method: 'POST', body: { id, role } }),
   getNavAccess: () => call('get_nav_access'),
   saveNavAccess: (access) => call('save_nav_access', { method: 'POST', body: { access } }),
   getBranchSites: () => call('get_branch_sites'),

@@ -224,6 +224,19 @@ export default function Users() {
     }
   }
 
+  async function changeRole(u, newRole) {
+    if (newRole === u.role) return;
+    if (!window.confirm(`Change "${u.username}" from ${ROLE_LABEL[u.role]} to ${ROLE_LABEL[newRole]}? They will be signed out and use the new role next time they log in.`)) return;
+    setFlash(null);
+    try {
+      const r = await api.changeUserRole(u.id, newRole);
+      setFlash({ type: 'success', msg: r.message });
+      load();
+    } catch (ex) {
+      setFlash({ type: 'error', msg: ex.message });
+    }
+  }
+
   async function remove(u) {
     if (!window.confirm(`Delete the account "${u.username}"? They will be logged out and can no longer sign in.`)) return;
     setFlash(null);
@@ -311,9 +324,19 @@ export default function Users() {
                         : (u.full_name || '—')}
                     </td>
                     <td><strong>{u.username}</strong></td>
-                    <td><span className={`badge ${ROLE_BADGE[u.role] || 'badge-secondary'}`}>{ROLE_LABEL[u.role] || u.role}</span></td>
+                    <td>
+                      {['staff', 'accounting', 'admin'].includes(u.role) && String(u.id) !== String(user.id) && (u.role !== 'admin' || user.is_admin_role)
+                        ? (
+                          <select className="role-select" value={u.role} onChange={(e) => changeRole(u, e.target.value)} aria-label={`Role of ${u.username}`}>
+                            <option value="staff">Staff</option>
+                            <option value="accounting">Accounting</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )
+                        : <span className={`badge ${ROLE_BADGE[u.role] || 'badge-secondary'}`}>{ROLE_LABEL[u.role] || u.role}</span>}
+                    </td>
                     <td className="text-right">
-                      {!isStaffRow && <span style={{ fontSize: 12.5, color: 'var(--slate)' }}>Managed outside this page</span>}
+                      {!isStaffRow && <span style={{ fontSize: 12.5, color: 'var(--slate)' }}>{String(u.id) === String(user.id) ? 'This is you' : u.role === 'executive' || u.role === 'branch' ? 'Managed outside this page' : 'Role can be changed'}</span>}
                       {isStaffRow && editing && (
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                           <div style={{ minWidth: 190 }}>

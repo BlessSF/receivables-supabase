@@ -59,6 +59,7 @@ async function userPayload(u) {
     // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
     is_admin: u.role === 'admin' || u.role === 'accounting',
     is_accounting: u.role === 'accounting',
+    is_admin_role: u.role === 'admin',
     is_executive: u.role === 'executive',
     is_staff: u.role === 'staff',
   };
@@ -81,7 +82,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
-  'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access',
+  'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
   'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable',
 ]);
 
@@ -1632,6 +1633,24 @@ const actions = {
     return { ok: true, message: `Account "${row.username}" deleted.` };
   },
 
+  // Change an account's role: Staff / Accounting / Admin. Executive and Branch accounts are never changed here,
+  // nobody changes their own role, and only an Admin may touch an Admin account.
+  async change_user_role(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change roles.' }, 403);
+    const id = toInt(input.id);
+    const role = String(input.role ?? '');
+    if (!['staff', 'accounting', 'admin'].includes(role)) jsonExit({ ok: false, error: 'Choose Staff, Accounting or Admin.' }, 400);
+    const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
+    if (String(row.id) === String(auth.user?.id)) jsonExit({ ok: false, error: 'You cannot change your own role.' }, 403);
+    if (!['staff', 'accounting', 'admin'].includes(row.role)) jsonExit({ ok: false, error: 'The role of Executive and Branch accounts cannot be changed here.' }, 403);
+    if (row.role === 'admin' && !auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change an Admin account.' }, 403);
+    if (row.role === role) return { ok: true, message: 'No change.' };
+    await exec('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+    const label = { staff: 'Staff', accounting: 'Accounting', admin: 'Admin' }[role];
+    return { ok: true, message: `"${row.username}" is now ${label}. They are signed out and use the new role the next time they log in.` };
+  },
+
   // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
   async get_nav_access(input, auth) {
     if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change sidebar access.' }, 403);
@@ -1961,7 +1980,7 @@ export default async function handleApi(req, res) {
     }
     if (action === 'me') {
       // A deleted staff account must not stay logged in from an old cookie.
-      if (['staff', 'accounting'].includes(user?.role) && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, user.role])) === '0') {
+      if (['staff', 'accounting', 'admin'].includes(user?.role) && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, user.role])) === '0') {
         return sendJson(res, 200, { ok: true, user: null }, { 'Set-Cookie': clearCookie(req) });
       }
       return sendJson(res, 200, { ok: true, user: await userPayload(user) });
@@ -1986,9 +2005,9 @@ export default async function handleApi(req, res) {
       }
     }
     // Accounting: re-check the account still exists (deleting it locks the person out at once).
-    if (user.role === 'accounting') {
+    if (user.role === 'accounting' || user.role === 'admin') {
       const current = await one('SELECT role FROM users WHERE id = ?', [user.id]);
-      if (!current || current.role !== 'accounting') {
+      if (!current || current.role !== user.role) {
         return sendJson(res, 401, { ok: false, error: 'Not logged in.' }, { 'Set-Cookie': clearCookie(req) });
       }
     }
