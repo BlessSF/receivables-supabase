@@ -1535,12 +1535,11 @@ select.rec-input { min-width: 112px; }
 .mf-date .long-date { min-width: 188px; }
 .mf-date { flex: 0 0 188px; }
 
-/* DLC MAIN badge, to the right of the page title (Main + Cash Position) */
-.cp-titlerow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.cp-titlerow h1 { margin: 0; }
-.dlc-badge { display: inline-flex; align-items: stretch; height: 34px; border-radius: 10px; overflow: hidden; font-weight: 800; font-size: 14px; letter-spacing: .16em; box-shadow: 0 4px 14px rgba(15, 30, 55, .22); transform: translateY(2px); }
-.dlc-a { display: flex; align-items: center; padding: 0 12px 0 14px; background: #101c33; color: #fff; }
-.dlc-b { display: flex; align-items: center; padding: 0 14px 0 12px; background: linear-gradient(135deg, #f7b733, #e8890c); color: #2a1a00; }
+/* DLC MAIN badge, far right of the page header (Main + Cash Position) */
+.dlc-right { margin-left: auto; margin-right: 14px; display: flex; align-items: center; align-self: center; }
+.dlc-badge { display: inline-flex; align-items: stretch; height: 40px; border-radius: 11px; overflow: hidden; font-weight: 800; font-size: 15px; letter-spacing: .18em; color: #fff; box-shadow: 0 4px 14px rgba(5, 10, 25, .35); }
+.dlc-a { display: flex; align-items: center; padding: 0 14px 0 18px; background: #07090f; color: #fff; }
+.dlc-b { display: flex; align-items: center; padding: 0 18px 0 14px; background: linear-gradient(135deg, #1b3f95, #0f2766); color: #fff; }
 
 /* Cash Position: a little more polish */
 .cp .mf-card { transition: transform .15s, box-shadow .15s; }

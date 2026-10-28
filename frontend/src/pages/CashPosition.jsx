@@ -84,12 +84,10 @@ export default function CashPosition() {
     <div className="cp">
       <div className="page-header">
         <div>
-          <div className="cp-titlerow">
-            <h1>Cash Position</h1>
-            <span className="dlc-badge" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span>
-          </div>
+          <h1>Cash Position</h1>
           <div className="subtitle">As of {fdate(d.as_of)} · figures update by themselves from Main, Running Payables and your ledger</div>
         </div>
+        <div className="dlc-right"><span className="dlc-badge" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span></div>
         <span className={`at-status mf-state ${state}`}>{state === 'saving' ? 'Saving…' : state === 'error' ? 'Not saved' : ''}</span>
       </div>
       {state === 'error' && err && <div className="flash flash-error">{err}</div>}
