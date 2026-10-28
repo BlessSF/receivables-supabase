@@ -438,7 +438,7 @@ export default function Ledger() {
           {Object.keys(liveTotals.tally).length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {Object.entries(liveTotals.tally).map(([bucket, total]) => (
-                <span key={bucket} className={`badge ${AGING_BADGE[bucket] || 'badge-secondary'}`}>{bucket}: {peso(total)}</span>
+                <span key={bucket} className={`badge ic-clock ${AGING_BADGE[bucket] || 'badge-secondary'}`}>{bucket}: {peso(total)}</span>
               ))}
             </div>
           )}
@@ -470,10 +470,10 @@ export default function Ledger() {
                   </div>
                   <div className="company-card-value">{peso(c.outstanding)}</div>
                   <div className="company-card-sub">
-                    {overdue && <span className="badge badge-danger">{c.worst_days_overdue} day{c.worst_days_overdue === 1 ? '' : 's'} past due</span>}
-                    {dueSoon && <span className="badge badge-warning">Due in {c.soonest_days_until_due} day{c.soonest_days_until_due === 1 ? '' : 's'}</span>}
-                    {hasBalance && !overdue && !dueSoon && <span className="badge badge-secondary">No due date</span>}
-                    {!hasBalance && <span className="badge badge-success">Not past due</span>}
+                    {overdue && <span className="badge badge-danger ic-overdue">{c.worst_days_overdue} day{c.worst_days_overdue === 1 ? '' : 's'} past due</span>}
+                    {dueSoon && <span className="badge badge-warning ic-clock">Due in {c.soonest_days_until_due} day{c.soonest_days_until_due === 1 ? '' : 's'}</span>}
+                    {hasBalance && !overdue && !dueSoon && <span className="badge badge-secondary ic-clock">No due date</span>}
+                    {!hasBalance && <span className="badge badge-success ic-paid">Not past due</span>}
                     <button
                       type="button"
                       className="card-view-btn"
@@ -512,7 +512,7 @@ export default function Ledger() {
             {Object.keys(tally).length > 0 && (
               <div className="cvp-tally">
                 {BUCKETS.filter((b) => tally[b] > 0.009).map((b) => (
-                  <span key={b} className={`badge ${AGING_BADGE[b] || 'badge-secondary'}`}>{b}: {peso(tally[b])}</span>
+                  <span key={b} className={`badge ic-clock ${AGING_BADGE[b] || 'badge-secondary'}`}>{b}: {peso(tally[b])}</span>
                 ))}
               </div>
             )}
@@ -520,9 +520,9 @@ export default function Ledger() {
               {unpaid.length === 0 && <div className="cvp-empty">No unpaid entries.</div>}
               {unpaid.map((r) => {
                 const d = r.days_overdue;
-                const tag = d === null || d === undefined ? <span className="badge badge-secondary">No due date</span>
-                  : d > 0 ? <span className="badge badge-danger">{d} day{d === 1 ? '' : 's'} aged</span>
-                  : <span className="badge badge-warning">due in {-d} day{d === -1 ? '' : 's'}</span>;
+                const tag = d === null || d === undefined ? <span className="badge badge-secondary ic-clock">No due date</span>
+                  : d > 0 ? <span className="badge badge-danger ic-overdue">{d} day{d === 1 ? '' : 's'} aged</span>
+                  : <span className="badge badge-warning ic-clock">due in {-d} day{d === -1 ? '' : 's'}</span>;
                 return (
                   <div className="cvp-row" key={r.id}>
                     <span className="cvp-soa">{r.soa_number || '—'}</span>
