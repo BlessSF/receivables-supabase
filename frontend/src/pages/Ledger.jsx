@@ -268,7 +268,7 @@ export default function Ledger() {
       // Paid always has room for an 8-digit amount with centavos (12,345,678.00 typed as 12345678.00) and grows past that if a bigger one is saved
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
       balanceW + CELL,
-      tw('0,000 days') + 30,                                  // Aging badge
+      Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
       Math.max(tw('Unpaid') + 46, (canSettle ? tw('Settle') + 76 : 0), rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
