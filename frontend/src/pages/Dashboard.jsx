@@ -51,7 +51,7 @@ function barPath(x, yTop, w, base) {
 }
 
 /** Billed / collected columns with the unpaid balance drawn as a line over them. Hover shows every value for that period. */
-function EvolutionChart({ items, selected, onSelect, label }) {
+function EvolutionChart({ items, selected, onSelect, label, show }) {
   const [hover, setHover] = useState(null);
   const wrap = useRef(null);
   const [width, setWidth] = useState(1100);
@@ -66,15 +66,22 @@ function EvolutionChart({ items, selected, onSelect, label }) {
   }, []);
   const W = width, H = width < 560 ? 260 : 300;
   const PAD_L = width < 560 ? 48 : 58, PAD_R = width < 560 ? 8 : 14, PAD_B = 32, PAD_T = 18;
-  const rawMax = Math.max(1, ...items.flatMap((t) => [t.billed, t.collected, t.outstanding]));
+  const rawMax = Math.max(1, ...items.flatMap((t) => [show.billed ? t.billed : 0, show.collected ? t.collected : 0, show.unpaid ? t.outstanding : 0]));
   const { step, top } = niceScale(rawMax);
   const slot = (W - PAD_L - PAD_R) / items.length;
-  const barW = Math.min(22, Math.max(5, slot / 3.2));
+  const nBars = (show.billed ? 1 : 0) + (show.collected ? 1 : 0);
+  const barW = Math.min(nBars === 1 ? 30 : 24, Math.max(6, slot / (nBars === 1 ? 2.2 : 3.0)));
   const base = H - PAD_B;
   const y = (v) => PAD_T + (base - PAD_T) * (1 - v / top);
   const cx = (i) => PAD_L + slot * i + slot / 2;
   const pts = items.map((t, i) => [cx(i), y(t.outstanding)]);
-  const line = pts.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
+  // smooth curve (horizontal tangents at every point, so it never overshoots)
+  const line = pts.map(([px, py], i) => {
+    if (!i) return `M${px.toFixed(1)},${py.toFixed(1)}`;
+    const [qx, qy] = pts[i - 1];
+    const mx = (qx + px) / 2;
+    return `C${mx.toFixed(1)},${qy.toFixed(1)} ${mx.toFixed(1)},${py.toFixed(1)} ${px.toFixed(1)},${py.toFixed(1)}`;
+  }).join(' ');
   const area = pts.length ? `${line} L${pts[pts.length - 1][0].toFixed(1)},${base} L${pts[0][0].toFixed(1)},${base} Z` : '';
   const ticks = [0, 1, 2, 3, 4].map((k) => k * step);
   const h = hover !== null ? items[hover] : null;
@@ -84,14 +91,19 @@ function EvolutionChart({ items, selected, onSelect, label }) {
   return (
     <div className="evo" ref={wrap} onPointerLeave={() => setHover(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} className="exec-chart" role="img" aria-label={label}>
+        <defs>
+          <linearGradient id="evo-g-billed" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={C_BILLED} /><stop offset="1" stopColor={C_BILLED} stopOpacity="0.62" /></linearGradient>
+          <linearGradient id="evo-g-coll" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={C_COLLECTED} /><stop offset="1" stopColor={C_COLLECTED} stopOpacity="0.62" /></linearGradient>
+          <linearGradient id="evo-g-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={C_UNPAID} stopOpacity="0.22" /><stop offset="1" stopColor={C_UNPAID} stopOpacity="0.02" /></linearGradient>
+        </defs>
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke={v === 0 ? '#c7d0d9' : '#e8ecf0'} strokeWidth="1" />
+            <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke={v === 0 ? '#c7d0d9' : '#e3e8ed'} strokeWidth="1" strokeDasharray={v === 0 ? undefined : '3 5'} />
             <text x={PAD_L - 8} y={y(v) + 4} textAnchor="end" className="evo-axis">{v === 0 ? '0' : compact(v)}</text>
           </g>
         ))}
 
-        {area && <path d={area} fill={C_UNPAID} fillOpacity="0.09" pointerEvents="none" />}
+        {show.unpaid && area && <path d={area} fill="url(#evo-g-area)" pointerEvents="none" />}
 
         {items.map((t, i) => {
           const on = t.key === selected;
@@ -99,15 +111,15 @@ function EvolutionChart({ items, selected, onSelect, label }) {
           return (
             <g key={t.key}>
               {(on || hot) && <rect x={PAD_L + slot * i + 3} y={PAD_T - 8} width={slot - 6} height={base - PAD_T + 8} rx="8" fill={on ? '#e3f2ef' : '#f1f4f7'} />}
-              <path className="evo-bar" d={barPath(cx(i) - barW - 1, y(t.billed), barW, base)} fill={C_BILLED} opacity={hot || hover === null ? 1 : 0.55} />
-              <path className="evo-bar" d={barPath(cx(i) + 1, y(t.collected), barW, base)} fill={C_COLLECTED} opacity={hot || hover === null ? 1 : 0.55} />
+              {show.billed && <path className="evo-bar" d={barPath(nBars === 1 ? cx(i) - barW / 2 : cx(i) - barW - 1.5, y(t.billed), barW, base)} fill="url(#evo-g-billed)" opacity={hot || hover === null ? 1 : 0.55} />}
+              {show.collected && <path className="evo-bar" d={barPath(nBars === 1 ? cx(i) - barW / 2 : cx(i) + 1.5, y(t.collected), barW, base)} fill="url(#evo-g-coll)" opacity={hot || hover === null ? 1 : 0.55} />}
               <text x={cx(i)} y={H - 10} textAnchor="middle" className="evo-axis" fontWeight={on ? 700 : 500} fill={on ? '#13203a' : undefined}>{t.short}</text>
             </g>
           );
         })}
 
-        <path d={line} fill="none" stroke={C_UNPAID} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" />
-        {pts.map(([px, py], i) => (
+        {show.unpaid && <path d={line} fill="none" stroke={C_UNPAID} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(190,120,10,.35))' }} />}
+        {show.unpaid && pts.map(([px, py], i) => (
           <circle key={items[i].key} cx={px} cy={py} r={hover === i || items[i].key === selected ? 5.5 : 4} fill={C_UNPAID} stroke="#fff" strokeWidth="2" pointerEvents="none" />
         ))}
 
@@ -129,10 +141,10 @@ function EvolutionChart({ items, selected, onSelect, label }) {
       {h && (
         <div className="evo-tip" style={{ left: `${tipLeft}%`, transform: `translateX(${tipShift})` }} role="tooltip">
           <div className="evo-tip-title">{h.name}</div>
-          <div className="evo-tip-row"><i style={{ background: C_BILLED }} /><span>Billed</span><strong>{peso(h.billed)}</strong></div>
-          <div className="evo-tip-row"><i style={{ background: C_COLLECTED }} /><span>Collected</span><strong>{peso(h.collected)}</strong></div>
-          <div className="evo-tip-row"><i className="evo-tip-line" style={{ background: C_UNPAID }} /><span>Unpaid balance</span><strong>{peso(h.outstanding)}</strong></div>
-          {h.billed > 0 && <div className="evo-tip-foot">{Math.round((h.collected / h.billed) * 100)}% of billed collected</div>}
+          {show.billed && <div className="evo-tip-row"><i style={{ background: C_BILLED }} /><span>Billed</span><strong>{peso(h.billed)}</strong></div>}
+          {show.collected && <div className="evo-tip-row"><i style={{ background: C_COLLECTED }} /><span>Collected</span><strong>{peso(h.collected)}</strong></div>}
+          {show.unpaid && <div className="evo-tip-row"><i className="evo-tip-line" style={{ background: C_UNPAID }} /><span>Unpaid balance</span><strong>{peso(h.outstanding)}</strong></div>}
+          {show.billed && show.collected && h.billed > 0 && <div className="evo-tip-foot">{Math.round((h.collected / h.billed) * 100)}% of billed collected</div>}
         </div>
       )}
     </div>
@@ -147,6 +159,7 @@ export default function Dashboard() {
   const [grouping, setGrouping] = useState('all'); // 'all' = combined | 'each' = one block per account, HMOs first then Company Charges
   const [companyId, setCompanyId] = useState('');
   const [view, setView] = useState('month');
+  const [show, setShow] = useState({ billed: true, collected: true, unpaid: true }); // chart series switched on
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [fm, setFm] = useState(() => new Date().getMonth() + 1); // Yearly / All time: which month the cards show (0 = every month). Starts on this month.
@@ -447,15 +460,21 @@ export default function Dashboard() {
       <div className="panel">
         <div className="dash-panel-head">
           <h2>{isMonth ? `Month by month — ${data.year}` : isAllTime ? 'Overall — year by year' : 'Year by year'}</h2>
-          <div className="exec-chart-key">
-            <span><i style={{ background: C_BILLED }} />Billed</span>
-            <span><i style={{ background: C_COLLECTED }} />Collected</span>
-            <span><i style={{ background: C_UNPAID, height: 3, width: 16, borderRadius: 2 }} />Unpaid balance</span>
+          <div className="evo-legend" role="group" aria-label="Show or hide a series">
+            {[['billed', 'Billed', C_BILLED, items.reduce((n, t) => n + t.billed, 0)], ['collected', 'Collected', C_COLLECTED, items.reduce((n, t) => n + t.collected, 0)], ['unpaid', 'Unpaid balance', C_UNPAID, null]].map(([k, name, color, total]) => (
+              <button key={k} type="button" className={'evo-leg' + (show[k] ? ' on' : '')} aria-pressed={show[k]}
+                onClick={() => setShow((cur) => (cur[k] && Object.values(cur).filter(Boolean).length === 1 ? cur : { ...cur, [k]: !cur[k] }))}
+                title={show[k] ? `Hide ${name}` : `Show ${name}`}>
+                <i className={k === 'unpaid' ? 'line' : ''} style={{ background: color }} />
+                <span>{name}</span>
+                {total !== null && <b>{compact(total)}</b>}
+              </button>
+            ))}
           </div>
         </div>
-        <EvolutionChart items={items} selected={isMonth ? (data.month || null) : isAllTime ? null : data.year} onSelect={pickCategory}
+        <EvolutionChart show={show} items={items} selected={isMonth ? (data.month || null) : isAllTime ? null : data.year} onSelect={pickCategory}
           label={isMonth ? `Billed, collected and unpaid by month, ${data.year}` : 'Billed, collected and unpaid by year'} />
-        <div className="dash-hint">{isMonth ? 'Click a month to focus on it.' : 'Click a year to open it month by month.'}</div>
+        <div className="dash-hint">{isMonth ? 'Click Billed, Collected or Unpaid balance above to show or hide it. Click a month to focus on it.' : 'Click Billed, Collected or Unpaid balance above to show or hide it. Click a year to open it month by month.'}</div>
       </div>
 
       <div className="panel">
