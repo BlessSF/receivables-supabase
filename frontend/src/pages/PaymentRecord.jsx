@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate } from '../utils';
 import MoneyInput from '../MoneyInput';
 import TitleNameSelect from '../TitleNameSelect';
 import LongDateInput from '../LongDateInput';
+import { parsePaste } from '../pasteParse';
 
 const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const blankRow = (date = '') => ({ k: Math.random().toString(36).slice(2), check_date: date, payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', note: '' });
@@ -17,6 +18,8 @@ export default function PaymentRecord() {
   const [recent, setRecent] = useState(null);
   const [flash, setFlash] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   function loadRecent() {
     return api.getPayables().then((r) => {
@@ -33,6 +36,29 @@ export default function PaymentRecord() {
 
   function addRow() { setRows((cur) => [...cur, blankRow(cur[cur.length - 1]?.check_date || ymdLocal())]); }
   function removeRow(k) { setRows((cur) => (cur.length > 1 ? cur.filter((r) => r.k !== k) : cur)); }
+
+  // Rows copied from Excel / Google Sheets: fill the table (empty rows are replaced, typed rows are kept).
+  function importText(text) {
+    const { rows: got, skipped } = parsePaste(text, ymdLocal());
+    if (!got.length) { setFlash({ type: 'error', msg: 'Nothing to paste. Copy the rows from Excel (date, name, amount, remarks) and try again.' }); return false; }
+    setRows((cur) => [...cur.filter((r) => !isEmpty(r)), ...got.map((g) => ({ ...blankRow(g.check_date), ...g }))]);
+    const sum = got.reduce((t, g) => t + Number(g.amount), 0);
+    setFlash({ type: 'success', msg: `Pasted ${got.length} ${got.length === 1 ? 'row' : 'rows'} (${peso(sum)})${skipped ? `, skipped ${skipped} without an amount` : ''}. Check them, then click Save.` });
+    return true;
+  }
+  const importRef = useRef(importText);
+  importRef.current = importText;
+  useEffect(() => {
+    function onPaste(e) {
+      const text = e.clipboardData?.getData('text/plain') || '';
+      if (e.target?.tagName === 'TEXTAREA') return; // the paste box handles its own text
+      if (!/[\t\n]/.test(text.trim())) return; // a single value: paste normally into the box
+      e.preventDefault();
+      importRef.current(text);
+    }
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
 
   async function save() {
     if (!filled.length) { setFlash({ type: 'error', msg: 'Type at least one payee and amount.' }); return; }
@@ -51,7 +77,7 @@ export default function PaymentRecord() {
       <div className="page-header">
         <div>
           <h1>Payment Record</h1>
-          <div className="subtitle">Type in the payables you need to release. Saving adds them to Running Payables.</div>
+          <div className="subtitle">Type in the payables you need to release, or copy rows from Excel and paste them here (Ctrl+V). Saving adds them to Running Payables.</div>
         </div>
         <Link className="btn btn-secondary" to="/payables/running">View Running Payables</Link>
       </div>
@@ -59,6 +85,19 @@ export default function PaymentRecord() {
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
       <div className="panel">
+        <div className="rec-paste">
+          <div className="rec-paste-text"><strong>Paste from Excel</strong><span>Copy the rows (Date, Name, Amount, Remarks), click anywhere on this page and press Ctrl+V.</span></div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPasteOpen((o) => !o)}>{pasteOpen ? 'Close' : 'Paste box'}</button>
+        </div>
+        {pasteOpen && (
+          <div className="rec-paste-box">
+            <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="Paste your Excel rows here (Ctrl+V)…" rows={6} autoFocus />
+            <div className="rec-paste-actions">
+              <button type="button" className="btn btn-sm" disabled={!pasteText.trim()} onClick={() => { if (importText(pasteText)) { setPasteText(''); setPasteOpen(false); } }}>Add to table</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setPasteText(''); setPasteOpen(false); }}>Cancel</button>
+            </div>
+          </div>
+        )}
         <div className="table-wrap">
           <table className="data-table rec-table">
             <thead>

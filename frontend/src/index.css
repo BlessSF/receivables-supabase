@@ -1687,3 +1687,12 @@ select.rec-input { min-width: 112px; }
 .evo-leg:not(.on) { opacity: .6; }
 .evo-leg:not(.on) span { text-decoration: line-through; }
 .evo-leg:not(.on) i { filter: grayscale(1); opacity: .6; }
+
+/* Payment Record: paste from Excel */
+.rec-paste { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(15,118,110,.07), transparent); flex-wrap: wrap; }
+.rec-paste-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--slate); }
+.rec-paste-text strong { color: var(--ink); font-size: 14px; }
+.rec-paste-box { padding: 14px 24px; border-bottom: 1px solid var(--line); background: #f8fafb; }
+.rec-paste-box textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 13px; resize: vertical; }
+.rec-paste-box textarea:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.rec-paste-actions { display: flex; gap: 8px; margin-top: 10px; }
