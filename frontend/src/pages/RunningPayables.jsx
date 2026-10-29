@@ -28,6 +28,7 @@ export default function RunningPayables() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [month, setMonth] = useState('');
+  const [wipe, setWipe] = useState(null); // { typed } while the "clear all" confirmation is open
 
   function load() {
     return api.getPayables()
@@ -93,6 +94,18 @@ export default function RunningPayables() {
     if (!confirm(`Delete "${r.payee}" (${peso(r.amount)})?`)) return;
     try { await api.deletePayable(r.id); setFlash({ type: 'success', msg: 'Payable deleted.' }); load(); }
     catch (e) { setFlash({ type: 'error', msg: e.message }); }
+  }
+
+  const filtered = tab !== 'All' || !!q.trim() || !!cat || !!month;
+  async function clearAll() {
+    setBusy(true);
+    try {
+      const r = await api.clearPayables(shown.map((x) => x.id));
+      setFlash({ type: 'success', msg: r.message });
+      setWipe(null);
+      await load();
+    } catch (e) { setFlash({ type: 'error', msg: e.message }); setWipe(null); }
+    setBusy(false);
   }
 
   const tabs = [
@@ -162,6 +175,10 @@ export default function RunningPayables() {
               <option value="">All months</option>
               {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
+            <button type="button" className="btn btn-danger-outline" disabled={!shown.length} onClick={() => setWipe({ typed: '' })}
+              title={shown.length ? `Delete the ${shown.length} ${shown.length === 1 ? 'payable' : 'payables'} shown below` : 'Nothing to clear'}>
+              <IconTrash /> Clear all{shown.length ? ` (${shown.length})` : ''}
+            </button>
           </div>
         </div>
 
@@ -231,6 +248,24 @@ export default function RunningPayables() {
         </div>
       </div>
 
+
+      {wipe && (
+        <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setWipe(null); }}>
+          <div className="pm-card settle-card pay-modal pay-wipe">
+            <h3>Clear {filtered ? 'these' : 'all'} payables?</h3>
+            <p className="pay-wipe-msg">
+              This permanently deletes <strong>{shown.length} {shown.length === 1 ? 'payable' : 'payables'}</strong> ({peso(sumOf(shown))})
+              {filtered ? <> from what is shown now: <strong>{[tab !== 'All' && tab, cat, month && monthLabel(month), q.trim() && `“${q.trim()}”`].filter(Boolean).join(' · ')}</strong></> : <>, <strong>everything</strong> in Running Payables</>}.
+              It cannot be undone.
+            </p>
+            <div className="form-group"><label>Type <strong>DELETE</strong> to confirm</label><input autoFocus value={wipe.typed} onChange={(e) => setWipe({ typed: e.target.value })} placeholder="DELETE" /></div>
+            <div className="settle-actions">
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setWipe(null)}>Cancel</button>
+              <button type="button" className="btn btn-danger-solid" disabled={busy || wipe.typed.trim().toUpperCase() !== 'DELETE'} onClick={clearAll}>{busy ? 'Deleting…' : `Delete ${shown.length}`}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {form && (
         <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setForm(null); }}>

@@ -122,6 +122,7 @@ export const api = {
   setPayableRelease: (id, release_status) => call('set_payable_release', { method: 'POST', body: { id, release_status } }),
   clearReleasedPayable: (id) => call('clear_released_payable', { method: 'POST', body: { id } }),
   deletePayable: (id) => call('delete_payable', { method: 'POST', body: { id } }),
+  clearPayables: (ids) => call('clear_payables', { method: 'POST', body: { ids } }),
 
   getMonitoring: () => call('get_monitoring'),
   createMonitoring: (body) => call('create_monitoring', { method: 'POST', body }),

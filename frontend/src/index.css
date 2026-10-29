@@ -1696,3 +1696,14 @@ select.rec-input { min-width: 112px; }
 .rec-paste-box textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 13px; resize: vertical; }
 .rec-paste-box textarea:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
 .rec-paste-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* Running Payables: clear all */
+.btn-danger-outline { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #f0b4b4; background: #fff; color: #b42318; font: inherit; font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+.btn-danger-outline svg { width: 15px; height: 15px; }
+.btn-danger-outline:hover:not(:disabled) { background: #fef3f2; border-color: #e5877f; }
+.btn-danger-outline:disabled { opacity: .45; cursor: not-allowed; }
+.btn-danger-solid { background: #b42318; border-color: #b42318; color: #fff; }
+.btn-danger-solid:hover:not(:disabled) { background: #912018; border-color: #912018; }
+.btn-danger-solid:disabled { opacity: .45; cursor: not-allowed; }
+.pay-wipe-msg { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--slate); }
+.pay-wipe-msg strong { color: var(--ink); }

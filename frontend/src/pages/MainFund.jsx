@@ -82,7 +82,10 @@ export default function MainFund() {
     try {
       await api.clearReleasedPayable(c.id);
       setLinked((cur) => cur.filter((x) => x.id !== c.id));
-      setNotice({ type: 'success', msg: `${c.payee} marked cleared and removed from the list.` });
+      // the bank has now taken the money out, so the passbook balance drops by the same amount
+      // (the "less: released checks" line no longer counts it, so available funds stay correct)
+      edit((cur) => ({ passbook: String(Math.round((num(cur.passbook) - Number(c.amount || 0)) * 100) / 100) }));
+      setNotice({ type: 'success', msg: `${c.payee} cleared. Passbook balance reduced by ${peso(c.amount)}.` });
     } catch (e) { setNotice({ type: 'error', msg: e.message }); }
   }
   const shownLinked = linked.filter((c) => c.payee.toLowerCase().includes(find.trim().toLowerCase()));

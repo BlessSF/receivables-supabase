@@ -93,7 +93,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -104,7 +104,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable',
+  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
 ]);
 
 function recalcRow(d) {
@@ -1901,6 +1901,22 @@ const actions = {
     await ensurePayablesTable();
     await exec('DELETE FROM running_payables WHERE id=?', [toInt(input.id)]);
     return { ok: true, message: 'Payable deleted.' };
+  },
+
+  // Delete many payables at once (the rows shown under the current tab / filters on Running Payables).
+  async clear_payables(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/running');
+    await ensurePayablesTable();
+    const ids = [...new Set((Array.isArray(input.ids) ? input.ids : []).map(toInt).filter((n) => n > 0))];
+    if (!ids.length) jsonExit({ ok: false, error: 'Nothing to clear.' }, 400);
+    let count = 0;
+    await transaction(async (client) => {
+      for (let i = 0; i < ids.length; i += 500) {
+        const part = ids.slice(i, i + 500);
+        count += await exec(`DELETE FROM running_payables WHERE id IN (${part.map(() => '?').join(',')})`, part, client);
+      }
+    });
+    return { ok: true, count, message: `${count} ${count === 1 ? 'payable' : 'payables'} deleted.` };
   },
 };
 
