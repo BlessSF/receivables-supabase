@@ -1707,3 +1707,7 @@ select.rec-input { min-width: 112px; }
 .btn-danger-solid:disabled { opacity: .45; cursor: not-allowed; }
 .pay-wipe-msg { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--slate); }
 .pay-wipe-msg strong { color: var(--ink); }
+
+/* Main: paste released checks from Excel */
+.mf-paste { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 0 0 10px; }
+.mf-paste-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 0 0 10px; }

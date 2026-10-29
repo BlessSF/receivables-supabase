@@ -5,6 +5,7 @@ import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
 import { computeMain } from '../mainCalc';
+import { parsePaste } from '../pasteParse';
 
 const num = (v) => Number(rawNum(v)) || 0;
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
@@ -38,6 +39,8 @@ export default function MainFund() {
   const [state, setState] = useState('idle'); // idle | saving | saved | error
   const [err, setErr] = useState('');
   const [find, setFind] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const dirty = useRef(false);
   const timer = useRef(null);
   const latest = useRef(null);
@@ -66,6 +69,31 @@ export default function MainFund() {
     } catch (e) { setErr(e.message || 'Could not save.'); setState('error'); dirty.current = true; }
   }
   useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) flush(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rows copied from Excel (name, then amount) are added to the released checks list.
+  function importChecks(text) {
+    const { rows: got, skipped } = parsePaste(text);
+    if (!got.length) { setNotice({ type: 'error', msg: 'Nothing to paste. Copy the rows from Excel (name, then amount) and try again.' }); return false; }
+    const add = got.map((g) => ({ id: Math.random().toString(36).slice(2, 10), name: g.payee, amount: g.amount }));
+    edit((cur) => ({ checks: [...cur.checks, ...add] }));
+    const sum = got.reduce((t, g) => t + Number(g.amount), 0);
+    setNotice({ type: 'success', msg: `Pasted ${got.length} ${got.length === 1 ? 'check' : 'checks'} (${peso(sum)})${skipped ? `, skipped ${skipped} without an amount` : ''}.` });
+    return true;
+  }
+  const importRef = useRef(importChecks);
+  importRef.current = importChecks;
+  useEffect(() => {
+    function onPaste(e) {
+      const text = e.clipboardData?.getData('text/plain') || '';
+      if (e.target?.tagName === 'TEXTAREA') return; // the paste box handles its own text
+      if (!/[\t\n]/.test(text.trim())) return; // single value: paste normally into the box
+      if (!latest.current) return;
+      e.preventDefault();
+      importRef.current(text);
+    }
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
 
   const calc = useMemo(() => (f ? computeMain(toData(f), linked, running) : null), [f, running, linked]);
 
@@ -135,6 +163,19 @@ export default function MainFund() {
             <span className="at-count">{calc.checksCount}</span>
           </div>
           <p className="at-help">Filled in automatically from Running Payables: every paid check marked <strong>Released</strong> shows here. Press Cleared once the bank clears it.</p>
+          <div className="rec-paste mf-paste">
+            <div className="rec-paste-text"><strong>Paste from Excel</strong><span>Copy the rows (name, then amount), click anywhere on this page and press Ctrl+V.</span></div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPasteOpen((o) => !o)}>{pasteOpen ? 'Close' : 'Paste box'}</button>
+          </div>
+          {pasteOpen && (
+            <div className="rec-paste-box mf-paste-box">
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="Paste your Excel rows here (Ctrl+V)…" rows={6} autoFocus />
+              <div className="rec-paste-actions">
+                <button type="button" className="btn btn-sm" disabled={!pasteText.trim()} onClick={() => { if (importChecks(pasteText)) { setPasteText(''); setPasteOpen(false); } }}>Add to list</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setPasteText(''); setPasteOpen(false); }}>Cancel</button>
+              </div>
+            </div>
+          )}
           {notice && <div className={`flash flash-${notice.type}`} style={{ margin: '0 0 10px' }}>{notice.msg}</div>}
           {f.checks.length + linked.length > 8 && <input className="at-find" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search checks…" />}
           <ul className="mf-list">
