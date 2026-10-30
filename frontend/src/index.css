@@ -84,26 +84,21 @@ button { font-family: inherit; }
 }
 
 .brand {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 12px; margin: 0 0 18px;
-  flex-shrink: 0;
-  border-radius: 14px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 6px 18px rgba(0, 0, 0, 0.22);
+  display: block; flex-shrink: 0;
+  padding: 6px 8px 18px; margin: 0 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
-.brand-mark {
-  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
-  display: grid; place-items: center;
-  background: linear-gradient(145deg, #2bb5a2 0%, #12806f 55%, #0b564d 100%);
-  color: #fff; font-family: var(--font-display); font-size: 23px; font-weight: 700; line-height: 1; letter-spacing: 0.01em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 4px 12px rgba(18, 128, 111, 0.45);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+.brand-name {
+  font-family: var(--font-display); font-weight: 600; font-size: 24px; color: #fff;
+  line-height: 1.1; letter-spacing: -0.005em;
 }
-.brand-name { font-weight: 700; font-size: 16.5px; color: #fff; line-height: 1.15; letter-spacing: 0.01em; }
 .brand-sub {
-  font-size: 10.5px; color: #7fd6c8; margin-top: 4px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.11em; line-height: 1.2;
+  margin-top: 7px; display: flex; align-items: center; gap: 10px;
+  font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase; letter-spacing: 0.16em; line-height: 1.2;
 }
+.brand-sub::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.10); }
+.brand-short { display: none; }
 
 /* Receivables | Payables segmented toggle */
 .module-toggle {
@@ -820,8 +815,9 @@ button { font-family: inherit; }
 /* ---------- Collapsed sidebar (icons only) -- only when you click "Collapse" ---------- */
 @media (min-width: 781px) {
   .shell.is-collapsed .sidebar { width: 72px; padding: 18px 10px 14px; }
-  .shell.is-collapsed .brand, .shell.is-collapsed .brand-custom { padding: 8px 0; margin-bottom: 14px; justify-content: center; background: none; box-shadow: none; }
-  .shell.is-collapsed .brand > div, .shell.is-collapsed .brand-custom .brand-sub, .shell.is-collapsed .brand-logo-card { display: none; }
+  .shell.is-collapsed .brand, .shell.is-collapsed .brand-custom { padding: 8px 0 14px; margin-bottom: 14px; text-align: center; background: none; box-shadow: none; }
+  .shell.is-collapsed .brand > .brand-text, .shell.is-collapsed .brand-custom .brand-sub, .shell.is-collapsed .brand-logo-card { display: none; }
+  .shell.is-collapsed .brand-short { display: block; font-family: var(--font-display); font-size: 17px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
   .shell.is-collapsed .brand-custom::before {
     content: attr(data-initial); width: 36px; height: 36px; border-radius: 9px; margin: 0 auto;
     display: grid; place-items: center; background: var(--brand-color, #0a1fd8);
@@ -1550,10 +1546,6 @@ select.rec-input { min-width: 112px; }
 .ledger-table td .badge { white-space: nowrap; }
 
 /* Sidebar brand: mark + name + current module */
-.brand:not(.brand-custom) { position: relative; overflow: hidden; }
-.brand:not(.brand-custom)::after { content: ""; position: absolute; right: -28px; top: -28px; width: 90px; height: 90px; border-radius: 50%; background: radial-gradient(circle, rgba(43, 181, 162, 0.28), transparent 70%); pointer-events: none; }
-.brand:not(.brand-custom) .brand-mark { font-size: 19px; letter-spacing: 0; }
-.shell.is-collapsed .brand:not(.brand-custom) .brand-mark { width: 40px; height: 40px; }
 
 /* Ledger status badges: an icon instead of the dot */
 .badge[class*="ic-"]::before { width: 14px; height: 14px; border-radius: 0; opacity: 1; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }

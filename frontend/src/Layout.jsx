@@ -210,12 +210,12 @@ export default function Layout() {
             </div>
           </div>
         ) : (
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true">{brand.initial}</span>
-            <div>
+          <div className="brand" title={brand.name}>
+            <div className="brand-text">
               <div className="brand-name">{brand.name}</div>
               <div className="brand-sub">{inPayables ? 'Payables' : 'Receivables'}</div>
             </div>
+            <span className="brand-short" aria-hidden="true">{brand.name.split(' ').find((w) => w.length > 1 && w === w.toUpperCase()) || brand.name.charAt(0)}</span>
           </div>
         )}
         {showModuleToggle && (
