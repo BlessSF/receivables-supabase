@@ -1734,3 +1734,71 @@ select.rec-input { min-width: 112px; }
 .bk-banner-link { margin-left: auto; color: #7a4b00; text-decoration: underline; }
 .bk-banner-x { border: 0; background: none; font-size: 18px; line-height: 1; color: #7a4b00; cursor: pointer; padding: 0 4px; }
 @media (max-width: 760px) { .bk-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Settings page ---------- */
+.st-tabs { display: inline-flex; gap: 4px; padding: 4px; margin: 0 0 18px; background: #eef2f5; border-radius: 14px; flex-wrap: wrap; }
+.st-tab { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--slate); font: inherit; font-size: 14px; font-weight: 600; padding: 9px 16px; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s; }
+.st-tab:hover { color: var(--ink); }
+.st-tab.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 4px 12px rgba(15, 23, 42, .06); }
+.st-tab-ic { display: inline-flex; width: 18px; height: 18px; color: var(--slate); }
+.st-tab.active .st-tab-ic { color: var(--teal-strong, #0f766e); }
+.st-tab-ic svg { width: 18px; height: 18px; }
+
+.st-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 24px 26px; margin: 0 0 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
+.st-head { display: flex; gap: 14px; align-items: flex-start; margin: 0 0 18px; }
+.st-head h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.st-head p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--slate); max-width: 720px; }
+.st-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: #eef2f5; color: var(--slate); }
+.st-ic svg { width: 20px; height: 20px; }
+.st-ic.teal { background: #e4f5f1; color: #0f766e; }
+.st-ic.blue { background: #e8f0fe; color: #2556c4; }
+.st-ic.amber { background: #fff3dc; color: #b4690e; }
+
+.st-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafb; }
+.st-switch { display: flex; align-items: center; gap: 14px; cursor: pointer; user-select: none; }
+.st-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.st-track { position: relative; flex: none; width: 44px; height: 26px; border-radius: 999px; background: #c3ccd4; transition: background .18s; }
+.st-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15, 23, 42, .3); transition: transform .18s; }
+.st-switch input:checked + .st-track { background: #0f9d8a; }
+.st-switch input:checked + .st-track::after { transform: translateX(18px); }
+.st-switch input:focus-visible + .st-track { box-shadow: 0 0 0 3px rgba(15, 157, 138, .3); }
+.st-switch.off { opacity: .6; cursor: progress; }
+.st-switch-text { display: flex; flex-direction: column; gap: 2px; }
+.st-switch-text strong { font-size: 14.5px; color: var(--ink); }
+.st-switch-text small { font-size: 12.5px; color: var(--slate); }
+.st-pill { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; }
+.st-pill.on { background: #e1f6ec; color: #17794a; }
+.st-pill.off { background: #eceff3; color: #5d6b7a; }
+
+.st-table th { white-space: nowrap; }
+.st-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
+.st-table td > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-days { display: flex; align-items: center; gap: 8px; color: var(--slate); }
+.st-num { width: 70px; height: 40px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong, #cfd8df); border-radius: 10px; background: #fff; font: inherit; font-size: 14px; text-align: center; color: var(--ink); }
+.st-num.wide { width: 96px; }
+.st-num:focus { outline: none; border-color: var(--teal); box-shadow: var(--ring); }
+.st-arrow { width: 28px; color: #9aa7b4; }
+.st-arrow svg { width: 18px; height: 18px; }
+.st-del { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid #f0c9c5; background: #fff; color: #b42318; border-radius: 10px; cursor: pointer; }
+.st-del svg { width: 17px; height: 17px; }
+.st-del:hover { background: #fef3f2; border-color: #e5877f; }
+
+.st-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; }
+.st-actions .st-save { margin-left: auto; }
+
+.st-try { margin: 22px 0 0; padding: 16px 18px; border-radius: 14px; background: linear-gradient(135deg, #f3f7ff, #f6fbf9); border: 1px solid #dde7f5; }
+.st-try-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.st-try-body { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+.st-try small { color: var(--slate); font-size: 12px; }
+.st-result { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 10px; background: #fff; border: 1px solid #cfe0f7; font-weight: 700; color: #1e4fa8; font-size: 14px; }
+.st-result i { font-style: normal; font-weight: 500; color: var(--slate); }
+.st-result.none { border-color: #f0d9a9; color: #8a5a00; background: #fffaf0; }
+
+.st-grace { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 0; padding: 14px 16px; border: 1px dashed var(--line-strong, #cfd8df); border-radius: 14px; font-size: 14px; color: var(--slate); }
+.st-grace label { font-weight: 700; color: var(--ink); }
+.st-example { margin: 14px 0 0; padding: 12px 16px; border-radius: 12px; background: #fff7e8; border: 1px solid #f3dfb4; color: #6d4a06; font-size: 13.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.st-example strong { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+
+/* backup inside the new card */
+.st-card .bk-last { margin-top: 0; }
+@media (max-width: 760px) { .st-card { padding: 18px; } .st-actions .st-save { margin-left: 0; } .st-row { flex-direction: column; align-items: flex-start; } }
