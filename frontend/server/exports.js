@@ -6,6 +6,7 @@ import { readSession, makeAuth } from './auth.js';
 import { toInt, toFloat, toStr } from './php.js';
 import { excelSerial, periodLabel, coveredLabel, monthName } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
+import { makeBackupFile } from './backup.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   branchWhere, branchWhereStandalone, canAccessCompany,
@@ -371,6 +372,11 @@ export async function handleXlsx(req, res) {
   const auth = makeAuth(user);
   const query = getQuery(req);
   const type = query.type ?? 'ledger';
+  if (type === 'backup') { // Settings -> Backup: the whole database, admin only
+    if (user.role !== 'admin') return sendText(res, 403, 'Only an admin can download a backup.');
+    const file = await makeBackupFile(query.format === 'sql' ? 'sql' : 'xlsx', user.full_name || user.username || '');
+    return sendFile(res, file.bytes, file.type, file.name);
+  }
   // (the Excel export has no separate past-due sheet, so only "aging" is allowed here)
   if (user.role === 'executive' && type !== 'aging' && type !== 'monthly') return sendText(res, 403, 'Your account can download reports only.');
   if (user.role === 'staff' && type !== 'ledger' && type !== 'monthly') return sendText(res, 403, 'Staff accounts can only download the ledger and monthly report.');

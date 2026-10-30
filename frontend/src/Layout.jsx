@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
+import { api } from './api';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus } from './icons';
@@ -133,6 +134,17 @@ export default function Layout() {
   // collapses automatically on laptop-size windows so the grid fits; the
   // expand button still brings it back.
   const location = useLocation();
+  // Admin only: a reminder when no backup was taken for 7 days (Settings -> Backup)
+  const [bk, setBk] = useState(null);
+  const [bkHidden, setBkHidden] = useState(() => { try { return sessionStorage.getItem('bk_hide') === '1'; } catch { return false; } });
+  useEffect(() => {
+    if (!user?.is_admin_role) return undefined;
+    const load = () => api.getBackupInfo().then((r) => setBk(r.data)).catch(() => {});
+    load();
+    window.addEventListener('backup-done', load);
+    return () => window.removeEventListener('backup-done', load);
+  }, [user?.is_admin_role]);
+  const bkDue = !!bk && !bkHidden && (bk.days === null || bk.days >= 7) && location.pathname !== '/settings';
   const navigate = useNavigate();
   const inPayables = location.pathname.startsWith('/payables');
   // Admin always has both modules; other roles get the Payables tab only when Sidebar access gives them a Payables page
@@ -252,6 +264,14 @@ export default function Layout() {
         </div>
       </aside>
       <main className="main">
+        {bkDue && (
+          <div className="bk-banner" role="status">
+            <span>{bk.days === null ? 'No backup has been taken yet.' : `No backup for ${bk.days} days.`}</span>
+            <NavLink to="/settings#backup" className="bk-banner-link">Back up now</NavLink>
+            <button type="button" className="bk-banner-x" aria-label="Hide for now" title="Hide for now"
+              onClick={() => { setBkHidden(true); try { sessionStorage.setItem('bk_hide', '1'); } catch { /* ignore */ } }}>×</button>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

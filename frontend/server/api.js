@@ -5,6 +5,7 @@
 
 import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
+import { backupInfo } from './backup.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -1673,6 +1674,12 @@ const actions = {
   },
 
   // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
+  // Settings -> Backup: when the last backup was taken, who took it, and what is in the database.
+  async get_backup_info(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can see backups.' }, 403);
+    return { ok: true, data: await backupInfo() };
+  },
+
   async get_nav_access(input, auth) {
     if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change sidebar access.' }, 403);
     return { ok: true, data: { access: await getNavAccess(), base: NAV_BASE, defaults: NAV_DEFAULT, pages: NAV_PAGES } };

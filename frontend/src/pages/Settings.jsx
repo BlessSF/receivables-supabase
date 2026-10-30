@@ -4,6 +4,76 @@ import { useAuth } from '../AuthContext';
 import LongDateInput from '../LongDateInput';
 import { coveredPeriodForBilling, DEFAULT_COVERED_RULES, formatLongDate } from '../utils';
 
+// Settings -> Backup: download the whole database (Excel to read, SQL to restore), see when it was last done.
+function BackupPanel() {
+  const [info, setInfo] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const load = () => api.getBackupInfo().then((r) => { setInfo(r.data); setErr(''); }).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if (info && window.location.hash === '#backup') document.getElementById('backup')?.scrollIntoView(); }, [!!info]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // download through fetch so a failure shows a message instead of a broken page, then refresh "last backup"
+  async function download(format) {
+    setBusy(format); setErr('');
+    try {
+      const res = await fetch(`/export_xlsx.php?type=backup&format=${format}`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error((await res.text()) || 'Backup failed.');
+      const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || `backup.${format === 'sql' ? 'sql' : 'xlsx'}`;
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      await load();
+      window.dispatchEvent(new Event('backup-done'));
+    } catch (e) { setErr(e.message || 'Backup failed.'); }
+    setBusy('');
+  }
+
+  const when = (iso) => new Date(iso).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const days = info?.days;
+  const state = !info ? '' : days === null ? 'bad' : days >= 7 ? 'warn' : 'ok';
+  const totalRows = (info?.tables || []).reduce((n, t) => n + t.rows, 0);
+
+  return (
+    <div className="panel bk-panel" id="backup">
+      <h2>Backup</h2>
+      <p className="bk-help">Download a copy of everything in the system. It only reads the data, nothing is changed. Keep a copy somewhere else too (Google Drive or another computer).</p>
+      {err && <div className="flash flash-error">{err}</div>}
+      <div className={`bk-last ${state}`}>
+        {!info ? 'Loading…' : info.last
+          ? <><strong>Last backup: {when(info.last.at)}</strong><span>{days === 0 ? 'today' : `${days} ${days === 1 ? 'day' : 'days'} ago`} · {info.last.kind}{info.last.by ? ` · by ${info.last.by}` : ''}</span></>
+          : <><strong>No backup yet</strong><span>Download one now.</span></>}
+      </div>
+      <div className="bk-grid">
+        <div className="bk-card">
+          <div className="bk-title">Excel copy</div>
+          <p>One sheet per table. Easy to open and read. Password hashes are left out. Not for restoring.</p>
+          <button type="button" className="btn" disabled={!!busy} onClick={() => download('xlsx')}>{busy === 'xlsx' ? 'Preparing…' : 'Download Excel'}</button>
+        </div>
+        <div className="bk-card">
+          <div className="bk-title">Full backup (SQL)</div>
+          <p>The whole database, exactly as it is. Used to restore everything. It contains user password hashes, so keep it private.</p>
+          <button type="button" className="btn" disabled={!!busy} onClick={() => download('sql')}>{busy === 'sql' ? 'Preparing…' : 'Download SQL'}</button>
+        </div>
+      </div>
+      {info && (
+        <details className="bk-details">
+          <summary>What is included · {info.tables.length} tables · {totalRows.toLocaleString('en-US')} rows</summary>
+          <div className="bk-tables">{info.tables.map((t) => <span key={t.name}>{t.name} <b>{t.rows.toLocaleString('en-US')}</b></span>)}</div>
+        </details>
+      )}
+      {info && info.log.length > 0 && (
+        <details className="bk-details">
+          <summary>Recent downloads</summary>
+          <ul className="bk-log">{info.log.map((l, i) => <li key={i}><span>{when(l.at)}</span><span>{l.kind}</span><span>{l.by}</span></li>)}</ul>
+        </details>
+      )}
+      <p className="bk-help" style={{ marginBottom: 0 }}>To restore: open the Supabase SQL Editor of an empty project, paste the SQL file and run it. Take a backup before any big clean-up.</p>
+    </div>
+  );
+}
+
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // One end of a covered period: which month (relative to the billing date's month) and which day.
@@ -108,6 +178,8 @@ export default function Settings() {
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
+
+      {user.is_admin_role && <BackupPanel />}
 
       <div className="panel">
         <h2>Automatic Covered Period</h2>
