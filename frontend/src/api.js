@@ -118,7 +118,7 @@ export const api = {
   saveMainFund: (data) => call('save_main_fund', { method: 'POST', body: { data } }),
   savePayable: (body) => call('save_payable', { method: 'POST', body }),
   saveAccountTitles: (titles, names) => call('save_account_titles', { method: 'POST', body: { titles, names } }),
-  addPayablesBulk: (items) => call('add_payables_bulk', { method: 'POST', body: { items } }),
+  addPayablesBulk: (items, released = false) => call('add_payables_bulk', { method: 'POST', body: { items, released } }),
   setPayableStatus: (id, status) => call('set_payable_status', { method: 'POST', body: { id, status } }),
   setPayableRelease: (id, release_status) => call('set_payable_release', { method: 'POST', body: { id, release_status } }),
   clearReleasedPayable: (id) => call('clear_released_payable', { method: 'POST', body: { id } }),

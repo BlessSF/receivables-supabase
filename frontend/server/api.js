@@ -1844,7 +1844,9 @@ const actions = {
   },
 
   async add_payables_bulk(input, auth) {
-    await requirePayablesAdmin(auth, '/payables/record');
+    // released = pasted on Main (Released check monitoring): saved as Paid + Released so it shows there with a Cleared button
+    const released = input.released === true;
+    await requirePayablesAdmin(auth, released ? '/payables/main' : '/payables/record');
     await ensurePayablesTable();
     const raw = Array.isArray(input.items) ? input.items : [];
     if (!raw.length) jsonExit({ ok: false, error: 'Add at least one payable.' }, 400);
@@ -1860,16 +1862,19 @@ const actions = {
         cleanTitle(it?.category) || 'Other',
         elvis(trim(it?.title_name ?? '').replace(/\s+/g, ' ').slice(0, 120), null),
         amount,
-        it?.status === 'Paid' ? 'Paid' : 'Unpaid',
+        released || it?.status === 'Paid' ? 'Paid' : 'Unpaid',
         elvis(trim(it?.note ?? '').slice(0, 300), null),
+        released ? 'Released' : 'Pending Release',
       ];
     });
     await transaction(async (client) => {
       for (const v of items) {
-        await exec('INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note) VALUES (?,?,?,?,?,?,?)', v, client);
+        await exec('INSERT INTO running_payables (check_date, payee, category, title_name, amount, status, note, release_status) VALUES (?,?,?,?,?,?,?,?)', v, client);
       }
     });
-    return { ok: true, count: items.length, message: `${items.length} ${items.length === 1 ? 'payable' : 'payables'} added to Running Payables.` };
+    return { ok: true, count: items.length, message: released
+      ? `${items.length} ${items.length === 1 ? 'check' : 'checks'} saved to Running Payables as Paid and Released.`
+      : `${items.length} ${items.length === 1 ? 'payable' : 'payables'} added to Running Payables.` };
   },
 
   async set_payable_status(input, auth) {

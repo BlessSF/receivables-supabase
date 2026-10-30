@@ -8,6 +8,7 @@ import { computeMain } from '../mainCalc';
 import { parsePaste } from '../pasteParse';
 
 const num = (v) => Number(rawNum(v)) || 0;
+const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
 
 // server data -> editable strings
@@ -70,15 +71,21 @@ export default function MainFund() {
   }
   useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) flush(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Rows copied from Excel (name, then amount) are added to the released checks list.
-  function importChecks(text) {
-    const { rows: got, skipped } = parsePaste(text);
-    if (!got.length) { setNotice({ type: 'error', msg: 'Nothing to paste. Copy the rows from Excel (name, then amount) and try again.' }); return false; }
-    const add = got.map((g) => ({ id: Math.random().toString(36).slice(2, 10), name: g.payee, amount: g.amount }));
-    edit((cur) => ({ checks: [...cur.checks, ...add] }));
-    const sum = got.reduce((t, g) => t + Number(g.amount), 0);
-    setNotice({ type: 'success', msg: `Pasted ${got.length} ${got.length === 1 ? 'check' : 'checks'} (${peso(sum)})${skipped ? `, skipped ${skipped} without an amount` : ''}.` });
-    return true;
+  // Rows copied from Excel (name, date, amount) are saved to Running Payables as Paid + Released,
+  // so they show up here in Released check monitoring with a Cleared button.
+  async function importChecks(text) {
+    const { rows: got, skipped } = parsePaste(text, ymdLocal());
+    if (!got.length) { setNotice({ type: 'error', msg: 'Nothing to paste. Copy the rows from Excel (name, date, amount) and try again.' }); return false; }
+    try {
+      for (let i = 0; i < got.length; i += 100) {
+        await api.addPayablesBulk(got.slice(i, i + 100).map((g) => ({ check_date: g.check_date, payee: g.payee, amount: g.amount, status: 'Paid', category: 'Other' })), true);
+      }
+      const r = await api.getMainFund();
+      setLinked(r.released_payables || []); setRunning(r.running_payables); setRunningN(r.running_count);
+      const sum = got.reduce((t, g) => t + Number(g.amount), 0);
+      setNotice({ type: 'success', msg: `Pasted ${got.length} ${got.length === 1 ? 'check' : 'checks'} (${peso(sum)}). Saved to Running Payables as Paid and Released${skipped ? `; skipped ${skipped} without an amount` : ''}.` });
+      return true;
+    } catch (e) { setNotice({ type: 'error', msg: e.message }); return false; }
   }
   const importRef = useRef(importChecks);
   importRef.current = importChecks;
@@ -164,14 +171,14 @@ export default function MainFund() {
           </div>
           <p className="at-help">Filled in automatically from Running Payables: every paid check marked <strong>Released</strong> shows here. Press Cleared once the bank clears it.</p>
           <div className="rec-paste mf-paste">
-            <div className="rec-paste-text"><strong>Paste from Excel</strong><span>Copy the rows (name, then amount), click anywhere on this page and press Ctrl+V.</span></div>
+            <div className="rec-paste-text"><strong>Paste from Excel</strong><span>Copy the rows (name, date, amount), click anywhere on this page and press Ctrl+V. They are saved to Running Payables as Paid and Released.</span></div>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPasteOpen((o) => !o)}>{pasteOpen ? 'Close' : 'Paste box'}</button>
           </div>
           {pasteOpen && (
             <div className="rec-paste-box mf-paste-box">
               <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="Paste your Excel rows here (Ctrl+V)…" rows={6} autoFocus />
               <div className="rec-paste-actions">
-                <button type="button" className="btn btn-sm" disabled={!pasteText.trim()} onClick={() => { if (importChecks(pasteText)) { setPasteText(''); setPasteOpen(false); } }}>Add to list</button>
+                <button type="button" className="btn btn-sm" disabled={!pasteText.trim()} onClick={async () => { if (await importChecks(pasteText)) { setPasteText(''); setPasteOpen(false); } }}>Add to list</button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setPasteText(''); setPasteOpen(false); }}>Cancel</button>
               </div>
             </div>
