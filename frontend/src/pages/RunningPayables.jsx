@@ -12,6 +12,12 @@ const PillIcon = ({ kind }) => (
   </svg>
 );
 
+const CheckTwice = () => (
+  <svg width="15" height="13" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m2.5 12.5 4.5 4.5L16 7.5" /><path d="m12.5 15.5 2 2L25 6.5" />
+  </svg>
+);
+
 const BLANK = { id: null, check_date: '', payee: '', category: 'Other', title_name: '', amount: '', status: 'Unpaid', release_status: 'Pending Release', note: '' };
 const ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const monthLabel = (key) => { const [y, m] = key.split('-'); return `${MONTHS[Number(m) - 1]} ${y}`; };
@@ -218,11 +224,18 @@ export default function RunningPayables() {
                       </button>
                     </td>
                     <td>
-                      <button type="button" className={`pay-pill ${r.release_status === 'Released' ? 'is-released' : 'is-pending'} ${r.status !== 'Paid' ? 'pay-rel-off' : ''}`} onClick={() => toggleRelease(r)}
-                        title={r.status !== 'Paid' ? 'Mark it Paid first' : r.release_status === 'Released' ? 'Released · click to mark Pending Release' : 'Pending Release · click to mark Released'}>
-                        <PillIcon kind={r.release_status === 'Released' ? 'done' : 'wait'} />{r.release_status === 'Released' ? 'Released' : 'Pending Release'}
-                      </button>
-                      {r.release_status === 'Released' && r.cleared_at && <span className="pay-cleared">cleared</span>}
+                      {(() => {
+                        const cleared = r.release_status === 'Released' && !!r.cleared_at;
+                        const released = r.release_status === 'Released';
+                        return (
+                          <button type="button" className={`pay-pill ${cleared ? 'is-cleared' : released ? 'is-released' : 'is-pending'} ${r.status !== 'Paid' ? 'pay-rel-off' : ''}`} onClick={() => toggleRelease(r)}
+                            title={r.status !== 'Paid' ? 'Mark it Paid first' : cleared ? `Cleared by the bank ${fdate(String(r.cleared_at).slice(0, 10))} · click to mark Pending Release` : released ? 'Released · click to mark Pending Release' : 'Pending Release · click to mark Released'}>
+                            {cleared ? <CheckTwice /> : <PillIcon kind={released ? 'done' : 'wait'} />}
+                            {cleared ? 'Cleared' : released ? 'Released' : 'Pending Release'}
+                            {cleared && <span className="pay-pill-date">{fdate(String(r.cleared_at).slice(0, 10), { month: 'short', day: 'numeric' })}</span>}
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td className="pay-note">{r.note || ''}</td>
                     <td className="nowrap">

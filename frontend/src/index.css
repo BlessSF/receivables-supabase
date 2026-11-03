@@ -1439,7 +1439,6 @@ select.rec-input { min-width: 112px; }
 
 /* Check release status */
 .pay-rel-off { opacity: .55; }
-.pay-cleared { margin-left: 6px; font-size: 11.5px; color: var(--slate); }
 .mf-linked { background: #f6faf8; }
 .mf-tag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; color: #1c8a62; background: #e4f5ee; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 .mf-tag.dup { color: #a8691a; background: #fbeed6; }
@@ -1845,3 +1844,8 @@ select.rec-input { min-width: 112px; }
 .mf-dempty.wide { grid-column: 1 / -1; border: 1px dashed var(--line-strong, #cfd8df); border-radius: 12px; }
 .mf-day-foot { display: flex; justify-content: space-between; gap: 10px; padding: 14px 26px 22px; }
 @media (max-width: 720px) { .mf-day-lists { grid-template-columns: 1fr; } .mf-dl, .mf-dtotal { grid-template-columns: 1fr auto; } .mf-dl-chg { display: none; } }
+
+/* Running Payables: a cleared check gets its own solid pill with the date it cleared */
+.pay-pill.is-cleared { background: linear-gradient(135deg, #12806a, #1c9c7f); color: #fff; border-color: #0f6e5b; padding-right: 6px; box-shadow: 0 1px 2px rgba(15, 110, 91, .25); }
+.pay-pill.is-cleared:hover { box-shadow: 0 2px 8px rgba(15, 110, 91, .35); }
+.pay-pill-date { margin-left: 3px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: 11px; font-weight: 600; letter-spacing: .02em; }
