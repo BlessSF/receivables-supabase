@@ -95,7 +95,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -106,7 +106,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
 ]);
 
 function recalcRow(d) {
@@ -290,7 +290,9 @@ async function mainLive() {
      FROM running_payables
      WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL
      ORDER BY check_date DESC NULLS LAST, id DESC`);
-  return { running: toFloat(row?.total), runningN: toInt(row?.n), linked: released.map((r) => ({ ...r, amount: toFloat(r.amount) })) };
+  const unpaid = await all("SELECT payee, amount, check_date::text AS check_date FROM running_payables WHERE status = 'Unpaid' ORDER BY check_date NULLS LAST, id LIMIT 400");
+  return { running: toFloat(row?.total), runningN: toInt(row?.n), linked: released.map((r) => ({ ...r, amount: toFloat(r.amount) })),
+    unpaid: unpaid.map((r) => ({ payee: r.payee, amount: toFloat(r.amount), check_date: r.check_date })) };
 }
 
 // Main history: one saved row per day (date -> figures). Today's row is refreshed whenever Main is opened or saved,
@@ -317,6 +319,21 @@ async function recordMainSnapshot(data, live) {
   hist.sort((a, b) => (a.d < b.d ? -1 : 1));
   const keep = hist.slice(-400);
   await setSetting('main_history', JSON.stringify(keep));
+  // what was inside the totals that day (which payables were running, which checks were out): kept for the last 60 days
+  try {
+    let det = {};
+    try { det = JSON.parse(await getSetting('main_history_detail', '{}')) || {}; } catch { det = {}; }
+    det[row.d] = {
+      running: (live.unpaid || []).map((u) => ({ p: u.payee, a: u.amount, d: u.check_date })),
+      released: live.linked.map((u) => ({ p: u.payee, a: u.amount, d: u.check_date })),
+      manual: d.checks.filter((x) => !c.dupIds.has(x.id)).map((x) => ({ p: x.name, a: x.amount })),
+      pull: (data.pull || []).map((p) => ({ l: p.label || '', a: toFloat(p.amount) })).filter((p) => p.l || p.a),
+      aub_label: data.aub_label || '', receivables_date: data.receivables_date || '',
+    };
+    const dates = Object.keys(det).sort();
+    for (const k of dates.slice(0, Math.max(0, dates.length - 60))) delete det[k];
+    await setSetting('main_history_detail', JSON.stringify(det));
+  } catch (e) { console.error('main history detail', e); }
   return keep;
 }
 
@@ -1806,8 +1823,19 @@ const actions = {
     await ensurePayablesTable();
     const data = await getMainFund();
     const live = await mainLive();
-    const history = await recordMainSnapshot(data, live); // today's figures are saved every time Main is opened
+    let history = [];
+    try { history = await recordMainSnapshot(data, live); } catch (e) { console.error('main history', e); } // never blocks Main
     return { ok: true, data, running_payables: live.running, running_count: live.runningN, released_payables: live.linked, history: history.slice(-120) };
+  },
+
+  // One saved day: its figures plus what was inside them (running payables / released checks that day).
+  async get_main_day(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/main');
+    const day = String(input.date ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) jsonExit({ ok: false, error: 'Pick a date.' }, 400);
+    let det = {};
+    try { det = JSON.parse(await getSetting('main_history_detail', '{}')) || {}; } catch { det = {}; }
+    return { ok: true, date: day, detail: det[day] || null };
   },
 
   async save_main_fund(input, auth) {
@@ -1816,8 +1844,9 @@ const actions = {
     const data = cleanMainFund(input.data);
     data.updated_at = todayYmd();
     await setSetting('main_fund', JSON.stringify(data));
-    const history = await recordMainSnapshot(data, await mainLive());
-    return { ok: true, data, history: history.slice(-120) };
+    let history = null;
+    try { history = await recordMainSnapshot(data, await mainLive()); } catch (e) { console.error('main history', e); } // never blocks saving
+    return history ? { ok: true, data, history: history.slice(-120) } : { ok: true, data };
   },
 
   // ---------------------------------------------------------------- CASH POSITION

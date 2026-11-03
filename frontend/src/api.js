@@ -115,6 +115,7 @@ export const api = {
   getCashPosition: () => call('get_cash_position'),
   saveCashPosition: (future) => call('save_cash_position', { method: 'POST', body: { future } }),
   getMainFund: () => call('get_main_fund'),
+  getMainDay: (date) => call('get_main_day', { params: { date } }),
   saveMainFund: (data) => call('save_main_fund', { method: 'POST', body: { data } }),
   savePayable: (body) => call('save_payable', { method: 'POST', body }),
   saveAccountTitles: (titles, names) => call('save_account_titles', { method: 'POST', body: { titles, names } }),

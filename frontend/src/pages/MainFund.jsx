@@ -31,6 +31,115 @@ const toData = (f) => ({
   receivables_label: f.receivables_label, receivables_date: f.receivables_date, receivables: num(f.receivables),
 });
 
+// One saved day, opened from the History list: its figures laid out like the Main page, the change against the
+// day before, and (for recent days) which payables were running and which checks were out.
+function DayOverview({ history, date, todayD, onClose, onPick }) {
+  const idx = history.findIndex((x) => x.d === date);
+  const h = history[idx];
+  const prev = idx > 0 ? history[idx - 1] : null;
+  const next = idx >= 0 && idx < history.length - 1 ? history[idx + 1] : null;
+  const [det, setDet] = useState(undefined); // undefined = loading, null = not saved for that day
+  useEffect(() => {
+    let live = true;
+    setDet(undefined);
+    api.getMainDay(date).then((r) => { if (live) setDet(r.detail || null); }).catch(() => { if (live) setDet(null); });
+    return () => { live = false; };
+  }, [date]);
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  if (!h) return null;
+
+  const long = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const tag = date === todayD ? 'Today' : date === dayBefore(todayD) ? 'Yesterday' : '';
+  const chg = (key, kind) => {
+    if (!prev) return null;
+    const diff = Math.round((Number(h[key] || 0) - Number(prev[key] || 0)) * 100) / 100;
+    if (!diff) return <span className="mf-chg same">—</span>;
+    const good = (diff > 0) === (kind === 'fund');
+    return <span className={`mf-chg ${good ? 'good' : 'bad'}`}>{diff > 0 ? '▲' : '▼'} {peso(Math.abs(diff))}</span>;
+  };
+  const Line = ({ label, value, k, kind = 'fund', sub, strong, minus }) => (
+    <div className={`mf-dl${strong ? ' strong' : ''}`}>
+      <span className="mf-dl-lbl">{label}{sub ? <small>{sub}</small> : null}</span>
+      <span className="mf-dl-val">{minus ? sgn(-value) : sgn(value)}</span>
+      <span className="mf-dl-chg">{k ? chg(k, kind) : null}</span>
+    </div>
+  );
+  const Group = ({ title, children }) => <div className="mf-dgrp"><div className="mf-dgrp-t">{title}</div>{children}</div>;
+  const List = ({ title, rows, total, empty, tagManual }) => (
+    <div className="mf-dlist">
+      <div className="mf-dlist-t"><span>{title}</span><b>{rows ? rows.length : 0}</b></div>
+      {rows && rows.length > 0 ? (
+        <>
+          <ul>{rows.map((r, i) => (
+            <li key={i}><span className="mf-dp">{r.p}{tagManual && r.manual ? <i>typed</i> : null}{r.d ? <small>{fdate(r.d)}</small> : null}</span><span className="num">{peso(r.a)}</span></li>
+          ))}</ul>
+          <div className="mf-dlist-sum"><span>Total</span><strong>{peso(total)}</strong></div>
+        </>
+      ) : <div className="mf-dempty">{empty}</div>}
+    </div>
+  );
+  const runRows = det?.running || [];
+  const relRows = det ? [...(det.released || []), ...(det.manual || []).map((m) => ({ ...m, manual: true }))] : [];
+
+  return (
+    <div className="pm-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pm-card mf-day" role="dialog" aria-label={`Overview for ${long}`}>
+        <div className="mf-day-head">
+          <div>
+            <div className="mf-day-kicker">Overview{tag ? ` · ${tag}` : ''}</div>
+            <h3>{long}</h3>
+            <div className="mf-day-sub">{prev ? `Changes are against ${fdate(prev.d)}.` : 'First saved day, nothing earlier to compare with.'}</div>
+          </div>
+          <button type="button" className="mf-day-x" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div className="mf-day-body">
+          <Group title="Operations · Security Bank">
+            <Line label="Passbook balance" value={h.passbook} k="passbook" />
+            <Line label="Less: released checks" sub={`${h.checks_n} ${h.checks_n === 1 ? 'check' : 'checks'}`} value={h.checks} k="checks" kind="debt" minus />
+            <Line label="Available funds" value={h.available} k="available" strong />
+            <Line label="Add: sales deposit in transit" value={h.deposit} k="deposit" />
+            <Line label="Less: running payables" sub={`${h.running_n} unpaid`} value={h.running} k="running" kind="debt" minus />
+            <Line label="Excess fund · Security Bank" value={h.excess} k="excess" strong />
+          </Group>
+          <Group title="AUB">
+            <Line label={det?.aub_label || 'AUB balance'} value={h.aub} k="aub" />
+          </Group>
+          <Group title="Fund for pull out">
+            {(det?.pull || []).map((p, i) => <Line key={i} label={p.l || 'Other'} value={p.a} minus />)}
+            <Line label="Total pull outs" value={h.pulls} k="pulls" kind="debt" minus />
+            <Line label="Cashflow after pull out" value={h.after} k="after" strong />
+          </Group>
+          <Group title="Add">
+            <Line label="Receivables" sub={det?.receivables_date ? `as of ${fdate(det.receivables_date)}` : ''} value={h.receivables} k="receivables" />
+          </Group>
+          <div className="mf-dtotal"><span>Total net fund</span><strong>{sgn(h.total)}</strong><span className="mf-dl-chg">{chg('total', 'fund')}</span></div>
+        </div>
+
+        <div className="mf-day-lists">
+          {det === undefined ? <div className="mf-dempty">Loading details…</div> : det === null ? (
+            <div className="mf-dempty wide">The list of payables and checks was not saved for this day, only the totals above.</div>
+          ) : (
+            <>
+              <List title="Running payables that day (unpaid)" rows={runRows} total={h.running} empty="No unpaid payables." />
+              <List title="Released checks not yet cleared" rows={relRows} total={h.checks} empty="No released checks." tagManual />
+            </>
+          )}
+        </div>
+
+        <div className="mf-day-foot">
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!prev} onClick={() => prev && onPick(prev.d)}>‹ {prev ? fdate(prev.d) : 'Older'}</button>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!next} onClick={() => next && onPick(next.d)}>{next ? fdate(next.d) : 'Newer'} ›</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MainFund() {
   const [f, setF] = useState(null);
   const [linked, setLinked] = useState([]); // paid + released payables from Running Payables
@@ -39,6 +148,7 @@ export default function MainFund() {
   const [runningN, setRunningN] = useState(0);
   const [updated, setUpdated] = useState(null);
   const [history, setHistory] = useState([]); // one saved row per day, newest last
+  const [viewDay, setViewDay] = useState(null); // date opened in the day overview
   const [state, setState] = useState('idle'); // idle | saving | saved | error
   const [err, setErr] = useState('');
   const [find, setFind] = useState('');
@@ -214,7 +324,7 @@ export default function MainFund() {
                 <summary>History · last {days.length} {days.length === 1 ? 'day' : 'days'}</summary>
                 <div className="table-wrap">
                   <table className="data-table mf-cmp">
-                    <thead><tr><th>Date</th><th className="text-right">Total net fund</th><th className="text-right">Change</th><th className="text-right">Excess fund</th><th className="text-right">Running payables</th><th className="text-right">Released checks</th></tr></thead>
+                    <thead><tr><th>Date</th><th className="text-right">Total net fund</th><th className="text-right">Change</th><th className="text-right">Excess fund</th><th className="text-right">Running payables</th><th className="text-right">Released checks</th><th aria-label="View" /></tr></thead>
                     <tbody>
                       {days.map((h, i) => {
                         const before = days[i + 1];
@@ -227,6 +337,7 @@ export default function MainFund() {
                             <td className="num text-right">{sgn(h.excess)}</td>
                             <td className="num text-right">{peso(h.running)}</td>
                             <td className="num text-right">{peso(h.checks)}</td>
+                            <td className="text-right"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setViewDay(h.d)}>View</button></td>
                           </tr>
                         );
                       })}
@@ -339,6 +450,7 @@ export default function MainFund() {
           </div>
         </section>
       </div>
+      {viewDay && <DayOverview history={history} date={viewDay} todayD={history.length ? history[history.length - 1].d : null} onClose={() => setViewDay(null)} onPick={setViewDay} />}
     </div>
   );
 }
