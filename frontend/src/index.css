@@ -1794,3 +1794,19 @@ select.rec-input { min-width: 112px; }
 /* backup inside the new card */
 .st-card .bk-last { margin-top: 0; }
 @media (max-width: 760px) { .st-card { padding: 18px; } .st-actions .st-save { margin-left: 0; } .st-row { flex-direction: column; align-items: flex-start; } }
+
+/* Main: today vs yesterday + history */
+.panel.mf-hist { margin-bottom: 16px; padding: 24px; overflow: visible; }
+.mf-hist .mf-head { margin-bottom: 14px; }
+.mf-hist .table-wrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.mf-hist .mf-head { align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mf-hist-note { font-size: 12.5px; color: var(--slate); }
+.mf-cmp td, .mf-cmp th { white-space: nowrap; }
+.mf-cnt { color: var(--slate); font-size: 11.5px; font-weight: 500; }
+.mf-chg { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 700; font-variant-numeric: lining-nums; }
+.mf-chg.good { background: #e1f6ec; color: #17794a; }
+.mf-chg.bad { background: #fde8e6; color: #b42318; }
+.mf-chg.same { background: #eceff3; color: #5d6b7a; font-weight: 600; }
+.mf-today { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #e4f5f1; color: #0f766e; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.mf-hist-list { margin-top: 14px; }
+.mf-hist-list summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--slate); margin-bottom: 8px; }

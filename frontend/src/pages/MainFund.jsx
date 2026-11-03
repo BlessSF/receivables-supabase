@@ -9,6 +9,7 @@ import { parsePaste } from '../pasteParse';
 
 const num = (v) => Number(rawNum(v)) || 0;
 const ymdLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const dayBefore = (ymd) => { if (!ymd) return ''; const [y, m, d] = ymd.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d - 1)); return t.toISOString().slice(0, 10); };
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
 
 // server data -> editable strings
@@ -37,6 +38,7 @@ export default function MainFund() {
   const [running, setRunning] = useState(0);
   const [runningN, setRunningN] = useState(0);
   const [updated, setUpdated] = useState(null);
+  const [history, setHistory] = useState([]); // one saved row per day, newest last
   const [state, setState] = useState('idle'); // idle | saving | saved | error
   const [err, setErr] = useState('');
   const [find, setFind] = useState('');
@@ -48,7 +50,7 @@ export default function MainFund() {
 
   useEffect(() => {
     api.getMainFund()
-      .then((r) => { setF(toForm(r.data)); setRunning(r.running_payables); setRunningN(r.running_count); setLinked(r.released_payables || []); setUpdated(r.data.updated_at); })
+      .then((r) => { setF(toForm(r.data)); setRunning(r.running_payables); setRunningN(r.running_count); setLinked(r.released_payables || []); setUpdated(r.data.updated_at); setHistory(r.history || []); })
       .catch((e) => { setErr(e.message); setState('error'); });
   }, []);
 
@@ -65,7 +67,7 @@ export default function MainFund() {
     dirty.current = false;
     try {
       const r = await api.saveMainFund(toData(latest.current));
-      setUpdated(r.data.updated_at); setErr('');
+      setUpdated(r.data.updated_at); setErr(''); if (r.history) setHistory(r.history);
       setState(dirty.current ? 'saving' : 'saved');
     } catch (e) { setErr(e.message || 'Could not save.'); setState('error'); dirty.current = true; }
   }
@@ -162,6 +164,80 @@ export default function MainFund() {
           <div className="mf-card-sub">{calc.checksCount} {calc.checksCount === 1 ? 'check' : 'checks'} not yet cleared</div>
         </div>
       </div>
+
+      {(() => {
+        // today (live numbers on screen) against the last day saved before today
+        const todayD = history.length ? history[history.length - 1].d : null;
+        const prev = history.length > 1 ? history[history.length - 2] : null;
+        const items = [
+          ['Total net fund', 'total', calc.total, 'fund'],
+          ['Excess fund · Security Bank', 'excess', calc.excess, 'fund'],
+          ['Cashflow after pull out', 'after', calc.after, 'fund'],
+          ['Passbook balance', 'passbook', num(f.passbook), 'fund'],
+          ['Running payables (unpaid)', 'running', running, 'debt', runningN, prev?.running_n, 'unpaid'],
+          ['Released checks', 'checks', calc.checksTotal, 'debt', calc.checksCount, prev?.checks_n, 'checks'],
+          ['Receivables', 'receivables', num(f.receivables), 'fund'],
+        ];
+        const tone = (diff, kind) => (Math.abs(diff) < 0.005 ? 'same' : (diff > 0) === (kind === 'fund') ? 'good' : 'bad');
+        const days = [...history].reverse().slice(0, 30);
+        return (
+          <section className="panel mf-hist">
+            <div className="mf-head">
+              <h2>Today vs {prev ? (prev.d === dayBefore(todayD) ? 'yesterday' : fdate(prev.d)) : 'yesterday'}</h2>
+              <span className="mf-hist-note">Figures are saved automatically each day, so you can look back.</span>
+            </div>
+            {!prev ? (
+              <div className="at-empty" style={{ padding: '14px 4px' }}>History starts today. Tomorrow you will see how today compares with the day before.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table mf-cmp">
+                  <thead><tr><th>Item</th><th className="text-right">{fdate(prev.d)}</th><th className="text-right">Today{todayD ? ` · ${fdate(todayD)}` : ''}</th><th className="text-right">Change</th></tr></thead>
+                  <tbody>
+                    {items.map(([label, key, now, kind, nowN, prevN, unit]) => {
+                      const before = Number(prev[key] || 0);
+                      const diff = Math.round((now - before) * 100) / 100;
+                      return (
+                        <tr key={key}>
+                          <td>{label}</td>
+                          <td className="num text-right">{sgn(before)}{unit && prevN !== undefined ? <small className="mf-cnt"> · {prevN} {unit}</small> : null}</td>
+                          <td className="num text-right"><strong>{sgn(now)}</strong>{unit ? <small className="mf-cnt"> · {nowN} {unit}</small> : null}</td>
+                          <td className="num text-right"><span className={`mf-chg ${tone(diff, kind)}`}>{diff === 0 ? 'no change' : `${diff > 0 ? '▲' : '▼'} ${peso(Math.abs(diff))}`}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {history.length > 0 && (
+              <details className="mf-hist-list">
+                <summary>History · last {days.length} {days.length === 1 ? 'day' : 'days'}</summary>
+                <div className="table-wrap">
+                  <table className="data-table mf-cmp">
+                    <thead><tr><th>Date</th><th className="text-right">Total net fund</th><th className="text-right">Change</th><th className="text-right">Excess fund</th><th className="text-right">Running payables</th><th className="text-right">Released checks</th></tr></thead>
+                    <tbody>
+                      {days.map((h, i) => {
+                        const before = days[i + 1];
+                        const diff = before ? Math.round((h.total - before.total) * 100) / 100 : null;
+                        return (
+                          <tr key={h.d}>
+                            <td className="nowrap">{fdate(h.d)}{i === 0 && h.d === todayD ? <span className="mf-today">Today</span> : null}</td>
+                            <td className="num text-right">{sgn(h.total)}</td>
+                            <td className="num text-right">{diff === null ? '—' : <span className={`mf-chg ${tone(diff, 'fund')}`}>{diff === 0 ? 'no change' : `${diff > 0 ? '▲' : '▼'} ${peso(Math.abs(diff))}`}</span>}</td>
+                            <td className="num text-right">{sgn(h.excess)}</td>
+                            <td className="num text-right">{peso(h.running)}</td>
+                            <td className="num text-right">{peso(h.checks)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+          </section>
+        );
+      })()}
 
       <div className="mf-grid">
         <section className="panel mf-checks">

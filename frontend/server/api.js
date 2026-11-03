@@ -6,6 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { backupInfo } from './backup.js';
+import { computeMain } from './mainCalc.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -279,6 +280,44 @@ async function requirePayablesAdmin(auth, ...pages) {
   if (auth.isAdmin()) return;
   const allowed = (await getNavAccess())[auth.user?.role] || [];
   if (!pages.some((pg) => allowed.includes(pg))) jsonExit({ ok: false, error: 'You do not have access to this Payables page.' }, 403);
+}
+
+// Main: figures that come from Running Payables (unpaid total + paid-and-released checks not yet cleared)
+async function mainLive() {
+  const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
+  const released = await all(
+    `SELECT id, check_date::text AS check_date, payee, category, title_name, amount
+     FROM running_payables
+     WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL
+     ORDER BY check_date DESC NULLS LAST, id DESC`);
+  return { running: toFloat(row?.total), runningN: toInt(row?.n), linked: released.map((r) => ({ ...r, amount: toFloat(r.amount) })) };
+}
+
+// Main history: one saved row per day (date -> figures). Today's row is refreshed whenever Main is opened or saved,
+// so a past day keeps the last figures it had (a static record). Kept in app_settings, no database change needed.
+async function readMainHistory() {
+  try { const h = JSON.parse(await getSetting('main_history', '[]')); return Array.isArray(h) ? h : []; } catch { return []; }
+}
+async function recordMainSnapshot(data, live) {
+  const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  const d = {
+    passbook: toFloat(data.passbook), deposit: toFloat(data.deposit), aub: toFloat(data.aub),
+    pull: (data.pull || []).map((p) => ({ amount: toFloat(p.amount) })),
+    checks: (data.checks || []).map((c) => ({ id: c.id, name: c.name, amount: toFloat(c.amount) })),
+    receivables: toFloat(data.receivables),
+  };
+  const c = computeMain(d, live.linked, live.running);
+  const row = {
+    d: todayYmd(), total: r2(c.total), excess: r2(c.excess), after: r2(c.after), available: r2(c.available),
+    passbook: r2(d.passbook), deposit: r2(d.deposit), aub: r2(d.aub), pulls: r2(c.pulls), receivables: r2(d.receivables),
+    checks: r2(c.checksTotal), checks_n: c.checksCount, running: r2(live.running), running_n: live.runningN,
+  };
+  const hist = (await readMainHistory()).filter((x) => x && x.d && x.d !== row.d);
+  hist.push(row);
+  hist.sort((a, b) => (a.d < b.d ? -1 : 1));
+  const keep = hist.slice(-400);
+  await setSetting('main_history', JSON.stringify(keep));
+  return keep;
 }
 
 // ---------------------------------------------------------------- MAIN (cash fund) -- hand-typed figures live in app_settings
@@ -1765,23 +1804,20 @@ const actions = {
   async get_main_fund(input, auth) {
     await requirePayablesAdmin(auth, '/payables/main');
     await ensurePayablesTable();
-    const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
-    // paid + released + not yet cleared payables show up in Released Check Monitoring automatically
-    const released = await all(
-      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount
-       FROM running_payables
-       WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL
-       ORDER BY check_date DESC NULLS LAST, id DESC`);
-    return { ok: true, data: await getMainFund(), running_payables: toFloat(row?.total), running_count: toInt(row?.n),
-      released_payables: released.map((r) => ({ ...r, amount: toFloat(r.amount) })) };
+    const data = await getMainFund();
+    const live = await mainLive();
+    const history = await recordMainSnapshot(data, live); // today's figures are saved every time Main is opened
+    return { ok: true, data, running_payables: live.running, running_count: live.runningN, released_payables: live.linked, history: history.slice(-120) };
   },
 
   async save_main_fund(input, auth) {
     await requirePayablesAdmin(auth, '/payables/main');
+    await ensurePayablesTable();
     const data = cleanMainFund(input.data);
     data.updated_at = todayYmd();
     await setSetting('main_fund', JSON.stringify(data));
-    return { ok: true, data };
+    const history = await recordMainSnapshot(data, await mainLive());
+    return { ok: true, data, history: history.slice(-120) };
   },
 
   // ---------------------------------------------------------------- CASH POSITION
