@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { api } from './api';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus, IconAudit } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -66,6 +66,7 @@ const SETTINGS_GROUP = {
   label: 'System',
   items: [
     { to: '/users', label: 'Users', Icon: IconUsers },
+    { to: '/audit', label: 'Audit log', Icon: IconAudit },
     { to: '/branches', label: 'Branches', Icon: IconBranches },
     { to: '/settings', label: 'Settings', Icon: IconSettings },
   ],
@@ -118,6 +119,7 @@ const EXEC_NAV_GROUPS = [
     items: [
       { to: '/branches', label: 'Branches', Icon: IconBranches },
       { to: '/users', label: 'Users', Icon: IconUsers },
+      { to: '/audit', label: 'Audit log', Icon: IconAudit },
     ],
   },
 ];

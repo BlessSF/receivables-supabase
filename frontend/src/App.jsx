@@ -23,6 +23,7 @@ import MainFund from './pages/MainFund';
 import AccountTitles from './pages/AccountTitles';
 import RunningPayables from './pages/RunningPayables';
 import PaymentRecord from './pages/PaymentRecord';
+import Audit from './pages/Audit';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 
 function Gate() {
@@ -67,6 +68,7 @@ function Gate() {
           <Route path="/" element={<ExecDashboard />} />
           {pageRoutes}
           <Route path="/users" element={<Users />} />
+          <Route path="/audit" element={<Audit />} />
           <Route path="/branches" element={<Branches />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -117,6 +119,7 @@ function Gate() {
         <Route path="/monitoring" element={g("/monitoring", <Monitoring />)} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/audit" element={<Audit />} />
         <Route path="/branches" element={<Branches />} />
         <Route path="/payables" element={<Navigate to="/payables/cash-position" replace />} />
         <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />

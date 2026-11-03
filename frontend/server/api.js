@@ -6,6 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { backupInfo } from './backup.js';
+import { isAudited, auditBefore, auditWrite, auditLogin, readAudit } from './audit.js';
 import { computeMain } from './mainCalc.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
@@ -104,7 +105,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
-  'get_users', 'create_user', 'update_user', 'delete_user',
+  'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
 ]);
@@ -1731,6 +1732,15 @@ const actions = {
 
   // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
   // Settings -> Backup: when the last backup was taken, who took it, and what is in the database.
+  // Audit log: only Admin and Executive accounts (not Accounting, Staff or Branch).
+  async get_audit(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can see the audit log.' }, 403);
+    return { ok: true, ...(await readAudit({
+      user: trim(input.user ?? ''), area: trim(input.area ?? ''), kind: trim(input.kind ?? ''), from: trim(input.from ?? ''), to: trim(input.to ?? ''),
+      search: trim(input.search ?? ''), before: toInt(input.before), limit: toInt(input.limit) || 100,
+    })) };
+  },
+
   async get_backup_info(input, auth) {
     if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can see backups.' }, 403);
     return { ok: true, data: await backupInfo() };
@@ -2072,6 +2082,8 @@ async function saveMonitoring(input, auth, action) {
 // ======================================================================
 // Entry point (used by api/app.js on Vercel and by dev-api.js locally)
 // ======================================================================
+const clientIp = (req) => String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 60);
+
 export default async function handleApi(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -2089,6 +2101,7 @@ export default async function handleApi(req, res) {
     // ---- public (no login needed)
     if (action === 'login') {
       const u = await attemptLogin(trim(input.username ?? ''), String(input.password ?? ''));
+      await auditLogin(trim(input.username ?? ''), !!u, u, clientIp(req));
       if (u) return sendJson(res, 200, { ok: true, user: await userPayload(u) }, { 'Set-Cookie': sessionCookie(req, u) });
       return sendJson(res, 401, { ok: false, error: 'Invalid username or password.' });
     }
@@ -2133,7 +2146,11 @@ export default async function handleApi(req, res) {
     const fn = typeof action === 'string' && Object.hasOwn(actions, action) ? actions[action] : null;
     if (!fn) return sendJson(res, 400, { ok: false, error: 'Unknown action: ' + action });
 
+    // Audit log: remember what is about to change, run the action, and write one line only if it worked.
+    const audited = isAudited(action);
+    const beforeState = audited ? await auditBefore(action, input) : null;
     const out = await fn(input, makeAuth(user), query);
+    if (audited && out?.ok !== false) await auditWrite(user, action, input, out, beforeState, clientIp(req));
     return sendJson(res, 200, out);
   } catch (e) {
     if (e instanceof HttpError) return sendJson(res, e.status, e.body);
