@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 
 const KINDS = [
   ['add', 'Added'], ['edit', 'Edited'], ['delete', 'Deleted'], ['paid', 'Paid'], ['release', 'Release'],
-  ['clear', 'Cleared'], ['setting', 'Settings'], ['user', 'Users'], ['login', 'Sign in'], ['failed', 'Failed sign-in'],
+  ['clear', 'Cleared'], ['restore', 'Restored'], ['setting', 'Settings'], ['user', 'Users'], ['login', 'Sign in'], ['failed', 'Failed sign-in'],
 ];
 const KIND_LABEL = Object.fromEntries(KINDS);
 const ROLE_LABEL = { admin: 'Admin', accounting: 'Accounting', staff: 'Staff', branch: 'Branch', executive: 'Executive' };

@@ -6,6 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { all, one, scalar, exec, insertId, transaction } from './db.js';
 import { backupInfo } from './backup.js';
+import { isRecyclable, captureDelete, saveDeleted, listDeleted, loadItem, restoreItem } from './recycle.js';
 import { isAudited, auditBefore, auditWrite, auditLogin, readAudit } from './audit.js';
 import { computeMain } from './mainCalc.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
@@ -105,7 +106,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
-  'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit',
+  'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
 ]);
@@ -1741,6 +1742,25 @@ const actions = {
     })) };
   },
 
+  // Recently deleted (undo): Admin and Executive see everything, an Accounting user sees what they deleted themselves.
+  async get_deleted(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive() && !auth.isAccounting()) jsonExit({ ok: false, error: 'You do not have access to Recently deleted.' }, 403);
+    return { ok: true, rows: await listDeleted({ id: auth.user?.id, role: auth.user?.role }), keep_days: 30 };
+  },
+
+  async restore_deleted(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive() && !auth.isAccounting()) jsonExit({ ok: false, error: 'You do not have access to Recently deleted.' }, 403);
+    const item = await loadItem(toInt(input.id));
+    if (!item) jsonExit({ ok: false, error: 'That item is no longer in Recently deleted (already restored or older than 30 days).' }, 404);
+    if (!auth.isAdmin() && !auth.isExecutive() && String(item.by_id) !== String(auth.user?.id)) jsonExit({ ok: false, error: 'You can only restore what you deleted yourself.' }, 403);
+    if (item.area === 'Payables') await requirePayablesAdmin(auth, '/payables/running');
+    else if (item.company_id && item.kind !== 'company') await requireCompanyAccess(auth, toInt(item.company_id));
+    let hook;
+    try { hook = await restoreItem(item, auth.user?.username || ''); } catch (e) { jsonExit({ ok: false, error: `Could not restore: ${e.message}` }, 409); }
+    if (hook?.sync_entry) { try { await syncRowFromPayments(toInt(hook.sync_entry)); } catch (e) { console.error('sync after restore failed:', e?.message); } }
+    return { ok: true, message: `Restored: ${item.label}` };
+  },
+
   async get_backup_info(input, auth) {
     if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can see backups.' }, 403);
     return { ok: true, data: await backupInfo() };
@@ -2149,7 +2169,12 @@ export default async function handleApi(req, res) {
     // Audit log: remember what is about to change, run the action, and write one line only if it worked.
     const audited = isAudited(action);
     const beforeState = audited ? await auditBefore(action, input) : null;
+    // Recently deleted: copy what a delete is about to remove, and keep the copy only if the delete worked.
+    const recycle = isRecyclable(action) ? await captureDelete(action, input) : null;
     const out = await fn(input, makeAuth(user), query);
+    if (recycle && out?.ok !== false) {
+      if (await saveDeleted(user, recycle) && typeof out?.message === 'string') out.message += ' You can undo this in Recently deleted.';
+    }
     if (audited && out?.ok !== false) await auditWrite(user, action, input, out, beforeState, clientIp(req));
     return sendJson(res, 200, out);
   } catch (e) {

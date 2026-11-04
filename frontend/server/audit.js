@@ -209,6 +209,12 @@ const RULES = {
   update_monitoring: { area: 'Monitoring', kind: 'edit', before: async (i) => companyName(num(i.company_id)), text: (i, o, b) => `Edited monitoring entry for ${b} ${peso(i.amount)}` },
   delete_monitoring: { area: 'Monitoring', kind: 'delete', text: (i) => `Deleted monitoring entry #${i.id}` },
 
+  restore_deleted: {
+    area: 'Recently deleted', kind: 'restore',
+    before: async (i) => scalar('SELECT label FROM deleted_items WHERE id = ?', [num(i.id)]),
+    text: (i, o, b) => `Restored from Recently deleted: ${b || `#${i.id}`}`,
+  },
+
   // ---------------------------------------------------------------- Settings / users
   save_branch_sites: { area: 'Settings', kind: 'setting', text: () => 'Changed the branch sites' },
   save_aging_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the aging / grace setting' },
@@ -259,7 +265,7 @@ export async function auditLogin(username, ok, user, ip) {
   } catch (e) { console.error('audit login failed:', e?.message); }
 }
 
-const AREAS_ORDER = ['Running Payables', 'Main', 'Payment Record', 'Cash Position', 'Account Titles', 'Ledger', 'Billing', 'SOA Tracker', 'Companies', 'HMOs', 'Monitoring', 'Settings', 'Users', 'Sign in'];
+const AREAS_ORDER = ['Running Payables', 'Main', 'Payment Record', 'Cash Position', 'Account Titles', 'Ledger', 'Billing', 'SOA Tracker', 'Companies', 'HMOs', 'Monitoring', 'Settings', 'Users', 'Recently deleted', 'Sign in'];
 
 /** Page of the log for the Audit page. */
 export async function readAudit({ user = '', area = '', kind = '', from = '', to = '', search = '', before = 0, limit = 100 }) {

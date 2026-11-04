@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { api } from './api';
 import { getBranding, applyTabBranding } from './branding';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
-import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus, IconAudit } from './icons';
+import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus, IconAudit, IconUndo } from './icons';
 
 // The Ledger grid has 15 columns; below this window width the sidebar folds away on it so they fit.
 const LEDGER_NARROW_PX = 1700;
@@ -60,6 +60,9 @@ const PAYABLES_NAV_GROUPS = [
     ],
   },
 ];
+
+// Undo for deletes: Admin, Executive and Accounting (an Accounting user only sees what they deleted themselves)
+const DELETED_GROUP = { label: 'Safety', items: [{ to: '/deleted', label: 'Recently deleted', Icon: IconUndo }] };
 
 // Admin accounts also get Settings
 const SETTINGS_GROUP = {
@@ -231,7 +234,7 @@ export default function Layout() {
           </div>
         )}
         <nav className="sidebar-nav">
-          {(inPayables && showModuleToggle ? PAYABLES_NAV_GROUPS : isExecutive(user) ? [...NAV_GROUPS, EXEC_SYSTEM_GROUP] : isStaff(user) ? NAV_GROUPS : isAccounting(user) ? NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS)
+          {[...(inPayables && showModuleToggle ? PAYABLES_NAV_GROUPS : isExecutive(user) ? [...NAV_GROUPS, EXEC_SYSTEM_GROUP] : isStaff(user) ? NAV_GROUPS : isAccounting(user) ? NAV_GROUPS : user?.is_admin ? [...NAV_GROUPS, SETTINGS_GROUP] : NAV_GROUPS), ...(isExecutive(user) || isAccounting(user) || user?.is_admin ? [DELETED_GROUP] : [])]
             .map((g) => ({ ...g, items: g.items.filter((it) => navAllowed(user, it.to)) })).filter((g) => g.items.length).map((group, i) => (
             <div key={i} style={{ display: 'contents' }}>
               {group.label && <div className="nav-group-label">{group.label}</div>}

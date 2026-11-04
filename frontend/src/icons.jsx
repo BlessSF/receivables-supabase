@@ -78,3 +78,7 @@ export const IconPenPlus = () => (
 export const IconAudit = () => (
   <svg {...common}><path d="M12 3 4.5 6v5.5c0 4.4 3 8 7.5 9.5 4.5-1.5 7.5-5.1 7.5-9.5V6z" /><path d="m8.8 12 2.3 2.3 4.2-4.6" /></svg>
 );
+
+export const IconUndo = () => (
+  <svg {...common}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+);

@@ -24,6 +24,7 @@ import AccountTitles from './pages/AccountTitles';
 import RunningPayables from './pages/RunningPayables';
 import PaymentRecord from './pages/PaymentRecord';
 import Audit from './pages/Audit';
+import DeletedItems from './pages/DeletedItems';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 
 function Gate() {
@@ -69,6 +70,7 @@ function Gate() {
           {pageRoutes}
           <Route path="/users" element={<Users />} />
           <Route path="/audit" element={<Audit />} />
+          <Route path="/deleted" element={<DeletedItems />} />
           <Route path="/branches" element={<Branches />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -96,6 +98,7 @@ function Gate() {
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           {pageRoutes}
+          <Route path="/deleted" element={<DeletedItems />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -120,6 +123,7 @@ function Gate() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<Users />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/deleted" element={<DeletedItems />} />
         <Route path="/branches" element={<Branches />} />
         <Route path="/payables" element={<Navigate to="/payables/cash-position" replace />} />
         <Route path="/payables/cash-position" element={g("/payables/cash-position", <CashPosition />)} />
