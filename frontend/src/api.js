@@ -84,6 +84,7 @@ export const api = {
   getDeleted: () => call('get_deleted'),
   restoreDeleted: (id) => call('restore_deleted', { method: 'POST', body: { id } }),
   changeUserRole: (id, role) => call('change_user_role', { method: 'POST', body: { id, role } }),
+  saveBrand: (name, mark) => call('save_brand', { method: 'POST', body: { name, mark } }),
   getNavAccess: () => call('get_nav_access'),
   saveNavAccess: (access) => call('save_nav_access', { method: 'POST', body: { access } }),
   getBranchSites: () => call('get_branch_sites'),

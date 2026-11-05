@@ -5,6 +5,7 @@ import LongDateInput from '../LongDateInput';
 import { coveredPeriodForBilling, DEFAULT_COVERED_RULES, formatLongDate } from '../utils';
 
 const I = {
+  tag: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.2" /></svg>,
   shield: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></svg>,
   cal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 10h18M8 2.5v4M16 2.5v4" /></svg>,
   clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
@@ -118,6 +119,58 @@ function PeriodEnd({ offset, day, onChange }) {
   );
 }
 
+// Settings -> Name: what the top of the sidebar and the browser tab say.
+function NamePanel() {
+  const { user, refreshUser } = useAuth();
+  const [name, setName] = useState(user?.brand?.name || '');
+  const [mark, setMark] = useState(user?.brand?.mark || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const shownName = name.trim() || 'Project DLC';
+  const autoMark = (() => { const caps = shownName.split(/\s+/).find((w) => w.length > 1 && w === w.toUpperCase()); return (name.trim() ? (caps || shownName.charAt(0)) : 'DL').slice(0, 4).toUpperCase(); })();
+  const shownMark = mark.trim().toUpperCase() || autoMark;
+  async function save(reset) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveBrand(reset ? '' : name, reset ? '' : mark);
+      if (reset) { setName(''); setMark(''); }
+      await refreshUser();
+      setMsg({ type: 'success', msg: r.message });
+    } catch (e) { setMsg({ type: 'error', msg: e.message }); }
+    setBusy(false);
+  }
+  return (
+    <section className="st-card">
+      <CardHead icon={I.tag} title="Name at the top of the sidebar" tone="teal">
+        This is the name shown at the top left of the sidebar and in the browser tab. Each system (Main, Jaro) keeps its own name.
+      </CardHead>
+      {msg && <div className={`flash flash-${msg.type}`}>{msg.msg}</div>}
+      <div className="st-name">
+        <div className="st-name-form">
+          <label className="st-field"><span>Name</span>
+            <input type="text" maxLength={30} value={name} placeholder="Project DLC" onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="st-field"><span>Short letters <em>(small badge, up to 4)</em></span>
+            <input type="text" maxLength={4} value={mark} placeholder={autoMark} onChange={(e) => setMark(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))} />
+          </label>
+          <div className="st-name-actions">
+            <button type="button" className="btn" disabled={busy || !name.trim()} onClick={() => save(false)}>{busy ? 'Saving…' : 'Save name'}</button>
+            <button type="button" className="btn btn-secondary" disabled={busy || !user?.brand} onClick={() => save(true)}>Reset to Project DLC</button>
+          </div>
+        </div>
+        <div className="st-name-preview" aria-label="Preview">
+          <span className="st-name-cap">Preview</span>
+          <div className="st-name-side">
+            <div className="st-name-title">{shownName}</div>
+            <div className="st-name-sub">RECEIVABLES</div>
+            <div className="st-name-badge">{shownMark}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const [loaded, setLoaded] = useState(false);
@@ -194,7 +247,7 @@ export default function Settings() {
 
   const days = parseInt(graceDays, 10) || 0;
   const numRules = rules.map((x) => ({ ...x, month: +x.month, day_from: +x.day_from, day_to: +x.day_to, from_offset: +x.from_offset, from_day: +x.from_day, to_offset: +x.to_offset, to_day: +x.to_day }));
-  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Aging & grace', I.clock], ['backup', 'Backup', I.shield]];
+  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Aging & grace', I.clock], ['name', 'Name', I.tag], ['backup', 'Backup', I.shield]];
 
   return (
     <div className="st">
@@ -216,6 +269,7 @@ export default function Settings() {
       {flash && tab !== 'backup' && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
       {tab === 'backup' && user.is_admin_role && <BackupPanel />}
+      {tab === 'name' && user.is_admin_role && <NamePanel />}
 
       {tab === 'period' && (
         <>

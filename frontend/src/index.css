@@ -1938,3 +1938,17 @@ select.rec-input { min-width: 112px; }
 @media (max-width: 720px) { .dl-item { grid-template-columns: 1fr; } .dl-ic { display: none; } .dl-side { flex-direction: row; justify-content: space-between; align-items: center; } }
 .au-tag.k-restore { background: #d9f2ea; color: #0f6e5b; }
 .au-item.k-restore { border-left-color: #2fae8d; }
+
+/* Settings -> Name */
+.st-name { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
+.st-name-form { display: grid; gap: 16px; }
+.st-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--slate); }
+.st-field em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.st-field input { font: inherit; font-size: 15px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); border: 1px solid var(--line-strong, #cfd8df); border-radius: 10px; padding: 10px 12px; max-width: 420px; }
+.st-name-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.st-name-cap { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+.st-name-side { background: #0f1d3a; border-radius: 16px; padding: 22px 22px 18px; color: #fff; position: relative; }
+.st-name-title { font-family: var(--font-display); font-size: 25px; font-weight: 600; line-height: 1.1; padding-right: 54px; overflow-wrap: anywhere; }
+.st-name-sub { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: .22em; color: #9fb0c8; }
+.st-name-badge { position: absolute; right: 16px; top: 16px; background: #0a1fd8; border-radius: 9px; font-size: 12px; font-weight: 700; padding: 4px 8px; }
+@media (max-width: 760px) { .st-name { grid-template-columns: 1fr; } }

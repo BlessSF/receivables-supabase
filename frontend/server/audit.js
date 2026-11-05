@@ -221,6 +221,7 @@ const RULES = {
   save_covered_period_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the covered period setting' },
   save_covered_period_rules: { area: 'Settings', kind: 'setting', text: () => 'Changed the covered period rules' },
   save_tax_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the tax withheld setting' },
+  save_brand: { area: 'Settings', kind: 'setting', text: (i) => (String(i.name || '').trim() ? `Changed the sidebar name to ${q(String(i.name).trim().slice(0, 30))}` : 'Reset the sidebar name to the default') },
   save_nav_access: { area: 'Settings', kind: 'setting', text: () => 'Changed the sidebar access of the roles' },
   create_user: { area: 'Users', kind: 'user', text: (i) => `Created user ${q(i.username)} (${i.role || 'staff'})` },
   update_user: { area: 'Users', kind: 'user', before: async (i) => userRow(num(i.id)), text: (i, o, b) => `Edited user ${q(b?.username || `#${i.id}`)}${i.password ? ' · password changed' : ''}` },

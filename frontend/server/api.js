@@ -75,12 +75,23 @@ async function getNavAccess() {
   return out;
 }
 
+// The name at the top of the sidebar (Settings -> Name). Empty = the built-in default.
+async function getBrand() {
+  try {
+    const b = JSON.parse(await getSetting('brand', 'null'));
+    const name = String(b?.name ?? '').trim().slice(0, 30);
+    if (!name) return null;
+    return { name, mark: String(b?.mark ?? '').trim().toUpperCase().slice(0, 4) || null };
+  } catch { return null; }
+}
+
 async function userPayload(u) {
   if (!u) return null;
   const access = u.role === 'admin' ? null : (await getNavAccess())[u.role] || null;
   return {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     nav_access: access,
+    brand: await getBrand(),
     // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
     is_admin: u.role === 'admin' || u.role === 'accounting',
     is_accounting: u.role === 'accounting',
@@ -1764,6 +1775,15 @@ const actions = {
   async get_backup_info(input, auth) {
     if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can see backups.' }, 403);
     return { ok: true, data: await backupInfo() };
+  },
+
+  // Settings -> Name: what the top of the sidebar and the browser tab say. Admin only.
+  async save_brand(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change the name.' }, 403);
+    const name = trim(input.name ?? '').slice(0, 30);
+    const mark = trim(input.mark ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    await setSetting('brand', JSON.stringify(name ? { name, mark } : null));
+    return { ok: true, brand: await getBrand(), message: name ? `Name changed to "${name}".` : 'Name reset to the default.' };
   },
 
   async get_nav_access(input, auth) {

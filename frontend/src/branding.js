@@ -4,16 +4,19 @@
 // To give another account its own logo, add it to CUSTOM_BRANDS below
 // (put the image in the /public folder).
 
-// The name of this deployment. Each Vercel project can set its own with two Environment Variables
-// (Settings -> Environment Variables), then redeploy:  VITE_BRAND_NAME = Project DCM   and   VITE_BRAND_MARK = DCM
-// Nothing set = "Project DLC".
-const BRAND_NAME = String(import.meta.env.VITE_BRAND_NAME || '').trim() || 'Project DLC';
-const BRAND_MARK = String(import.meta.env.VITE_BRAND_MARK || '').trim().slice(0, 4).toUpperCase() || 'DL';
+// The name at the top of the sidebar and in the browser tab. An admin changes it in Settings -> Name
+// (saved in the database, so each deployment has its own). Until then it is "Project DLC".
+const DEFAULT_NAME = 'Project DLC';
+const DEFAULT_MARK = 'DL';
+const markOf = (name) => {
+  const caps = String(name).split(/\s+/).find((w) => w.length > 1 && w === w.toUpperCase());
+  return (caps || String(name).trim().charAt(0) || 'M').slice(0, 4).toUpperCase();
+};
 
 const CUSTOM_BRANDS = {
   demic: {
-    name: BRAND_NAME,
-    mark: BRAND_MARK, // letters shown in the small badge next to the name
+    name: DEFAULT_NAME,
+    mark: DEFAULT_MARK, // letters shown in the small badge next to the name
     logo: null, // no logo image
     color: '#0a1fd8',
   },
@@ -28,7 +31,9 @@ export function getBranding(user) {
   const initial = (displayName.trim().charAt(0) || 'M').toUpperCase();
   // Everyone on the main system (admin, accounting, executive, staff) sees the same name; branch accounts keep their own
   if (user && user.role && user.role !== 'branch') {
-    return { name: BRAND_NAME, mark: BRAND_MARK, logo: null, color: '#0a1fd8', initial: BRAND_MARK, displayName };
+    const name = user.brand?.name || DEFAULT_NAME;
+    const mark = user.brand?.mark || (user.brand?.name ? markOf(name) : DEFAULT_MARK);
+    return { name, mark, logo: null, color: '#0a1fd8', initial: mark, displayName };
   }
   if (custom) return { ...custom, initial: custom.mark || initial, displayName };
   return { name: 'Multipliers', logo: null, color: DEFAULT_COLOR, initial, displayName };
