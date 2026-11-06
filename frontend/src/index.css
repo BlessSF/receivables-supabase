@@ -1952,3 +1952,14 @@ select.rec-input { min-width: 112px; }
 .st-name-sub { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: .22em; color: #9fb0c8; }
 .st-name-badge { position: absolute; right: 16px; top: 16px; background: #0a1fd8; border-radius: 9px; font-size: 12px; font-weight: 700; padding: 4px 8px; }
 @media (max-width: 760px) { .st-name { grid-template-columns: 1fr; } }
+
+/* Reports by Month: a totals bar that stays at the bottom of the window while the real totals row is out of sight.
+   The wrapper has no height, so it sticks without taking any room; the bar hangs upward from it. */
+.rep-sticky { position: sticky; bottom: 0; height: 0; z-index: 7; }
+.rep-sticky-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px 10px 10px; overflow-x: auto; background: linear-gradient(to top, #fff 70%, rgba(255, 255, 255, 0)); border-top: 1px solid var(--line); }
+.rep-sticky.is-hidden .rep-sticky-bar { display: none; }
+.rep-sticky-item { flex: 1 1 0; min-width: 190px; display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 10px; color: #fff; box-shadow: 0 6px 16px -8px rgba(15, 23, 42, .5); }
+.rep-sticky-item span { font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
+.rep-sticky-item strong { font-size: 15px; font-variant-numeric: lining-nums; }
+.rep-sticky-total { background: #0f172a; }
+@media print { .rep-sticky { display: none !important; } }

@@ -31,6 +31,28 @@ function Block({ item, readOnly, companyId }) {
   );
 }
 
+// The totals row (Overdue / month totals) follows you down the screen: this bar sits at the bottom of the window while the
+// real totals row at the end of the table is out of sight, and disappears once you reach it.
+function StickyTotals({ cols, totals, grandTotal, watch }) {
+  const [atEnd, setAtEnd] = useState(false);
+  useEffect(() => {
+    const row = document.querySelector('.report-table tfoot tr');
+    if (!row || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => setAtEnd(e.isIntersecting), { threshold: 0.01 });
+    io.observe(row);
+    return () => io.disconnect();
+  }, [watch]);
+  return (
+    <div className={`rep-sticky${atEnd ? ' is-hidden' : ''}`} aria-hidden={atEnd}>
+      <div className="rep-sticky-bar">
+        {cols.map((b) => (b.isTotal
+          ? <div key={b.key} className="rep-sticky-item rep-sticky-total"><span>TOTAL REMAINING BALANCE</span><strong>{money(grandTotal)}</strong></div>
+          : <div key={b.key} className={`rep-sticky-item ${b.cls}`}><span>{b.total}</span><strong>{money(totals[b.key])}</strong></div>))}
+      </div>
+    </div>
+  );
+}
+
 export default function MonthlyReport() {
   const { user } = useAuth();
   const readOnly = isExecutive(user);
@@ -291,6 +313,7 @@ export default function MonthlyReport() {
             </tfoot>
           </table>}
         </div>
+        {blocks.length > 0 && <StickyTotals cols={cols} totals={dTotals} grandTotal={grandTotal} watch={`${month}|${terms}|${cols.length}|${dCompanies.length}`} />}
         <div className="report-foot">
           <div>
             <div className="report-prepared-label">Prepared by</div>
