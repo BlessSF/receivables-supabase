@@ -1018,6 +1018,17 @@ button { font-family: inherit; }
   outline: none;
 }
 
+.dz-progress { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--teal-strong); }
+.dz-progress strong { font-size: 15px; }
+.dz-spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--teal-soft); border-top-color: var(--teal); animation: dz-turn .8s linear infinite; }
+@keyframes dz-turn { to { transform: rotate(360deg); } }
+.dz-bar { width: min(420px, 90%); height: 8px; border-radius: 99px; background: #fff; border: 1px solid var(--line-strong); overflow: hidden; }
+.dz-bar > i { display: block; height: 100%; background: var(--teal); border-radius: 99px; transition: width .2s; }
+.dz-file { font-size: 12.5px; color: var(--slate); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-note { margin: 10px 0 0; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--panel-tint); border: 1px solid var(--line); font-size: 13.5px; color: var(--slate); }
+.dz-note summary { cursor: pointer; }
+.dz-note ul { margin: 6px 0 0; padding-left: 20px; max-height: 160px; overflow: auto; }
+
 /* Long date field for forms: "October 15, 2026" + calendar button (the real date picker is hidden behind it) */
 .long-date { position: relative; display: block; min-width: 205px; } /* wide enough for "September 30, 2026" at 100% zoom */
 .long-date > input[type="text"] {

@@ -144,8 +144,75 @@ async function cellsFromRawXlsx(buffer) {
   return cells;
 }
 
+
+// ---------------------------------------------------------------------------
+// OpenDocument spreadsheet (.ods, e.g. saved from LibreOffice): a zip with content.xml.
+// Gives the same kind of cell list as the .xlsx readers (merged cells counted once, with the rows/cols they span).
+const odsText = (xml) => unxml(
+  [...xml.matchAll(/<text:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/text:p>)/g)].map((m) => (m[1] || '')
+    .replace(/<text:s\b[^>]*?text:c="(\d+)"[^>]*\/>/g, (_, n) => ' '.repeat(Math.min(+n, 50)))
+    .replace(/<text:s\b[^>]*\/>/g, ' ').replace(/<text:(?:tab|line-break)\b[^>]*\/>/g, ' ')
+    .replace(/<[^>]+>/g, '')).join(' '));
+const odsAttr = (attrs, name) => (attrs.match(new RegExp(`\\b${name}="([^"]*)"`)) || [])[1];
+
+async function cellsFromOds(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const file = zip.file('content.xml');
+  if (!file) throw new Error('no content');
+  const xml = await file.async('string');
+  const tables = [...xml.matchAll(/<table:table\b[^>]*?>([\s\S]*?)<\/table:table>/g)];
+  for (const t of tables) {
+    const cells = [];
+    let row = 0;
+    for (const rm of t[1].matchAll(/<table:table-row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/table:table-row>)/g)) {
+      const rowRepeat = Math.max(1, +(odsAttr(rm[1], 'table:number-rows-repeated') || 1));
+      const body = rm[2];
+      const r1 = row + 1;
+      row += rowRepeat;
+      if (!body) continue;
+      let col = 0;
+      const rowCells = [];
+      for (const cm of body.matchAll(/<table:(table-cell|covered-table-cell)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/table:\1>)/g)) {
+        const attrs = cm[2];
+        const colRepeat = Math.max(1, +(odsAttr(attrs, 'table:number-columns-repeated') || 1));
+        const c1 = col + 1;
+        col += colRepeat;
+        if (cm[1] === 'covered-table-cell') continue;
+        const type = odsAttr(attrs, 'office:value-type');
+        if (!type) continue;
+        let value;
+        if (type === 'float' || type === 'percentage' || type === 'currency') value = Number(odsAttr(attrs, 'office:value'));
+        else if (type === 'date') {
+          const m = String(odsAttr(attrs, 'office:date-value') || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+          value = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : undefined;
+        } else if (type === 'string') value = odsAttr(attrs, 'office:string-value') !== undefined ? unxml(odsAttr(attrs, 'office:string-value')) : odsText(cm[3] || '');
+        else continue; // boolean / time: not used by the SOA
+        if (value === undefined || value === null || clean(value) === '' || (typeof value === 'number' && Number.isNaN(value))) continue;
+        const rs = Math.max(1, +(odsAttr(attrs, 'table:number-rows-spanned') || 1));
+        const cs = Math.max(1, +(odsAttr(attrs, 'table:number-columns-spanned') || 1));
+        for (let k = 0; k < Math.min(colRepeat, 50); k++) rowCells.push({ r1, c1: c1 + k, r2: r1 + rs - 1, c2: c1 + k + cs - 1, value, text: clean(value) });
+      }
+      cells.push(...rowCells);
+    }
+    if (cells.length) return cells;
+  }
+  return [];
+}
+
+/** True when the file is a OpenDocument spreadsheet (by name, or by what is inside the zip). */
+async function looksLikeOds(buffer, fileName) {
+  if (/\.ods$/i.test(fileName || '')) return true;
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    if (zip.file('xl/workbook.xml')) return false;
+    const mt = zip.file('mimetype');
+    return !!mt && /opendocument\.spreadsheet/.test(await mt.async('string'));
+  } catch { return false; }
+}
+
 /** Cells of the first sheet: ExcelJS first, raw XML if ExcelJS can't open the file. */
-async function loadCells(buffer) {
+async function loadCells(buffer, fileName = '') {
+  if (await looksLikeOds(buffer, fileName)) return cellsFromOds(buffer);
   try {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
@@ -263,9 +330,9 @@ function periodForSoa(date, dates) {
 export async function parseSoa(buffer, fileName = '') {
   let cells;
   try {
-    cells = await loadCells(buffer);
+    cells = await loadCells(buffer, fileName);
   } catch {
-    return { file: fileName, error: 'This does not look like a valid .xlsx file.' };
+    return { file: fileName, error: 'This does not look like a valid .xlsx or .ods file.' };
   }
   if (!cells.length) return { file: fileName, error: 'The workbook is empty.' };
   const warnings = [];

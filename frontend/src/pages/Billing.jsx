@@ -5,6 +5,7 @@ import LongDateInput from '../LongDateInput';
 import MoneyInput from '../MoneyInput';
 import { useAuth } from '../AuthContext';
 import { isStaff, isExecutive } from '../utils';
+import { listZip, readZipEntry, MAX_ZIP_BYTES } from '../zipRead';
 import { peso, fdate, coveredLabel, coveredPeriodForBilling, DEFAULT_COVERED_RULES } from '../utils';
 
 function todayLocal() {
@@ -26,6 +27,8 @@ const blank = (auto = true, rules) => ({
 });
 
 const MAX_SOA_BYTES = 3 * 1024 * 1024;
+const MAX_IMPORT_FILES = 300; // per upload, counting every file found inside zips
+const SOA_EXT = /\.(xlsx|ods)$/i;
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -140,39 +143,98 @@ export default function Billing() {
   }
 
   // ---- SOA import -------------------------------------------------------------
-  async function readFiles(fileList) {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
-    setFlash(null);
-    const basis = imp?.basis || 'current';
-    setImp((cur) => ({ items: cur?.items || [], basis, reading: true, importing: false }));
-    const added = [];
-    for (const f of files) {
-      const key = `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(36).slice(2, 7)}`;
-      try {
-        if (!/\.xlsx$/i.test(f.name)) throw new Error('Only .xlsx files can be imported.');
-        if (f.size > MAX_SOA_BYTES) throw new Error('File is too large (limit 3 MB).');
-        const r = await api.parseSoa(f.name, await fileToBase64(f));
-        const d = r.data;
-        if (d.error) throw new Error(d.error);
-        added.push({
-          key, file: f.name, error: '', selected: true, warnings: d.warnings || [],
-          soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
-          duplicate: d.duplicate || '', txn_date: d.date || todayLocal(),
-          // Imported SOAs: the file's Date is the last day of the covered period (July 15 -> July 1 to July 15),
-          // read from the Tran. Dates. The billing-date rule only fills in when the file gives nothing to go on.
-          ...(d.period_from && d.period_to
-            ? { period_from: d.period_from, period_to: d.period_to }
-            : autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: '', period_to: '' }),
-          total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
-          amount: pickAmount(d, basis),
-        });
-      } catch (e) {
-        added.push({ key, file: f.name, error: e.message, selected: false, warnings: [] });
+  // Turns what was dropped (.xlsx, .ods, .zip, or a mix) into a list of SOA files to read.
+  // Zips are opened right here in the browser, folders inside them included; anything that is not a SOA file is skipped.
+  async function collectFiles(files) {
+    const queue = []; const skipped = []; const problems = [];
+    let over = 0;
+    const base = (n) => n.split('/').pop();
+    async function addZip(blob, label, depth) {
+      if (blob.size > MAX_ZIP_BYTES) { problems.push({ file: label, error: 'This zip is too large (limit 50 MB).' }); return; }
+      let entries;
+      try { entries = await listZip(blob); } catch (e) { problems.push({ file: label, error: e.message }); return; }
+      for (const en of entries) {
+        const b = base(en.name);
+        if (/(^|\/)__MACOSX\//.test(en.name) || b.startsWith('.') || b.startsWith('~$')) continue; // system junk, not a real file
+        const shown = `${label.replace(/\.zip$/i, '')}/${en.name}`;
+        if (/\.zip$/i.test(b)) {
+          if (depth >= 2) { skipped.push(shown); continue; }
+          if (en.size > MAX_ZIP_BYTES) { problems.push({ file: shown, error: 'This zip is too large (limit 50 MB).' }); continue; }
+          try { await addZip(await readZipEntry(blob, en, MAX_ZIP_BYTES), shown, depth + 1); } catch (e) { problems.push({ file: shown, error: e.message }); }
+          continue;
+        }
+        if (!SOA_EXT.test(b)) { skipped.push(shown); continue; }
+        if (queue.length >= MAX_IMPORT_FILES) { over += 1; continue; }
+        if (en.size > MAX_SOA_BYTES) { problems.push({ file: b, error: 'File is too large (limit 3 MB).' }); continue; }
+        queue.push({ name: b, size: en.size, get: () => readZipEntry(blob, en, MAX_SOA_BYTES) });
       }
     }
-    setImp((cur) => ({ ...cur, items: [...(cur?.items || []), ...added], reading: false }));
+    for (const f of files) {
+      if (/\.zip$/i.test(f.name)) await addZip(f, f.name, 0);
+      else if (SOA_EXT.test(f.name)) {
+        if (queue.length >= MAX_IMPORT_FILES) over += 1;
+        else if (f.size > MAX_SOA_BYTES) problems.push({ file: f.name, error: 'File is too large (limit 3 MB).' });
+        else queue.push({ name: f.name, size: f.size, get: async () => f });
+      } else problems.push({ file: f.name, error: 'Only .xlsx, .ods and .zip files can be imported.' });
+    }
+    return { queue, skipped, problems, over };
+  }
+
+  async function readFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length || imp?.reading) return;
+    setFlash(null);
+    const basis = imp?.basis || 'current';
+    const batch = Math.random().toString(36).slice(2, 9);
+    const setProgress = (progress) => setImp((cur) => ({ ...cur, progress }));
+    setImp((cur) => ({ items: cur?.items || [], basis, reading: true, importing: false, skipped: [], over: 0, progress: { done: 0, total: 0, name: 'Opening files…' } }));
     if (fileInput.current) fileInput.current.value = '';
+
+    const { queue, skipped, problems, over } = await collectFiles(files);
+    const total = queue.length;
+    const results = new Array(total);
+    const flush = () => setImp((cur) => ({
+      ...cur,
+      items: [...(cur?.items || []).filter((i) => i.batch !== batch), ...problemRows, ...results.filter(Boolean)],
+    }));
+    const problemRows = problems.map((p, i) => ({ key: `${batch}-p${i}`, batch, file: p.file, error: p.error, selected: false, warnings: [] }));
+    setImp((cur) => ({ ...cur, skipped, over, progress: { done: 0, total, name: total ? queue[0].name : '' } }));
+    if (problemRows.length) flush();
+
+    let done = 0; let next = 0;
+    async function worker() {
+      while (next < total) {
+        const idx = next++;
+        const q = queue[idx];
+        const key = `${batch}-${idx}`;
+        try {
+          const blob = await q.get();
+          const r = await api.parseSoa(q.name, await fileToBase64(blob));
+          const d = r.data;
+          if (d.error) throw new Error(d.error);
+          results[idx] = {
+            key, batch, file: q.name, error: '', selected: true, warnings: d.warnings || [],
+            soa_number: d.soa_number || '', parsed_soa: d.soa_number || '', company_name: d.company_name || '', hmo_id: d.hmo_id || '', hmo_match: d.hmo_match,
+            duplicate: d.duplicate || '', txn_date: d.date || todayLocal(),
+            // Imported SOAs: the file's Date is the last day of the covered period (July 15 -> July 1 to July 15),
+            // read from the Tran. Dates. The billing-date rule only fills in when the file gives nothing to go on.
+            ...(d.period_from && d.period_to
+              ? { period_from: d.period_from, period_to: d.period_to }
+              : autoPeriod ? periodFor(d.date || todayLocal(), true, periodRules) : { period_from: '', period_to: '' }),
+            total_due: d.total_due, current_due: d.current_due, previous_balance: d.previous_balance, lines: d.line_count || 0,
+            amount: pickAmount(d, basis),
+          };
+        } catch (e) {
+          results[idx] = { key, batch, file: q.name, error: e.message, selected: false, warnings: [] };
+        }
+        done += 1;
+        setProgress({ done, total, name: q.name });
+        flush();
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, total) }, worker));
+    flush();
+    setImp((cur) => ({ ...cur, reading: false, progress: null }));
   }
 
   const patchItem = (key, patch) => setImp((cur) => ({ ...cur, items: cur.items.map((it) => (it.key === key ? { ...it, ...patch } : it)) }));
@@ -257,7 +319,7 @@ export default function Billing() {
             <button className="btn btn-secondary btn-sm" disabled={imp.importing} onClick={() => setImp(null)}>Close</button>
           </div>
           <div className="subtitle" style={{ margin: '6px 0 14px' }}>
-            Drop one or many SOA Excel files. The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the Date is the last day of the covered period (e.g. Date July 15 covers July 1 to July 15).
+            Drop one or many SOA Excel files (.xlsx or .ods), or a .zip with many of them inside (up to 50 MB). The company name is matched to an HMO, the Date becomes the Billing Date, the Series No. becomes the SOA #, and the Date is the last day of the covered period (e.g. Date July 15 covers July 1 to July 15).
           </div>
           <div
             className={`dropzone${dragOver ? ' over' : ''}`}
@@ -269,9 +331,32 @@ export default function Billing() {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.current?.click(); }}
           >
-            {imp.reading ? 'Reading files…' : 'Drop .xlsx files here, or click to choose'}
-            <input ref={fileInput} type="file" accept=".xlsx" multiple hidden onChange={(e) => readFiles(e.target.files)} />
+            {imp.reading ? (
+              <div className="dz-progress">
+                <span className="dz-spin" aria-hidden="true" />
+                <strong>{imp.progress?.total ? `Reading ${Math.min(imp.progress.done + 1, imp.progress.total)} of ${imp.progress.total}…` : 'Opening files…'}</strong>
+                {imp.progress?.total ? (
+                  <>
+                    <span className="dz-bar"><i style={{ width: `${Math.round((imp.progress.done / imp.progress.total) * 100)}%` }} /></span>
+                    <span className="dz-file">{imp.progress.name}</span>
+                  </>
+                ) : null}
+              </div>
+            ) : 'Drop .xlsx, .ods or .zip files here, or click to choose'}
+            <input ref={fileInput} type="file" accept=".xlsx,.ods,.zip" multiple hidden onChange={(e) => readFiles(e.target.files)} />
           </div>
+
+          {(imp.over > 0 || (imp.skipped && imp.skipped.length > 0)) && (
+            <div className="dz-note">
+              {imp.over > 0 && <div><strong>{imp.over} file{imp.over === 1 ? '' : 's'} not read.</strong> Up to {MAX_IMPORT_FILES} files can be read at a time. Import these first, then upload the rest.</div>}
+              {imp.skipped && imp.skipped.length > 0 && (
+                <details>
+                  <summary>{imp.skipped.length} other file{imp.skipped.length === 1 ? '' : 's'} skipped (not SOA Excel files)</summary>
+                  <ul>{imp.skipped.slice(0, 50).map((n, i) => <li key={i}>{n}</li>)}{imp.skipped.length > 50 ? <li>…and {imp.skipped.length - 50} more</li> : null}</ul>
+                </details>
+              )}
+            </div>
+          )}
 
           {imp.items.length > 0 && (
             <>
