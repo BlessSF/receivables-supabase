@@ -228,7 +228,7 @@ export default function Summary() {
           </p>
           {!rows && <div className="empty-state">Loading…</div>}
           {rows && grouping === 'all' && (
-            <MonthTable months={monthRows} totalLabel={`TOTAL ${year}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
+            <MonthTable months={monthRows} totalLabel={`TOTAL ${year}`} owedLabel={readOnly ? 'Still Owed' : 'Balance'} />
           )}
           {rows && grouping === 'company' && (
             companyBlocks.length === 0
@@ -250,7 +250,7 @@ export default function Summary() {
                             {t.entries} entr{t.entries === 1 ? 'y' : 'ies'} · billed {peso(t.billed)} · {readOnly ? 'still owed' : 'deduction'} {peso(t.owed)}
                           </span>
                         </summary>
-                        <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
+                        <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Balance'} />
                       </details>
                     );
                   })}
