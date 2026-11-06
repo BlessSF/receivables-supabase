@@ -4,7 +4,7 @@
 //
 // When is an entry due?
 //   1. its own Due Date, if one was typed in; otherwise
-//   2. its BILLING date + the payment terms (default 3 months). The billing date follows the covered period:
+//   2. its BILLING date + the payment terms (default 2 months). The billing date follows the covered period:
 //        covered period 1st-15th  -> billed on the last day of that month   (Sept 1-15  -> Sept 30)
 //        covered period 16th-end  -> billed on the 15th of the next month   (Sept 16-30 -> Oct 15)
 //      so with 2-month terms Sept 1-15 is due in November and Sept 16-30 is due in December.
@@ -15,7 +15,8 @@ import { toFloat, toInt } from './php.js';
 import { parseDate, monthKey, currentMonthKey, addMonthsKey, monthLabel, monthName, coveredLabel } from './dates.js';
 import { branchWhere } from './lib.js';
 
-export const DEFAULT_TERMS_MONTHS = 3;
+export const DEFAULT_TERMS_MONTHS = 3; // used by the Dashboard / Summary due figures (unchanged)
+export const REPORT_DEFAULT_TERMS = 2; // the Reports by Month page and its Excel start on 2 months
 
 /** The month an entry is billed in, from its covered period (second half of a month is billed the month after). */
 export function billingMonthKey(r) {
@@ -31,7 +32,7 @@ export function readMonthlyParams(query) {
   // "2026-all" = the "All months" view: the whole of that year (Jan - Dec) in one report
   const allYear = /^\d{4}-all$/.test(raw) ? Number(raw.slice(0, 4)) : null;
   const month = allYear ? `${allYear}-01` : /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? raw : currentMonthKey();
-  const terms = query.terms === undefined || query.terms === '' ? DEFAULT_TERMS_MONTHS : toInt(query.terms);
+  const terms = query.terms === undefined || query.terms === '' ? REPORT_DEFAULT_TERMS : toInt(query.terms);
   return { month, terms: Math.max(0, Math.min(12, terms)), allYear };
 }
 

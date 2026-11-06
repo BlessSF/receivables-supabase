@@ -35,7 +35,7 @@ export default function MonthlyReport() {
   const { user } = useAuth();
   const readOnly = isExecutive(user);
   const [month, setMonth] = useState(currentMonth);
-  const [terms, setTerms] = useState(3);
+  const [terms, setTerms] = useState(2);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
