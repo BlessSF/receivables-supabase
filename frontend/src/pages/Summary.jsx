@@ -182,7 +182,7 @@ export default function Summary() {
           <div className="kpi-value">{peso(totalPaid)}</div>
         </div>
         <div className="kpi-card accent-red">
-          <div className="kpi-label">{readOnly ? 'Still Owed' : 'Total Deduction'}</div>
+          <div className="kpi-label">{readOnly ? 'Still Owed' : 'Total Balance'}</div>
           <div className="kpi-value">{peso(totalDeduction)}</div>
         </div>
       </div>
@@ -267,7 +267,7 @@ export default function Summary() {
             <thead>
               <tr>
                 <th>Company</th><th>Covered Period</th><th className="text-right">Amount</th>
-                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
+                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Balance'}</th>
                 <th>Comment</th><th>Status</th>
               </tr>
             </thead>
