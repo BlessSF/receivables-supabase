@@ -4,8 +4,10 @@
 //
 // When is an entry due?
 //   1. its own Due Date, if one was typed in; otherwise
-//   2. its Period Date + the payment terms (default 3 months), e.g. a June
-//      bill with 3-month terms is due in September.
+//   2. its BILLING date + the payment terms (default 3 months). The billing date follows the covered period:
+//        covered period 1st-15th  -> billed on the last day of that month   (Sept 1-15  -> Sept 30)
+//        covered period 16th-end  -> billed on the 15th of the next month   (Sept 16-30 -> Oct 15)
+//      so with 2-month terms Sept 1-15 is due in November and Sept 16-30 is due in December.
 // Entries due before the chosen month are OVERDUE.
 import { all } from './db.js';
 import { jsonExit } from './http.js';
@@ -14,6 +16,14 @@ import { parseDate, monthKey, currentMonthKey, addMonthsKey, monthLabel, monthNa
 import { branchWhere } from './lib.js';
 
 export const DEFAULT_TERMS_MONTHS = 3;
+
+/** The month an entry is billed in, from its covered period (second half of a month is billed the month after). */
+export function billingMonthKey(r) {
+  const fromMs = r.period_from ? parseDate(r.period_from) : null;
+  const fromKey = fromMs !== null ? monthKey(r.period_from) : null;
+  if (fromKey) return new Date(fromMs).getUTCDate() >= 16 ? addMonthsKey(fromKey, 1) : fromKey;
+  return monthKey(r.billing_date) || monthKey(r.period_date) || null;
+}
 
 /** Reads ?month=YYYY-MM and ?terms=N from the request, with safe defaults. */
 export function readMonthlyParams(query) {
@@ -33,7 +43,7 @@ export async function buildMonthlyReport(auth, query) {
   let rows;
   try {
     rows = await all(
-      `SELECT l.id, l.company_id, l.soa_number, l.period_date, l.period_from, l.period_to, l.due_date, l.balance, l.amount, l.tax_withheld, l.surcharge, l.rebate, l.receivable_amount, l.paid_amount, c.name AS company_name
+      `SELECT l.id, l.company_id, l.soa_number, l.billing_date, l.period_date, l.period_from, l.period_to, l.due_date, l.balance, l.amount, l.tax_withheld, l.surcharge, l.rebate, l.receivable_amount, l.paid_amount, c.name AS company_name
        FROM ledger_entries l JOIN companies c ON c.id = l.company_id
        WHERE l.balance > 0.009 ${bw}
        ORDER BY UPPER(c.name) COLLATE "C" ASC, l.period_date ASC NULLS LAST, UPPER(l.soa_number) COLLATE "C" ASC NULLS LAST, l.id ASC`, bp);
@@ -68,11 +78,11 @@ export async function buildMonthlyReport(auth, query) {
 
   for (const r of rows) {
     const balance = toFloat(r.balance);
-    const periodKey = monthKey(r.period_date);
+    const billKey = billingMonthKey(r);
     const explicitDue = r.due_date ? parseDate(r.due_date) : null;
     let dueKey = null;
     if (explicitDue !== null) dueKey = monthKey(r.due_date);
-    else if (periodKey) dueKey = addMonthsKey(periodKey, terms);
+    else if (billKey) dueKey = addMonthsKey(billKey, terms);
 
     if (!dueKey) { noPeriod.count++; noPeriod.total += balance; continue; }
 
@@ -96,7 +106,7 @@ export async function buildMonthlyReport(auth, query) {
       // why this entry still has a balance (shown when the company's total is clicked)
       amount: toFloat(r.amount), tax: toFloat(r.tax_withheld), surcharge: toFloat(r.surcharge), rebate: toFloat(r.rebate),
       receivable: toFloat(r.receivable_amount), paid: toFloat(r.paid_amount),
-      due: monthLabel(dueKey), due_basis: explicitDue !== null ? 'its Due Date' : `Period Date + ${terms} month${terms === 1 ? '' : 's'}`,
+      due: monthLabel(dueKey), due_basis: explicitDue !== null ? 'its Due Date' : `Billing Date (${monthLabel(billKey)}) + ${terms} month${terms === 1 ? '' : 's'}`,
     });
     totals[block] += balance;
   }

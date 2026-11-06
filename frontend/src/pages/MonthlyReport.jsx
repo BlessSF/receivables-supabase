@@ -132,7 +132,7 @@ export default function MonthlyReport() {
           <h1>Reports by Month</h1>
           <div className="subtitle">
             Pick a month (Jan–Dec), or All months for the whole year: the report builds itself with what is overdue and who is due.
-            An entry is due on its own Due Date if it has one, otherwise {terms === 0 ? 'in its Period Date month' : `${terms} month${terms === 1 ? '' : 's'} after its Period Date`}.
+            An entry is due on its own Due Date if it has one, otherwise {terms === 0 ? 'in its billing month' : `${terms} month${terms === 1 ? '' : 's'} after its billing date`} (covered period 1–15 is billed at month end, 16–end on the 15th of the next month).
           </div>
         </div>
         <div className="report-actions" style={{ display: 'flex', gap: 8 }}>
@@ -152,7 +152,7 @@ export default function MonthlyReport() {
           <div className="form-group">
             <label htmlFor="rep-terms">Payment terms</label>
             <select id="rep-terms" value={terms} onChange={(e) => setTerms(Number(e.target.value))}>
-              {TERMS.map((t) => <option key={t} value={t}>{t === 0 ? 'Due in the Period month' : `Due ${t} month${t === 1 ? '' : 's'} after the Period`}</option>)}
+              {TERMS.map((t) => <option key={t} value={t}>{t === 0 ? 'Due in the billing month' : `Due ${t} month${t === 1 ? '' : 's'} after the billing date`}</option>)}
             </select>
           </div>
           <div className="form-group"><label>&nbsp;</label>
