@@ -12,7 +12,7 @@ import { computeMain } from './mainCalc.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { monthKey, addMonthsKey, currentMonthKey, billingMonthKey } from './dates.js';
+import { monthKey, addMonthsKey, currentMonthKey, billingMonthKey, monthLabel } from './dates.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
@@ -503,6 +503,20 @@ const actions = {
     const yAgg = (y) => { if (!yearAgg.has(y)) yearAgg.set(y, { year: y, ...blank() }); return yearAgg.get(y); };
 
     const period = blank();
+    // the entries behind the "Past due" card (what the Dashboard shows when you click it), with the reason for each
+    const pdList = []; const pdSeen = new Set();
+    const pdAdd = (r, bal) => {
+      if (pdSeen.has(r.id)) return;
+      pdSeen.add(r.id);
+      const bk = billingMonthKey(r);
+      const dd = dueOf(r, due);
+      pdList.push({
+        id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
+        soa_number: r.soa_number || '', period_from: r.period_from, period_to: r.period_to, billing_date: r.billing_date,
+        balance: bal, due_date: dd, days: daysOverdue(dd),
+        basis: r.due_date ? 'its own Due Date' : bk ? `billed ${monthLabel(bk)} + ${terms} month${terms === 1 ? '' : 's'}` : 'billing date',
+      });
+    };
     // unpaid balance whose DUE DATE falls in the selected month (not the covered period)
     const dueIn = { total: 0, count: 0, upcoming: 0, upcoming_count: 0, by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 }, before: 0, before_count: 0, before_by_type: { HMO: 0, CHARGE: 0, COMPANY: 0 }, before_start: null, before_year_only: false };
     // overdue from EARLIER than the selected period (so Due + this = what Cash Position calls Due Receivables); only when the period has a known start
@@ -562,6 +576,7 @@ const actions = {
         } else if (periodStart && dk && dk < periodStart) {
           dueIn.before += bal; dueIn.before_count++;
           dueIn.before_by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
+          pdAdd(r, bal);
         }
       }
       if (inPeriod(b)) {
@@ -572,7 +587,7 @@ const actions = {
           period.outstanding += bal; period.open_count++; c.outstanding += bal; tt.outstanding += bal; tt.open_count++;
           aging[agingBucket(d)].count++; aging[agingBucket(d)].total += bal;
         }
-        if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; tt.past_due += bal; tt.past_due_count++; }
+        if (late) { period.past_due += bal; period.past_due_count++; c.past_due += bal; tt.past_due += bal; tt.past_due_count++; pdAdd(r, bal); }
         periodEntries.push({
           id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
           billing_date: r.billing_date, period_from: r.period_from, period_to: r.period_to, soa_number: r.soa_number, amount, paid_amount: paid, balance: bal,
@@ -612,6 +627,7 @@ const actions = {
       period: withRate(period),
       due_in: dueIn,
       payment_terms: terms,
+      past_due_list: pdList.sort((a, b) => (b.days ?? 0) - (a.days ?? 0) || b.balance - a.balance).slice(0, 500),
       by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),

@@ -159,6 +159,7 @@ export default function Dashboard() {
   const [grouping, setGrouping] = useState('all'); // 'all' = combined | 'each' = one block per account, HMOs first then Company Charges
   const [companyId, setCompanyId] = useState('');
   const [view, setView] = useState('month');
+  const [pdOpen, setPdOpen] = useState(false); // the "why is it past due" list
   const [show, setShow] = useState({ billed: true, collected: true, unpaid: true }); // chart series switched on
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
@@ -410,8 +411,8 @@ export default function Dashboard() {
           </div>
           {splitLine('outstanding')}
         </div>
-        <div className="kpi-dark-card accent-amber">
-          <div className="kpi-dark-label">Past due</div>
+        <div className={`kpi-dark-card accent-amber${pdCount > 0 ? ' is-click' : ''}`} {...(pdCount > 0 ? { role: 'button', tabIndex: 0, title: 'Click to see why these are past due', onClick: () => setPdOpen(true), onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPdOpen(true); } } } : {})}>
+          <div className="kpi-dark-label">Past due{pdCount > 0 && <span className="kpi-why">See why →</span>}</div>
           <div className="kpi-dark-value">{peso(pdTotal)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${pdBase ? Math.min(100, (pdTotal / pdBase) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
@@ -692,6 +693,46 @@ export default function Dashboard() {
         )}
       </div>
       )}
+
+      {pdOpen && (() => {
+        const list = data.past_due_list || [];
+        const sum = list.reduce((t, r) => t + r.balance, 0);
+        const cut = list.length < pdCount ? pdCount - list.length : 0;
+        return (
+          <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget) setPdOpen(false); }}>
+            <div className="pm-card why-card" role="dialog" aria-modal="true" aria-label="Why these are past due">
+              <div className="pm-head">
+                <div>
+                  <h2>Why {peso(pdTotal)} is past due</h2>
+                  <div className="pm-sub">
+                    {pdCount} unpaid {pdCount === 1 ? 'entry' : 'entries'} whose due date has already passed. An entry is due on its own Due Date if it has one, otherwise {data.payment_terms ?? 2} month{(data.payment_terms ?? 2) === 1 ? '' : 's'} after its billing month (you can change this in Settings → Terms &amp; past due). Click a row to open it in the Ledger.
+                  </div>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPdOpen(false)}>Close</button>
+              </div>
+              <div className="table-wrap why-wrap">
+                <table className="data-table">
+                  <thead><tr><th>Company</th><th>SOA #</th><th>Covered period</th><th>Why it is past due</th><th className="text-right">Days past due</th><th className="text-right">Balance</th></tr></thead>
+                  <tbody>
+                    {list.length === 0 && <tr><td colSpan={6} className="empty-state">Nothing is past due here.</td></tr>}
+                    {list.map((r) => (
+                      <tr key={r.id} className="clickable-row" title="Open this entry in the Ledger" onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}>
+                        <td style={{ fontWeight: 600 }}>{r.company_name}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{r.soa_number || '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{coveredLabel(r.period_from, r.period_to) || '—'}</td>
+                        <td className="why-reason">Due {fdate(r.due_date)} ({r.basis}), still unpaid</td>
+                        <td className="text-right num">{r.days > 0 ? r.days : '—'}</td>
+                        <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><td colSpan={5}>TOTAL PAST DUE{cut ? ` (first ${list.length} of ${pdCount} shown)` : ''}</td><td className="text-right num">{peso(sum)}</td></tr></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

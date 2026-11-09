@@ -252,6 +252,9 @@ button { font-family: inherit; }
 }
 .kpi-dark-track { height: 4px; border-radius: 999px; background: #d0d4da; overflow: hidden; margin-bottom: 12px; }
 .kpi-dark-fill { height: 100%; border-radius: 999px; background: #4f86e0; transition: width 0.5s ease; }
+.kpi-dark-card.is-click { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.kpi-dark-card.is-click:hover, .kpi-dark-card.is-click:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(17, 33, 55, .22); outline: none; }
+.kpi-why { margin-left: 8px; font-size: 11px; font-weight: 600; color: #f1c27d; opacity: .9; }
 .kpi-dark-card.accent-green .kpi-dark-fill { background: #2fb585; }
 .kpi-dark-card.accent-red .kpi-dark-fill { background: #e0594a; }
 .kpi-dark-card.accent-amber .kpi-dark-fill { background: #e2a03a; }
