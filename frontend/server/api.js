@@ -85,6 +85,11 @@ async function getBrand() {
   } catch { return null; }
 }
 
+// The bank name shown in Main / Cash Position (Settings -> Name). Empty = "Security Bank".
+async function getBankName() {
+  try { return String(await getSetting('bank_name', '')).trim().slice(0, 30) || null; } catch { return null; }
+}
+
 async function userPayload(u) {
   if (!u) return null;
   const access = u.role === 'admin' ? null : (await getNavAccess())[u.role] || null;
@@ -92,6 +97,7 @@ async function userPayload(u) {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     nav_access: access,
     brand: await getBrand(),
+    bank_name: await getBankName(),
     // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
     is_admin: u.role === 'admin' || u.role === 'accounting',
     is_accounting: u.role === 'accounting',
@@ -1784,6 +1790,13 @@ const actions = {
     const mark = trim(input.mark ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     await setSetting('brand', JSON.stringify(name ? { name, mark } : null));
     return { ok: true, brand: await getBrand(), message: name ? `Name changed to "${name}".` : 'Name reset to the default.' };
+  },
+
+  async save_bank_name(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change the bank name.' }, 403);
+    const name = trim(input.name ?? '').slice(0, 30);
+    await setSetting('bank_name', name);
+    return { ok: true, bank_name: name || null, message: name ? `Bank name changed to "${name}".` : 'Bank name reset to Security Bank.' };
   },
 
   async get_nav_access(input, auth) {

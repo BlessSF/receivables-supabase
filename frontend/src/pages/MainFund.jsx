@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../AuthContext';
 import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
 import LongDateInput from '../LongDateInput';
@@ -34,6 +35,8 @@ const toData = (f) => ({
 // One saved day, opened from the History list: its figures laid out like the Main page, the change against the
 // day before, and (for recent days) which payables were running and which checks were out.
 function DayOverview({ history, date, todayD, onClose, onPick }) {
+  const { user } = useAuth();
+  const bank = user?.bank_name || 'Security Bank';
   const idx = history.findIndex((x) => x.d === date);
   const h = history[idx];
   const prev = idx > 0 ? history[idx - 1] : null;
@@ -98,13 +101,13 @@ function DayOverview({ history, date, todayD, onClose, onPick }) {
         </div>
 
         <div className="mf-day-body">
-          <Group title="Operations · Security Bank">
+          <Group title={`Operations · ${bank}`}>
             <Line label="Passbook balance" value={h.passbook} k="passbook" />
             <Line label="Less: released checks" sub={`${h.checks_n} ${h.checks_n === 1 ? 'check' : 'checks'}`} value={h.checks} k="checks" kind="debt" minus />
             <Line label="Available funds" value={h.available} k="available" strong />
             <Line label="Add: sales deposit in transit" value={h.deposit} k="deposit" />
             <Line label="Less: running payables" sub={`${h.running_n} unpaid`} value={h.running} k="running" kind="debt" minus />
-            <Line label="Excess fund · Security Bank" value={h.excess} k="excess" strong />
+            <Line label={`Excess fund · ${bank}`} value={h.excess} k="excess" strong />
           </Group>
           <Group title="AUB">
             <Line label={det?.aub_label || 'AUB balance'} value={h.aub} k="aub" />
@@ -141,6 +144,8 @@ function DayOverview({ history, date, todayD, onClose, onPick }) {
 }
 
 export default function MainFund() {
+  const { user } = useAuth();
+  const bank = user?.bank_name || 'Security Bank';
   const [f, setF] = useState(null);
   const [linked, setLinked] = useState([]); // paid + released payables from Running Payables
   const [notice, setNotice] = useState(null);
@@ -259,7 +264,7 @@ export default function MainFund() {
           <div className="mf-card-sub">Cashflow after pull out + receivables</div>
         </div>
         <div className="mf-card">
-          <div className="mf-card-label">Excess fund · Security Bank</div>
+          <div className="mf-card-label">Excess fund · {bank}</div>
           <div className={`mf-card-value ${calc.excess < 0 ? 'neg' : ''}`}>{sgn(calc.excess)}</div>
           <div className="mf-card-sub">after released checks and running payables</div>
         </div>
@@ -281,7 +286,7 @@ export default function MainFund() {
         const prev = history.length > 1 ? history[history.length - 2] : null;
         const items = [
           ['Total net fund', 'total', calc.total, 'fund'],
-          ['Excess fund · Security Bank', 'excess', calc.excess, 'fund'],
+          [`Excess fund · ${bank}`, 'excess', calc.excess, 'fund'],
           ['Cashflow after pull out', 'after', calc.after, 'fund'],
           ['Passbook balance', 'passbook', num(f.passbook), 'fund'],
           ['Running payables (unpaid)', 'running', running, 'debt', runningN, prev?.running_n, 'unpaid'],
@@ -394,7 +399,7 @@ export default function MainFund() {
         </section>
 
         <section className="panel mf-stmt">
-          <div className="mf-block">Operations · Security Bank</div>
+          <div className="mf-block">Operations · {bank}</div>
           <div className="mf-row">
             <span className="mf-lbl">Passbook balance</span>
             <MoneyInput className="mf-in" value={f.passbook} onChange={(v) => edit({ passbook: v })} placeholder="0.00" />
@@ -416,7 +421,7 @@ export default function MainFund() {
             <span className="mf-val">{sgn(-running)}</span>
           </div>
           <div className="mf-row mf-sub mf-key">
-            <span className="mf-lbl">Excess fund · Security Bank</span>
+            <span className="mf-lbl">Excess fund · {bank}</span>
             <span className={`mf-val ${calc.excess < 0 ? 'neg' : ''}`}>{sgn(calc.excess)}</span>
           </div>
 

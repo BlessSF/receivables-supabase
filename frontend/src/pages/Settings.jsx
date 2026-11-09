@@ -171,6 +171,47 @@ function NamePanel() {
   );
 }
 
+function BankPanel() {
+  const { user, refreshUser } = useAuth();
+  const [name, setName] = useState(user?.bank_name || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const shown = name.trim() || 'Security Bank';
+  async function save(reset) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveBankName(reset ? '' : name);
+      if (reset) setName('');
+      await refreshUser();
+      setMsg({ type: 'success', msg: r.message });
+    } catch (e) { setMsg({ type: 'error', msg: e.message }); }
+    setBusy(false);
+  }
+  return (
+    <section className="st-card">
+      <CardHead icon={I.tag} title="Bank name in Main" tone="teal">
+        The bank shown in Main and Cash Position, for example &quot;Excess fund · {shown}&quot; and &quot;Operations · {shown}&quot;. Each system (Main, Jaro) keeps its own.
+      </CardHead>
+      {msg && <div className={`flash flash-${msg.type}`}>{msg.msg}</div>}
+      <div className="st-name">
+        <div className="st-name-form">
+          <label className="st-field"><span>Bank name</span>
+            <input type="text" maxLength={30} value={name} placeholder="Security Bank" onChange={(e) => setName(e.target.value)} />
+          </label>
+          <div className="st-name-actions">
+            <button type="button" className="btn" disabled={busy || !name.trim()} onClick={() => save(false)}>{busy ? 'Saving…' : 'Save bank name'}</button>
+            <button type="button" className="btn btn-secondary" disabled={busy || !user?.bank_name} onClick={() => save(true)}>Reset to Security Bank</button>
+          </div>
+        </div>
+        <div className="st-name-preview" aria-label="Preview">
+          <span className="st-name-cap">Preview</span>
+          <div className="st-name-title" style={{ fontSize: 15 }}>Excess fund · {shown}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const [loaded, setLoaded] = useState(false);
@@ -269,7 +310,7 @@ export default function Settings() {
       {flash && tab !== 'backup' && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
       {tab === 'backup' && user.is_admin_role && <BackupPanel />}
-      {tab === 'name' && user.is_admin_role && <NamePanel />}
+      {tab === 'name' && user.is_admin_role && <><NamePanel /><BankPanel /></>}
 
       {tab === 'period' && (
         <>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../AuthContext';
 import { peso, fdate } from '../utils';
 import MoneyInput, { rawNum } from '../MoneyInput';
 import { computeMain } from '../mainCalc';
@@ -11,6 +12,8 @@ const toRow = (x) => ({ id: x.id, label: x.label, neg: x.amount < 0, amount: x.a
 const rowVal = (x) => (Number(rawNum(x.amount)) || 0) * (x.neg ? -1 : 1);
 
 export default function CashPosition() {
+  const { user } = useAuth();
+  const bank = user?.bank_name || 'Security Bank';
   const [d, setD] = useState(null);
   const [future, setFuture] = useState([]);
   const [state, setState] = useState('idle');
@@ -126,7 +129,7 @@ export default function CashPosition() {
       <div className="cp-grid">
         <section className="panel">
           <div className="mf-block">Bank balances</div>
-          <div className="mf-row mf-auto"><span className="mf-lbl">Passbook balance · Security Bank</span><span className="mf-val">{peso(c.m.passbook)}</span></div>
+          <div className="mf-row mf-auto"><span className="mf-lbl">Passbook balance · {bank}</span><span className="mf-val">{peso(c.m.passbook)}</span></div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Sales deposit in transit</span><span className="mf-val">{peso(c.m.deposit)}</span></div>
           <div className="mf-row mf-auto"><span className="mf-lbl">{c.m.aub_label || 'AUB account'}</span><span className="mf-val">{peso(c.m.aub)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Available bank balance</span><span className="mf-val">{peso(c.bank)}</span></div>
