@@ -267,6 +267,11 @@ export default function Dashboard() {
   const showSplit = !company && !scope && !!data.by_type;
   const bs = data.due_in?.before_start; // "YYYY-MM"
   const beforeName = bs ? (data.due_in.before_year_only ? bs.slice(0, 4) : `${MONTH_NAMES[Number(bs.slice(5, 7)) - 1]} ${bs.slice(0, 4)}`) : '';
+  // One "Past due" card: what is late inside the chosen period, plus what was already due before it
+  const pdBefore = !!(data.due_in && data.due_in.before_start);
+  const pdTotal = p.past_due + (pdBefore ? data.due_in.before : 0);
+  const pdCount = p.past_due_count + (pdBefore ? data.due_in.before_count : 0);
+  const pdBase = p.outstanding + (pdBefore ? data.due_in.before : 0);
   const splitLine = (field) => showSplit && (
     <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
       <span className="kpi-dark-left">HMOs {peso(data.by_type.HMO?.[field] || 0)}</span>
@@ -407,31 +412,19 @@ export default function Dashboard() {
         </div>
         <div className="kpi-dark-card accent-amber">
           <div className="kpi-dark-label">Past due</div>
-          <div className="kpi-dark-value">{peso(p.past_due)}</div>
-          <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.outstanding ? Math.min(100, (p.past_due / p.outstanding) * 100) : 0}%` }} /></div>
+          <div className="kpi-dark-value">{peso(pdTotal)}</div>
+          <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${pdBase ? Math.min(100, (pdTotal / pdBase) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
-            <span className="kpi-dark-left">{p.past_due_count} past due {p.past_due_count === 1 ? 'entry' : 'entries'}</span>
-            <span className="kpi-dark-right">of {peso(p.outstanding)} unpaid</span>
+            <span className="kpi-dark-left">{pdCount} past due {pdCount === 1 ? 'entry' : 'entries'}</span>
+            <span className="kpi-dark-right">{pdBefore ? `up to ${periodName}` : `of ${peso(p.outstanding)} unpaid`}</span>
           </div>
-          {splitLine('past_due')}
-        </div>
-        {data.due_in && data.due_in.before_start && (
-          <div className="kpi-dark-card accent-orange">
-            <div className="kpi-dark-label">Past due before {beforeName}</div>
-            <div className="kpi-dark-value">{peso(data.due_in.before)}</div>
-            <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${data.due_in.before + data.due_in.total ? Math.min(100, (data.due_in.before / (data.due_in.before + data.due_in.total)) * 100) : 0}%` }} /></div>
-            <div className="kpi-dark-footer">
-              <span className="kpi-dark-left">{data.due_in.before_count} past due {data.due_in.before_count === 1 ? 'entry' : 'entries'}</span>
-              <span className="kpi-dark-right">due before {beforeName}</span>
+          {showSplit && (
+            <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
+              <span className="kpi-dark-left">HMOs {peso((data.by_type.HMO?.past_due || 0) + (pdBefore ? data.due_in.before_by_type?.HMO || 0 : 0))}</span>
+              <span className="kpi-dark-right">Company Charges {peso((data.by_type.CHARGE?.past_due || 0) + (pdBefore ? data.due_in.before_by_type?.CHARGE || 0 : 0))}</span>
             </div>
-            {showSplit && (
-              <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
-                <span className="kpi-dark-left">HMOs {peso(data.due_in.before_by_type?.HMO || 0)}</span>
-                <span className="kpi-dark-right">Company Charges {peso(data.due_in.before_by_type?.CHARGE || 0)}</span>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
         {data.due_in && (
           <div className="kpi-dark-card accent-blue">
             <div className="kpi-dark-label">Due · {periodName}</div>
