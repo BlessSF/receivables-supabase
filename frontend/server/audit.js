@@ -217,6 +217,7 @@ const RULES = {
 
   // ---------------------------------------------------------------- Settings / users
   save_branch_sites: { area: 'Settings', kind: 'setting', text: () => 'Changed the branch sites' },
+  save_payment_terms: { area: 'Settings', kind: 'setting', text: (i) => `Changed the payment terms to ${Number(i.months) || 0} month${Number(i.months) === 1 ? '' : 's'}` },
   save_aging_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the aging / grace setting' },
   save_covered_period_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the covered period setting' },
   save_covered_period_rules: { area: 'Settings', kind: 'setting', text: () => 'Changed the covered period rules' },

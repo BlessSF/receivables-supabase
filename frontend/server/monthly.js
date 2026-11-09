@@ -12,32 +12,27 @@
 import { all } from './db.js';
 import { jsonExit } from './http.js';
 import { toFloat, toInt } from './php.js';
-import { parseDate, monthKey, currentMonthKey, addMonthsKey, monthLabel, monthName, coveredLabel } from './dates.js';
-import { branchWhere } from './lib.js';
+import { parseDate, monthKey, currentMonthKey, addMonthsKey, monthLabel, monthName, coveredLabel, billingMonthKey } from './dates.js';
+import { branchWhere, paymentTermsMonths } from './lib.js';
 
 export const DEFAULT_TERMS_MONTHS = 3; // used by the Dashboard / Summary due figures (unchanged)
 export const REPORT_DEFAULT_TERMS = 2; // the Reports by Month page and its Excel start on 2 months
 
-/** The month an entry is billed in, from its covered period (second half of a month is billed the month after). */
-export function billingMonthKey(r) {
-  const fromMs = r.period_from ? parseDate(r.period_from) : null;
-  const fromKey = fromMs !== null ? monthKey(r.period_from) : null;
-  if (fromKey) return new Date(fromMs).getUTCDate() >= 16 ? addMonthsKey(fromKey, 1) : fromKey;
-  return monthKey(r.billing_date) || monthKey(r.period_date) || null;
-}
+export { billingMonthKey };
 
 /** Reads ?month=YYYY-MM and ?terms=N from the request, with safe defaults. */
-export function readMonthlyParams(query) {
+export function readMonthlyParams(query, defaultTerms = REPORT_DEFAULT_TERMS) {
   const raw = String(query.month ?? '');
   // "2026-all" = the "All months" view: the whole of that year (Jan - Dec) in one report
   const allYear = /^\d{4}-all$/.test(raw) ? Number(raw.slice(0, 4)) : null;
   const month = allYear ? `${allYear}-01` : /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? raw : currentMonthKey();
-  const terms = query.terms === undefined || query.terms === '' ? REPORT_DEFAULT_TERMS : toInt(query.terms);
+  const terms = query.terms === undefined || query.terms === '' ? defaultTerms : toInt(query.terms);
   return { month, terms: Math.max(0, Math.min(12, terms)), allYear };
 }
 
 export async function buildMonthlyReport(auth, query) {
-  const { month, terms, allYear } = readMonthlyParams(query);
+  const defaultTerms = await paymentTermsMonths(); // Settings -> Payment terms
+  const { month, terms, allYear } = readMonthlyParams(query, defaultTerms);
   const next = allYear ? `${allYear + 1}-01` : addMonthsKey(month, 1); // All months: "next" = everything after that year
   const [bw, bp] = branchWhere(auth, 'c');
 
@@ -59,7 +54,7 @@ export async function buildMonthlyReport(auth, query) {
   // "All months": OVERDUE | January | ... | December | AFTER the year -- every month gets its own columns.
   const blockDefs = allYear
     ? [
-      { key: 'overdue', title: `OVERDUE (BEFORE ${allYear})`, total: 'OVERDUE TOTAL', cls: 'rep-red' },
+      { key: 'overdue', title: `PAST DUE (BEFORE ${allYear})`, total: 'PAST DUE TOTAL', cls: 'rep-red' },
       ...Array.from({ length: 12 }, (_, i) => {
         const k = `${allYear}-${String(i + 1).padStart(2, '0')}`;
         return { key: `m${String(i + 1).padStart(2, '0')}`, title: `${monthName(k).toUpperCase()} ${allYear}`, total: `${monthName(k).toUpperCase()} TOTAL:`, cls: 'rep-blue' };
@@ -67,7 +62,7 @@ export async function buildMonthlyReport(auth, query) {
       { key: 'after', title: `AFTER ${allYear}`, total: `AFTER ${allYear} TOTAL:`, cls: 'rep-blue' },
     ]
     : [
-      { key: 'overdue', title: 'OVERDUE', total: 'OVERDUE TOTAL', cls: 'rep-red' },
+      { key: 'overdue', title: 'PAST DUE', total: 'PAST DUE TOTAL', cls: 'rep-red' },
       { key: 'due1', title: `DUE FOR ${monthName(month).toUpperCase()} ${month.slice(0, 4)}`, total: `${monthName(month).toUpperCase()} DUE TOTAL:`, cls: 'rep-blue' },
       { key: 'due2', title: `DUE FOR ${monthName(next).toUpperCase()} ${next.slice(0, 4)}`, total: `${monthName(next).toUpperCase()} DUE TOTAL:`, cls: 'rep-blue' },
     ];
@@ -113,14 +108,14 @@ export async function buildMonthlyReport(auth, query) {
   }
 
   const titles = allYear
-    ? { overdue: `OVERDUE (BEFORE ${allYear})`, due1: `DUE IN ${allYear} (JAN - DEC)`, due2: `DUE AFTER ${allYear}`,
-      t_overdue: 'OVERDUE TOTAL', t_due1: `${allYear} DUE TOTAL:`, t_due2: `AFTER ${allYear} TOTAL:` }
-    : { overdue: 'OVERDUE', due1: `DUE FOR ${monthName(month).toUpperCase()} ${month.slice(0, 4)}`, due2: `DUE FOR ${monthName(next).toUpperCase()} ${next.slice(0, 4)}`,
-      t_overdue: 'OVERDUE TOTAL', t_due1: `${monthName(month).toUpperCase()} DUE TOTAL:`, t_due2: `${monthName(next).toUpperCase()} DUE TOTAL:` };
+    ? { overdue: `PAST DUE (BEFORE ${allYear})`, due1: `DUE IN ${allYear} (JAN - DEC)`, due2: `DUE AFTER ${allYear}`,
+      t_overdue: 'PAST DUE TOTAL', t_due1: `${allYear} DUE TOTAL:`, t_due2: `AFTER ${allYear} TOTAL:` }
+    : { overdue: 'PAST DUE', due1: `DUE FOR ${monthName(month).toUpperCase()} ${month.slice(0, 4)}`, due2: `DUE FOR ${monthName(next).toUpperCase()} ${next.slice(0, 4)}`,
+      t_overdue: 'PAST DUE TOTAL', t_due1: `${monthName(month).toUpperCase()} DUE TOTAL:`, t_due2: `${monthName(next).toUpperCase()} DUE TOTAL:` };
 
   return {
     all_year: allYear, titles, block_defs: blockDefs,
-    month, next_month: next, terms,
+    month, next_month: next, terms, default_terms: defaultTerms,
     month_name: monthName(month), month_label: monthLabel(month),
     next_name: monthName(next), next_label: monthLabel(next),
     companies: [...companies.values()],

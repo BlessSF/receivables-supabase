@@ -15,9 +15,9 @@ function describeRange(from, to) {
   const f = from !== '' ? Number(from) : null;
   const t = to !== '' ? Number(to) : null;
   if (f === null && t === null) return '';
-  if (f !== null && t !== null) return `${Math.min(f, t)}–${Math.max(f, t)} days overdue`;
-  if (f !== null) return `${f} days overdue or more`;
-  return `up to ${t} days overdue`;
+  if (f !== null && t !== null) return `${Math.min(f, t)}–${Math.max(f, t)} days past due`;
+  if (f !== null) return `${f} days past due or more`;
+  return `up to ${t} days past due`;
 }
 
 export default function Aging() {
@@ -66,7 +66,7 @@ export default function Aging() {
       <div className="page-header">
         <div>
           <h1>Aging Report</h1>
-          <div className="subtitle">Outstanding receivables grouped by days overdue (due date = explicit due date, or billing date{data.grace_days > 0 ? ` + ${data.grace_days} days (grace period)` : ', no grace period'})</div>
+          <div className="subtitle">Outstanding receivables grouped by days past due (due date = its own Due Date, else billing month + {data.payment_terms ?? 2} month{(data.payment_terms ?? 2) === 1 ? '' : 's'} payment terms{data.grace_days > 0 ? ` + ${data.grace_days} days (grace period)` : ', no grace period'})</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a className="btn btn-secondary" href={`/export_csv.php?type=aging${exportQs}`}>Export CSV</a>
@@ -77,17 +77,17 @@ export default function Aging() {
       <div className="panel">
         <div className="range-filter">
           <div className="form-group">
-            <label>Days overdue</label>
+            <label>Days past due</label>
             <div className="range-inputs">
               <input
                 type="number" min="0" inputMode="numeric" placeholder="From"
-                aria-label="Days overdue, from" value={from}
+                aria-label="Days past due, from" value={from}
                 onChange={(e) => setFrom(e.target.value)}
               />
               <span className="range-dash" aria-hidden="true">to</span>
               <input
                 type="number" min="0" inputMode="numeric" placeholder="To"
-                aria-label="Days overdue, to" value={to}
+                aria-label="Days past due, to" value={to}
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>

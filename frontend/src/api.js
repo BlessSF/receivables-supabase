@@ -92,6 +92,7 @@ export const api = {
   saveBranchSites: (sites) => call('save_branch_sites', { method: 'POST', body: { sites } }),
   saveCoveredPeriodSetting: (enabled) => call('save_covered_period_setting', { method: 'POST', body: { auto_covered_period: enabled } }),
   saveCoveredPeriodRules: (rules) => call('save_covered_period_rules', { method: 'POST', body: { rules } }),
+  savePaymentTerms: (months) => call('save_payment_terms', { method: 'POST', body: { months } }),
   saveAgingSetting: (enabled, days) => call('save_aging_setting', { method: 'POST', body: { aging_grace_enabled: enabled, aging_grace_days: days } }),
   saveTaxSetting: (percent, companyId, recalc) =>
     call('save_tax_setting', { method: 'POST', body: { tax_withheld_percent: percent, company_id: companyId, recalc_existing: recalc ? 1 : 0 } }),

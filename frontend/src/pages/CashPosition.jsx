@@ -146,7 +146,7 @@ export default function CashPosition() {
             <i style={{ width: `${dueShare}%` }} />
           </div>
           <div className="cp-split-key"><span>{dueShare.toFixed(0)}% due ({d.receivables.due_count} entries)</span><span>{d.receivables.not_yet_count} not yet due</span></div>
-          <p className="at-help cp-note">Due = overdue plus this month, the same as <Link to="/reports-by-month" className="pay-link-btn">Reports by Month</Link> (its own Due Date, else Period Date + 3 months).{d.receivables.unplaced_count ? ` ${d.receivables.unplaced_count} unpaid ${d.receivables.unplaced_count === 1 ? 'entry has' : 'entries have'} no period or due date and ${d.receivables.unplaced_count === 1 ? 'is' : 'are'} counted as not yet due.` : ''}</p>
+          <p className="at-help cp-note">Due = past due plus this month, the same as <Link to="/reports-by-month" className="pay-link-btn">Reports by Month</Link> (its own Due Date, else billing month + {d.payment_terms ?? 2} months).{d.receivables.unplaced_count ? ` ${d.receivables.unplaced_count} unpaid ${d.receivables.unplaced_count === 1 ? 'entry has' : 'entries have'} no period or due date and ${d.receivables.unplaced_count === 1 ? 'is' : 'are'} counted as not yet due.` : ''}</p>
         </section>
 
         <section className="panel">

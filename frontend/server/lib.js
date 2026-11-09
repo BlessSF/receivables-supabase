@@ -1,6 +1,6 @@
 // Business rules -- port of backend/includes/functions.php
 import { all, one, scalar, column, exec } from './db.js';
-import { daysOverdue, addDaysYmd, DEFAULT_COVERED_RULES, normalizeCoveredRules } from './dates.js';
+import { daysOverdue, addDaysYmd, addMonthsKey, monthEndYmd, billingMonthKey, DEFAULT_COVERED_RULES, normalizeCoveredRules } from './dates.js';
 import { toInt, toFloat, trim } from './php.js';
 
 export const DEFAULT_DUE_DAYS = 30; // grace days offered when the grace period is switched on in Settings
@@ -55,18 +55,35 @@ export async function taxWithheldPercent() {
   return toFloat(await getSetting('tax_withheld_percent', '2'));
 }
 
+/** Payment terms in months (Settings -> Payment terms). An entry is due this many months after its billing month. Default 2. */
+export const DEFAULT_PAYMENT_TERMS = 2;
+export async function paymentTermsMonths() {
+  const n = toInt(await getSetting('payment_terms_months', String(DEFAULT_PAYMENT_TERMS)));
+  return Math.max(0, Math.min(12, n));
+}
+
 /**
- * Returns a function computing the implicit due date (billing date + grace
- * days). The grace setting is read once per request instead of once per row.
+ * Returns a function computing the due date of an entry that has no Due Date of its own:
+ * the last day of (its billing month + the payment terms), plus the grace days if those are switched on.
+ * The billing month follows the covered period (1st-15th -> that month, 16th-end -> the next month).
+ * Settings are read once per request instead of once per row.
  */
 export async function makeImplicitDue() {
   const grace = await agingGraceDays();
-  return (billingDate) => (billingDate ? addDaysYmd(billingDate, grace) : null);
+  const terms = await paymentTermsMonths();
+  return (row) => {
+    const bk = billingMonthKey(row);
+    if (bk) {
+      const end = monthEndYmd(addMonthsKey(bk, terms));
+      return grace ? addDaysYmd(end, grace) : end;
+    }
+    return row.billing_date ? addDaysYmd(row.billing_date, grace) : null;
+  };
 }
 
 /** Explicit due date if set, otherwise the implicit one. */
 export function dueOf(row, implicitDue) {
-  return row.due_date ? row.due_date : implicitDue(row.billing_date);
+  return row.due_date ? row.due_date : implicitDue(row);
 }
 
 // ---------------------------------------------------------------- aging

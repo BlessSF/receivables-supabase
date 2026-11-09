@@ -219,3 +219,17 @@ export function coveredPeriodForBilling(billingDate, rules = DEFAULT_COVERED_RUL
   };
   return { from: at(rule.from_offset, rule.from_day), to: at(rule.to_offset, rule.to_day) };
 }
+
+/** The month an entry is billed in, from its covered period (second half of a month is billed the month after). */
+export function billingMonthKey(r) {
+  const fromMs = r.period_from ? parseDate(r.period_from) : null;
+  const fromKey = fromMs !== null ? monthKey(r.period_from) : null;
+  if (fromKey) return new Date(fromMs).getUTCDate() >= 16 ? addMonthsKey(fromKey, 1) : fromKey;
+  return monthKey(r.billing_date) || monthKey(r.period_date) || null;
+}
+
+/** Last day of a month key: "2026-11" -> "2026-11-30". */
+export function monthEndYmd(key) {
+  const [y, m] = key.split('-').map(Number);
+  return ymd(Date.UTC(y, m, 0));
+}

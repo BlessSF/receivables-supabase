@@ -410,18 +410,18 @@ export default function Dashboard() {
           <div className="kpi-dark-value">{peso(p.past_due)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.outstanding ? Math.min(100, (p.past_due / p.outstanding) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
-            <span className="kpi-dark-left">{p.past_due_count} overdue {p.past_due_count === 1 ? 'entry' : 'entries'}</span>
+            <span className="kpi-dark-left">{p.past_due_count} past due {p.past_due_count === 1 ? 'entry' : 'entries'}</span>
             <span className="kpi-dark-right">of {peso(p.outstanding)} unpaid</span>
           </div>
           {splitLine('past_due')}
         </div>
         {data.due_in && data.due_in.before_start && (
           <div className="kpi-dark-card accent-orange">
-            <div className="kpi-dark-label">Overdue before {beforeName}</div>
+            <div className="kpi-dark-label">Past due before {beforeName}</div>
             <div className="kpi-dark-value">{peso(data.due_in.before)}</div>
             <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${data.due_in.before + data.due_in.total ? Math.min(100, (data.due_in.before / (data.due_in.before + data.due_in.total)) * 100) : 0}%` }} /></div>
             <div className="kpi-dark-footer">
-              <span className="kpi-dark-left">{data.due_in.before_count} overdue {data.due_in.before_count === 1 ? 'entry' : 'entries'}</span>
+              <span className="kpi-dark-left">{data.due_in.before_count} past due {data.due_in.before_count === 1 ? 'entry' : 'entries'}</span>
               <span className="kpi-dark-right">due before {beforeName}</span>
             </div>
             {showSplit && (
@@ -439,11 +439,11 @@ export default function Dashboard() {
             <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.outstanding ? Math.min(100, (data.due_in.total / p.outstanding) * 100) : 0}%` }} /></div>
             <div className="kpi-dark-footer">
               <span className="kpi-dark-left">{data.due_in.count} {data.due_in.count === 1 ? 'entry' : 'entries'} due</span>
-              <span className="kpi-dark-right">by Due Date / 3-month terms</span>
+              <span className="kpi-dark-right">by Due Date / {data.payment_terms ?? 2}-month terms</span>
             </div>
             {data.due_in.before > 0.009 && (
               <div className="dash-due-plus">
-                <div className="tot"><span>Total due now (with overdue)</span><strong>{peso(data.due_in.total + data.due_in.before)}</strong></div>
+                <div className="tot"><span>Total due now (with past due)</span><strong>{peso(data.due_in.total + data.due_in.before)}</strong></div>
               </div>
             )}
             {showSplit && (

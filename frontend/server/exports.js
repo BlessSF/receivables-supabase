@@ -105,13 +105,13 @@ export async function handleCsv(req, res) {
   if (type === 'aging') {
     const rows = (await loadAgingRows(auth, query)).map(({ r, due, days, bucket }) =>
       [r.company_name, r.billing_date, r.soa_number, due, r.balance, days, bucket]);
-    return send('aging_report.csv', csv(['Company', 'Billing Date', 'SOA #', 'Due Date', 'Balance', 'Days Overdue', 'Aging Bucket'], rows));
+    return send('aging_report.csv', csv(['Company', 'Billing Date', 'SOA #', 'Due Date', 'Balance', 'Days Past Due', 'Aging Bucket'], rows));
   }
   if (type === 'past_due') {
     const rows = (await loadAgingRows(auth, {}))
       .filter(({ days }) => days !== null && days > 0)
       .map(({ r, due, days }) => [r.company_name, r.billing_date, due, days, r.balance]);
-    return send('past_due.csv', csv(['Company', 'Billing Date', 'Due Date', 'Days Overdue', 'Balance'], rows));
+    return send('past_due.csv', csv(['Company', 'Billing Date', 'Due Date', 'Days Past Due', 'Balance'], rows));
   }
 
   const rows = (await loadLedger(auth, companyId)).map((r) => [
@@ -419,7 +419,7 @@ export async function handleXlsx(req, res) {
           for (const c of report.companies) c.overdue = [...c.overdue, ...merge.flatMap((k) => c[k])];
           report.totals.overdue += merge.reduce((a, k) => a + Number(report.totals[k] || 0), 0);
           const od = report.block_defs.find((d) => d.key === 'overdue');
-          if (od) od.title = `OVERDUE (BEFORE ${monthName(`${report.all_year}-${String(first).padStart(2, '0')}`).toUpperCase()} ${report.all_year})`;
+          if (od) od.title = `PAST DUE (BEFORE ${monthName(`${report.all_year}-${String(first).padStart(2, '0')}`).toUpperCase()} ${report.all_year})`;
         }
       }
       report.block_defs = report.block_defs.filter((d) => keep.has(d.key));
@@ -436,7 +436,7 @@ export async function handleXlsx(req, res) {
       { header: 'SOA #', width: 14, type: 'string' },
       { header: 'Due Date', width: 13, type: 'date' },
       { header: 'Balance', width: 14, type: 'money' },
-      { header: 'Days Overdue', width: 14, type: 'int' },
+      { header: 'Days Past Due', width: 14, type: 'int' },
       { header: 'Aging Bucket', width: 16, type: 'string', align: 'center' },
     ], { freezeFirstCol: true });
     let total = 0;

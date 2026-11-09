@@ -33,7 +33,7 @@ export default function PastDue() {
         <div className="kpi-card accent-red">
           <div className="kpi-label">Total Past Due</div>
           <div className="kpi-value">{peso(data.total)}</div>
-          <div className="kpi-sub">{data.entries.length} overdue entries across {byCompany.length} companies</div>
+          <div className="kpi-sub">{data.entries.length} past due entries across {byCompany.length} companies</div>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export default function PastDue() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Company</th><th>SOA #</th><th>Billing Date</th><th>Due Date</th><th className="text-right">Days Overdue</th><th className="text-right">Balance</th></tr>
+              <tr><th>Company</th><th>SOA #</th><th>Billing Date</th><th>Due Date</th><th className="text-right">Days Past Due</th><th className="text-right">Balance</th></tr>
             </thead>
             <tbody>
               {data.entries.length === 0 && <tr><td colSpan={6} className="empty-state">Nothing is past due right now.</td></tr>}

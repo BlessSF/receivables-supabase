@@ -220,6 +220,8 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [graceOn, setGraceOn] = useState(false);
   const [graceDays, setGraceDays] = useState('30');
+  const [terms, setTerms] = useState('2');
+  const [termsBusy, setTermsBusy] = useState(false);
   const [autoPeriod, setAutoPeriod] = useState(true);
   const [periodBusy, setPeriodBusy] = useState(false);
   const [rules, setRules] = useState(DEFAULT_COVERED_RULES);
@@ -232,6 +234,7 @@ export default function Settings() {
       .then((r) => {
         setGraceOn(!!r.data.aging_grace_enabled);
         setGraceDays(String(r.data.aging_grace_days > 0 ? r.data.aging_grace_days : 30));
+        setTerms(String(r.data.payment_terms_months ?? 2));
         setAutoPeriod(r.data.auto_covered_period_enabled !== false);
         if (r.data.covered_period_rules) setRules(r.data.covered_period_rules);
         setLoaded(true);
@@ -250,6 +253,19 @@ export default function Settings() {
       setFlash({ type: 'error', msg: ex.message });
     }
     setBusy(false);
+  }
+
+  async function saveTerms(e) {
+    e.preventDefault();
+    setTermsBusy(true);
+    setFlash(null);
+    try {
+      const r = await api.savePaymentTerms(terms);
+      setFlash({ type: 'success', msg: r.message });
+    } catch (ex) {
+      setFlash({ type: 'error', msg: ex.message });
+    }
+    setTermsBusy(false);
   }
 
   async function savePeriod(next) {
@@ -288,7 +304,7 @@ export default function Settings() {
 
   const days = parseInt(graceDays, 10) || 0;
   const numRules = rules.map((x) => ({ ...x, month: +x.month, day_from: +x.day_from, day_to: +x.day_to, from_offset: +x.from_offset, from_day: +x.from_day, to_offset: +x.to_offset, to_day: +x.to_day }));
-  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Aging & grace', I.clock], ['name', 'Name', I.tag], ['backup', 'Backup', I.shield]];
+  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Terms & past due', I.clock], ['name', 'Name', I.tag], ['backup', 'Backup', I.shield]];
 
   return (
     <div className="st">
@@ -386,27 +402,52 @@ export default function Settings() {
 
       {tab === 'aging' && (
         <section className="st-card">
-          <CardHead icon={I.clock} title="Aging & grace period" tone="amber">
-            Aging counts the days an entry is overdue. The covered period is never used for aging.
+          <CardHead icon={I.cal} title="Payment terms" tone="teal">
+            How long after its billing month an HMO or account has to pay. Past due, the Dashboard, Reports by Month, the Aging Report and Cash Position all follow this.
+          </CardHead>
+          <form onSubmit={saveTerms}>
+            <div className="st-grace">
+              <label htmlFor="st-terms">Payment terms</label>
+              <input id="st-terms" className="st-num wide" type="number" min="0" max="12" step="1" value={terms} onChange={(e) => setTerms(e.target.value)} />
+              <span>month{terms === '1' ? '' : 's'} after the billing month</span>
+            </div>
+            <div className="st-example">
+              <strong>Example</strong>
+              {(() => {
+                const t = Math.max(0, Math.min(12, parseInt(terms, 10) || 0));
+                const MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                const mo = (m) => MN[((m % 12) + 12) % 12];
+                return `Covered period Sept 1–15 → billed Sept 30 → due ${t === 0 ? 'in September' : `in ${mo(8 + t)}`}. Sept 16–30 → billed Oct 15 → due ${t === 0 ? 'in October' : `in ${mo(9 + t)}`}. It becomes past due once that month has ended. An entry with its own Due Date keeps that date.`;
+              })()}
+            </div>
+            <div className="st-actions"><button className="btn st-save" type="submit" disabled={termsBusy}>{termsBusy ? 'Saving…' : 'Save payment terms'}</button></div>
+          </form>
+        </section>
+      )}
+
+      {tab === 'aging' && (
+        <section className="st-card">
+          <CardHead icon={I.clock} title="Grace period" tone="amber">
+            Extra days added after the due date before an entry counts as past due. The covered period is never used for aging.
           </CardHead>
           <form onSubmit={save}>
             <div className="st-row">
               <Switch checked={graceOn} onChange={setGraceOn} label="Use a grace period"
-                hint={graceOn ? 'On: counting starts only after the grace days have passed.' : 'Off: counting starts on the billing date.'} />
+                hint={graceOn ? 'On: counting starts only after the grace days have passed.' : 'Off: counting starts right after the due date.'} />
               <span className={`st-pill ${graceOn ? 'on' : 'off'}`}>{graceOn ? 'On' : 'Off'}</span>
             </div>
             {graceOn && (
               <div className="st-grace">
                 <label htmlFor="st-grace-days">Grace days</label>
                 <input id="st-grace-days" className="st-num wide" type="number" min="1" step="1" value={graceDays} onChange={(e) => setGraceDays(e.target.value)} />
-                <span>days after the billing date</span>
+                <span>days after the due date</span>
               </div>
             )}
             <div className="st-example">
               <strong>Example</strong>
               {graceOn
-                ? `Billed July 15 → due after ${days} day${days === 1 ? '' : 's'}, so aging starts counting after that.`
-                : 'Billed July 15 → aging counts from July 15 (on Oct 15 it shows 92 days).'}
+                ? `Due Sept 30 → still not past due until ${days} day${days === 1 ? '' : 's'} later.`
+                : 'Due Sept 30 → on Oct 15 it shows 15 days past due.'}
             </div>
             <div className="st-actions"><button className="btn st-save" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></div>
           </form>

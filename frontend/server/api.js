@@ -12,14 +12,13 @@ import { computeMain } from './mainCalc.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
-import { monthKey, addMonthsKey, currentMonthKey } from './dates.js';
-import { DEFAULT_TERMS_MONTHS } from './monthly.js';
+import { monthKey, addMonthsKey, currentMonthKey, billingMonthKey } from './dates.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { parseSoa, matchHmo } from './soa.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
-  agingGraceDays, agingGraceEnabled, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, getSetting, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed, releaseSoaForEntry,
+  agingGraceDays, agingGraceEnabled, paymentTermsMonths, autoCoveredPeriodEnabled, coveredPeriodRules, agingGraceSavedDays, taxWithheldPercent, getSetting, setSetting, soaNumberConflicts, soaNumberHolder, recordSoaNumberUsed, releaseSoaForEntry,
   nextSoaNumber, branchWhere, branchWhereStandalone, canAccessCompany, syncLedgerCompanyNames,
 } from './lib.js';
 
@@ -413,7 +412,7 @@ const actions = {
 
     let pastDueTotal = 0;
     let pastDueCount = 0;
-    const open = await all(`SELECT l.billing_date, l.due_date, l.balance FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0 ${bw}`, bp);
+    const open = await all(`SELECT l.billing_date, l.period_from, l.period_date, l.due_date, l.balance FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0 ${bw}`, bp);
     for (const r of open) {
       const d = daysOverdue(dueOf(r, due));
       if (d !== null && d > 0) {
@@ -482,6 +481,7 @@ const actions = {
     if (companyId) { sql += ' AND l.company_id = ?'; params = [...params, companyId]; }
     const rows = await all(sql, params);
     const due = await makeImplicitDue();
+    const terms = await paymentTermsMonths();
     const payMap = await paymentsByEntry(); // each payment counts in the month it was received
 
     const blank = () => ({ billed: 0, collected: 0, outstanding: 0, past_due: 0, past_due_count: 0, entries: 0, open_count: 0 });
@@ -552,8 +552,9 @@ const actions = {
         }
       }
       if (open) {
-        // same rule as Reports by Month: its own Due Date, else Period Date + the payment terms (3 months)
-        const dk = r.due_date ? monthKey(r.due_date) : (monthKey(r.period_date) ? addMonthsKey(monthKey(r.period_date), DEFAULT_TERMS_MONTHS) : null);
+        // same rule as Reports by Month: its own Due Date, else its billing month + the payment terms (Settings)
+        const bk = billingMonthKey(r);
+        const dk = r.due_date ? monthKey(r.due_date) : (bk ? addMonthsKey(bk, terms) : null);
         const dueYm = dk ? { y: toInt(dk.slice(0, 4)), m: toInt(dk.slice(5, 7)) } : null;
         if (inPeriod(dueYm)) {
           dueIn.total += bal; dueIn.count++;
@@ -610,6 +611,7 @@ const actions = {
       view, year, month, fm,
       period: withRate(period),
       due_in: dueIn,
+      payment_terms: terms,
       by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),
@@ -1446,11 +1448,22 @@ const actions = {
     return { ok: true, data: {
       aging_grace_enabled: await agingGraceEnabled(),
       aging_grace_days: await agingGraceSavedDays(),
+      payment_terms_months: await paymentTermsMonths(),
       tax_withheld_percent: await taxWithheldPercent(),
       auto_covered_period_enabled: await autoCoveredPeriodEnabled(),
       covered_period_rules: await coveredPeriodRules(),
       covered_period_default_rules: DEFAULT_COVERED_RULES,
     } };
+  },
+
+  async save_payment_terms(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change settings.' }, 403);
+    const n = toInt(input.months);
+    if (!(n >= 0 && n <= 12) || String(input.months).trim() === '') jsonExit({ ok: false, error: 'Payment terms must be a whole number of months from 0 to 12.' }, 400);
+    await setSetting('payment_terms_months', String(n));
+    return { ok: true, payment_terms_months: n, message: n === 0
+      ? 'Payment terms: due in the billing month. Past due now follows this.'
+      : `Payment terms: ${n} month${n === 1 ? '' : 's'} after the billing month. Past due now follows this.` };
   },
 
   async save_aging_setting(input, auth) {
@@ -1553,6 +1566,7 @@ const actions = {
 
     return { ok: true, data: {
       grace_days: await agingGraceDays(),
+      payment_terms: await paymentTermsMonths(),
       range: { from: rangeFrom, to: rangeTo },
       buckets,
       by_company: byCompanyList,
@@ -1917,21 +1931,22 @@ const actions = {
     await requirePayablesAdmin(auth, '/payables/cash-position');
     await ensurePayablesTable();
     const [bw, bp] = branchWhere(auth, 'c');
-    // receivables, split with the same due rule as Reports by Month: its own Due Date, else Period Date + 3 months
-    const rows = await all(`SELECT l.balance, l.period_date, l.due_date FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0.009 ${bw}`, bp);
+    // receivables, split with the same due rule as Reports by Month: its own Due Date, else its billing month + the payment terms
+    const terms = await paymentTermsMonths();
+    const rows = await all(`SELECT l.balance, l.billing_date, l.period_from, l.period_date, l.due_date FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0.009 ${bw}`, bp);
     const nowKey = currentMonthKey();
     const rec = { due: 0, due_count: 0, not_yet: 0, not_yet_count: 0, unplaced: 0, unplaced_count: 0 };
     for (const r of rows) {
       const bal = toFloat(r.balance);
-      const pk = monthKey(r.period_date);
-      const dueKey = r.due_date ? monthKey(r.due_date) : (pk ? addMonthsKey(pk, DEFAULT_TERMS_MONTHS) : null);
+      const pk = billingMonthKey(r);
+      const dueKey = r.due_date ? monthKey(r.due_date) : (pk ? addMonthsKey(pk, terms) : null);
       if (!dueKey) { rec.unplaced += bal; rec.unplaced_count++; rec.not_yet += bal; rec.not_yet_count++; continue; }
       if (dueKey <= nowKey) { rec.due += bal; rec.due_count++; } else { rec.not_yet += bal; rec.not_yet_count++; }
     }
     const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
     const released = await all(
       `SELECT id, payee, amount FROM running_payables WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL`);
-    return { ok: true, as_of: todayYmd(), receivables: rec, main: await getMainFund(), future: (await getCashPositionSettings()).future,
+    return { ok: true, as_of: todayYmd(), payment_terms: terms, receivables: rec, main: await getMainFund(), future: (await getCashPositionSettings()).future,
       running_payables: toFloat(row?.total), running_count: toInt(row?.n),
       released_payables: released.map((r) => ({ id: toInt(r.id), payee: r.payee, amount: toFloat(r.amount) })) };
   },
