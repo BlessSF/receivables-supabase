@@ -254,7 +254,14 @@ button { font-family: inherit; }
 .kpi-dark-fill { height: 100%; border-radius: 999px; background: #4f86e0; transition: width 0.5s ease; }
 .kpi-dark-card.is-click { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
 .kpi-dark-card.is-click:hover, .kpi-dark-card.is-click:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(17, 33, 55, .22); outline: none; }
-.kpi-why { margin-left: 8px; font-size: 11px; font-weight: 600; color: #f1c27d; opacity: .9; }
+.kpi-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kpi-why { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: #fdecc8; border: 1px solid #efc272; color: #7a4a00; font-size: 11.5px; font-weight: 700; white-space: nowrap; transition: background .15s ease; }
+.kpi-why i { font-style: normal; display: inline-block; animation: kpi-nudge 2.4s ease-in-out infinite; }
+.kpi-dark-card.is-click:hover .kpi-why, .kpi-dark-card.is-click:focus-visible .kpi-why { background: #f8d58f; }
+.kpi-dark-card.is-click:hover .kpi-why i { animation: none; transform: translateX(3px); }
+.kpi-dark-card.is-click { box-shadow: inset 0 0 0 1px rgba(226, 160, 58, .45); }
+@keyframes kpi-nudge { 0%, 70%, 100% { transform: translateX(0); } 80% { transform: translateX(4px); } 90% { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .kpi-why i { animation: none; } }
 .kpi-dark-card.accent-green .kpi-dark-fill { background: #2fb585; }
 .kpi-dark-card.accent-red .kpi-dark-fill { background: #e0594a; }
 .kpi-dark-card.accent-amber .kpi-dark-fill { background: #e2a03a; }

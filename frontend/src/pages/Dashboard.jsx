@@ -412,7 +412,7 @@ export default function Dashboard() {
           {splitLine('outstanding')}
         </div>
         <div className={`kpi-dark-card accent-amber${pdCount > 0 ? ' is-click' : ''}`} {...(pdCount > 0 ? { role: 'button', tabIndex: 0, title: 'Click to see why these are past due', onClick: () => setPdOpen(true), onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPdOpen(true); } } } : {})}>
-          <div className="kpi-dark-label">Past due{pdCount > 0 && <span className="kpi-why">See why →</span>}</div>
+          <div className="kpi-dark-label kpi-label-row">Past due{pdCount > 0 && <span className="kpi-why">See why <i aria-hidden="true">→</i></span>}</div>
           <div className="kpi-dark-value">{peso(pdTotal)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${pdBase ? Math.min(100, (pdTotal / pdBase) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
