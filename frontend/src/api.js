@@ -79,7 +79,7 @@ export const api = {
   returnEntryToHmo: (id) => call('return_entry_to_hmo', { method: 'POST', body: { id } }),
   deleteLedger: (id) => call('delete_ledger', { method: 'POST', body: { id } }),
   getSettings: () => call('get_settings'),
-  getBackupInfo: () => call('get_backup_info'),
+  getBackupInfo: (withTables = false) => call('get_backup_info', withTables ? { params: { tables: 1 } } : {}),
   getAudit: (params) => call('get_audit', { params }),
   getDeleted: () => call('get_deleted'),
   restoreDeleted: (id) => call('restore_deleted', { method: 'POST', body: { id } }),

@@ -8,18 +8,47 @@ export { daysOverdue };
 
 // ---------------------------------------------------------------- settings
 
+// Almost every request reads several settings (brand, nav access, grace days, payment terms...). Instead of one
+// database round trip per setting, the small ones are loaded together and kept for a few seconds in memory.
+// The big ones (history, backup log) are always read directly.
+const BIG_SETTINGS = ['main_history', 'main_history_detail', 'backup_log'];
+const SETTINGS_TTL_MS = 5000;
+let settingsCache = null;
+let settingsCacheAt = 0;
+let settingsLoading = null;
+
+async function loadSettingsCache() {
+  if (settingsCache && Date.now() - settingsCacheAt < SETTINGS_TTL_MS) return settingsCache;
+  if (!settingsLoading) {
+    settingsLoading = all(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key NOT IN (${BIG_SETTINGS.map((k) => `'${k}'`).join(', ')})`
+    ).then((rows) => {
+      settingsCache = new Map(rows.map((r) => [r.setting_key, r.setting_value]));
+      settingsCacheAt = Date.now();
+      return settingsCache;
+    }).finally(() => { settingsLoading = null; });
+  }
+  return settingsLoading;
+}
+
 export async function getSetting(key, fallback = null, client = null) {
-  const v = await scalar('SELECT setting_value FROM app_settings WHERE setting_key = ?', [key], client);
-  return v !== null ? v : fallback;
+  if (client || BIG_SETTINGS.includes(key)) {
+    const v = await scalar('SELECT setting_value FROM app_settings WHERE setting_key = ?', [key], client);
+    return v !== null ? v : fallback;
+  }
+  const map = await loadSettingsCache();
+  return map.has(key) ? map.get(key) : fallback;
 }
 
 export async function setSetting(key, value, client = null) {
+  settingsCache = null; // so the next read sees the change
   await exec(
     `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`,
     [key, String(value)],
     client
   );
+  settingsCache = null;
 }
 
 /** Grace period (days after billing) before an entry starts aging. */

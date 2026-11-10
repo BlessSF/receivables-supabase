@@ -1,5 +1,4 @@
 // CSV / Excel downloads -- port of backend/export_csv.php and export_xlsx.php
-import ExcelJS from 'exceljs';
 import { all, scalar } from './db.js';
 import { getQuery, sendText, sendFile } from './http.js';
 import { readSession, makeAuth } from './auth.js';
@@ -381,6 +380,7 @@ export async function handleXlsx(req, res) {
   if (user.role === 'executive' && type !== 'aging' && type !== 'monthly') return sendText(res, 403, 'Your account can download reports only.');
   if (user.role === 'staff' && type !== 'ledger' && type !== 'monthly') return sendText(res, 403, 'Staff accounts can only download the ledger and monthly report.');
   const companyId = await resolveCompanyId(auth, query, true);
+  const ExcelJS = (await import('exceljs')).default; // loaded only when needed
   const wb = new ExcelJS.Workbook();
   const send = async (name) => {
     const bytes = Buffer.from(await wb.xlsx.writeBuffer());

@@ -4,8 +4,6 @@
 // Total Amount Due can sit in a different place from one file to the next.
 // The patient lines are found by their header row (No. / Tran. Date / ... / Amount).
 
-import ExcelJS from 'exceljs';
-import JSZip from 'jszip';
 
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
@@ -108,6 +106,7 @@ const colNum = (letters) => letters.split('').reduce((n, ch) => n * 26 + ch.char
 const textOf = (xml) => [...xml.replace(/<rPh[\s\S]*?<\/rPh>/g, '').matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => unxml(m[1])).join('');
 
 async function cellsFromRawXlsx(buffer) {
+  const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(buffer);
   const names = Object.keys(zip.files).filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n))
     .sort((a, b) => parseInt(a.match(/(\d+)\.xml/)[1], 10) - parseInt(b.match(/(\d+)\.xml/)[1], 10));
@@ -156,6 +155,7 @@ const odsText = (xml) => unxml(
 const odsAttr = (attrs, name) => (attrs.match(new RegExp(`\\b${name}="([^"]*)"`)) || [])[1];
 
 async function cellsFromOds(buffer) {
+  const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(buffer);
   const file = zip.file('content.xml');
   if (!file) throw new Error('no content');
@@ -203,6 +203,7 @@ async function cellsFromOds(buffer) {
 async function looksLikeOds(buffer, fileName) {
   if (/\.ods$/i.test(fileName || '')) return true;
   try {
+    const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(buffer);
     if (zip.file('xl/workbook.xml')) return false;
     const mt = zip.file('mimetype');
@@ -214,6 +215,7 @@ async function looksLikeOds(buffer, fileName) {
 async function loadCells(buffer, fileName = '') {
   if (await looksLikeOds(buffer, fileName)) return cellsFromOds(buffer);
   try {
+    const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
     const ws = wb.worksheets.find((sheet) => sheet.actualRowCount > 0);

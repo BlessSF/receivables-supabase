@@ -37,7 +37,7 @@ function BackupPanel() {
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
-  const load = () => api.getBackupInfo().then((r) => { setInfo(r.data); setErr(''); }).catch((e) => setErr(e.message));
+  const load = () => api.getBackupInfo(true).then((r) => { setInfo(r.data); setErr(''); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
 
   // download through fetch so a failure shows a message instead of a broken page, then refresh "last backup"

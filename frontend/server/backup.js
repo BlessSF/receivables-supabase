@@ -1,7 +1,6 @@
 // Database backup (Settings -> Backup). Admin only. It only READS the database (one read-only snapshot).
 //   Excel: one sheet per table, easy to open and read (password hashes are left out).
 //   SQL:   the full database (tables + data) that can be run in an empty Supabase / Postgres to restore it.
-import ExcelJS from 'exceljs';
 import { all, transaction } from './db.js';
 import { getSetting, setSetting } from './lib.js';
 
@@ -58,6 +57,7 @@ const sheetName = (name, used) => {
 };
 
 export async function buildExcel(tables, who) {
+  const ExcelJS = (await import('exceljs')).default; // loaded only when needed: keeps every other request fast to start
   const wb = new ExcelJS.Workbook();
   wb.creator = who || 'Receivables system';
   wb.created = new Date();
@@ -176,15 +176,20 @@ export async function addLog(entry) {
   await setSetting(LOG_KEY, JSON.stringify(list.slice(0, 30)));
 }
 
-export async function backupInfo() {
+// The sidebar banner only needs the last backup date, so the table counts are done only when Settings asks for them,
+// and in one query instead of one per table (this used to run ~20 queries on every page load).
+export async function backupInfo({ tables: withTables = false } = {}) {
   const log = await readLog();
-  const names = (await all(
-    `SELECT c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY c.relname`)).map((r) => r.name);
-  const tables = [];
-  for (const name of names) {
-    const r = await all(`SELECT COUNT(*) AS n FROM ${qi(name)}`);
-    tables.push({ name, rows: Number(r[0].n) });
+  let tables = [];
+  if (withTables) {
+    const names = (await all(
+      `SELECT c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY c.relname`)).map((r) => r.name);
+    if (names.length) {
+      const rows = await all(names.map((name, i) => `SELECT ${i} AS i, COUNT(*) AS n FROM ${qi(name)}`).join(' UNION ALL '));
+      const byIndex = new Map(rows.map((r) => [Number(r.i), Number(r.n)]));
+      tables = names.map((name, i) => ({ name, rows: byIndex.get(i) || 0 }));
+    }
   }
   const last = log[0] || null;
   const days = last ? Math.floor((Date.now() - new Date(last.at).getTime()) / 86400000) : null;

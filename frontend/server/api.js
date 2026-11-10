@@ -91,12 +91,13 @@ async function getBankName() {
 
 async function userPayload(u) {
   if (!u) return null;
-  const access = u.role === 'admin' ? null : (await getNavAccess())[u.role] || null;
+  const [navAll, brand, bankName] = await Promise.all([u.role === 'admin' ? null : getNavAccess(), getBrand(), getBankName()]);
+  const access = navAll ? navAll[u.role] || null : null;
   return {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     nav_access: access,
-    brand: await getBrand(),
-    bank_name: await getBankName(),
+    brand,
+    bank_name: bankName,
     // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
     is_admin: u.role === 'admin' || u.role === 'accounting',
     is_accounting: u.role === 'accounting',
@@ -1810,7 +1811,7 @@ const actions = {
 
   async get_backup_info(input, auth) {
     if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can see backups.' }, 403);
-    return { ok: true, data: await backupInfo() };
+    return { ok: true, data: await backupInfo({ tables: String(input.tables ?? '') === '1' }) };
   },
 
   // Settings -> Name: what the top of the sidebar and the browser tab say. Admin only.
@@ -2191,10 +2192,13 @@ export default async function handleApi(req, res) {
     }
     if (action === 'me') {
       // A deleted staff account must not stay logged in from an old cookie.
-      if (['staff', 'accounting', 'admin'].includes(user?.role) && (await scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, user.role])) === '0') {
-        return sendJson(res, 200, { ok: true, user: null }, { 'Set-Cookie': clearCookie(req) });
-      }
-      return sendJson(res, 200, { ok: true, user: await userPayload(user) });
+      const checkUser = ['staff', 'accounting', 'admin'].includes(user?.role);
+      const [exists, payload] = await Promise.all([
+        checkUser ? scalar('SELECT COUNT(*) FROM users WHERE id = ? AND role = ?', [user.id, user.role]) : '1',
+        userPayload(user),
+      ]);
+      if (checkUser && exists === '0') return sendJson(res, 200, { ok: true, user: null }, { 'Set-Cookie': clearCookie(req) });
+      return sendJson(res, 200, { ok: true, user: payload });
     }
     if (action === 'logout') return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie(req) });
 
