@@ -70,6 +70,7 @@ export const api = {
   // ledger
   getLedger: (companyId) => call('get_ledger', { params: { company_id: companyId } }),
   quickAddLedger: (companyId) => call('quick_add_ledger', { method: 'POST', body: { company_id: companyId } }),
+  setTaxOff: (ids, off) => call('set_tax_off', { method: 'POST', body: { ids, off: off ? 1 : 0 } }),
   inlineUpdateLedger: (id, field, value, allowShared, autoRebate) => call('inline_update_ledger', { method: 'POST', body: { id, field, value, allow_shared: allowShared ? 1 : 0, auto_rebate: autoRebate ? 1 : 0 } }),
   getPayments: (ledgerEntryId) => call('get_payments', { params: { ledger_entry_id: ledgerEntryId } }),
   addPayment: (ledgerEntryId, body) => call('add_payment', { method: 'POST', body: { ...body, ledger_entry_id: ledgerEntryId } }),

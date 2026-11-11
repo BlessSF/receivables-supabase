@@ -1984,3 +1984,19 @@ select.rec-input { min-width: 112px; }
 .rep-sticky-item strong { font-size: 15px; font-variant-numeric: lining-nums; }
 .rep-sticky-total { background: #0f172a; }
 @media print { .rep-sticky { display: none !important; } }
+
+/* Per-entry Tax W/H on/off (Ledger) */
+.tax-cell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.tax-cell.is-off .tax-amt { color: var(--slate); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.tax-switch { width: 24px; height: 14px; padding: 0; border: 0; border-radius: 999px; background: #c5cbd3; position: relative; cursor: pointer; flex: none; transition: background .15s; }
+.tax-switch span { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.tax-switch.on { background: var(--teal); }
+.tax-switch.on span { transform: translateX(10px); }
+.tax-switch:disabled { opacity: .5; cursor: wait; }
+.tax-switch:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.tax-check { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--teal); cursor: pointer; }
+.tax-cell .tax-check { margin: 0; }
+.tax-off-tag { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px; font-size: 10px; line-height: 16px; font-weight: 700; color: #8a5a00; background: #fdeccc; vertical-align: middle; }
+.tax-bar { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 10px; border-radius: 8px; background: #eef7f6; border: 1px solid #cfe6e3; font-size: 13px; }
+.tax-msg { margin: 0 0 10px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.tax-msg button { background: none; border: 0; font-size: 18px; line-height: 1; cursor: pointer; color: inherit; }

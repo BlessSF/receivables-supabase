@@ -147,6 +147,7 @@ const RULES = {
       return `${b?.who || 'Ledger row'}: ${FIELD_LABEL[f] || f} ${shown(f, b?.v instanceof Date ? b.v.toISOString().slice(0, 10) : b?.v)} → ${shown(f, i.value)}`;
     },
   },
+  set_tax_off: { area: 'Ledger', kind: 'edit', text: (i, o) => `${o?.who ? `${o.who}: ` : ''}Tax W/H turned ${o?.off ? 'OFF' : 'ON'} for ${o?.count ?? (Array.isArray(i.ids) ? i.ids.length : 0)} ledger ${(o?.count ?? 1) === 1 ? 'entry' : 'entries'}` },
   quick_add_ledger: { area: 'Ledger', kind: 'add', before: async (i) => companyName(num(i.company_id)), text: (i, o, b) => `Added a new ledger row for ${b || 'a company'}` },
   delete_ledger: {
     area: 'Ledger', kind: 'delete',

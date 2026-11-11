@@ -27,14 +27,14 @@ function TrashIcon() {
 
 const r2 = (n) => Math.round(n * 100) / 100;
 // Tax W/H, Receivable and Balance worked out from the typed numbers -- exactly the server's formulas.
-//   Tax W/H    = Amount x tax % (none for Charge to Company accounts)
+//   Tax W/H    = Amount x tax % (none for Charge to Company accounts, or an entry whose Tax W/H was switched off)
 //   Receivable = Amount - Tax W/H + Surcharge - Rebate   (Rebate is only what was actually entered)
 //   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
 //   Variance   = Paid above Receivable (an overpayment). It is NOT a rebate and NOT outstanding: it stays flagged until someone fixes the payment or enters a real rebate.
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
-  const tax = e.account_type === 'CHARGE' ? 0 : r2((amount * taxPct) / 100);
+  const tax = (e.account_type === 'CHARGE' || e.tax_off) ? 0 : r2((amount * taxPct) / 100);
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
   const receivable = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
   return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
@@ -122,6 +122,9 @@ export default function Ledger() {
   const [viewCard, setViewCard] = useState(null); // { id, x, y } company card whose View popup is open
   const viewTimer = useRef(null);
   const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
+  const [taxSel, setTaxSel] = useState(null); // null = normal view; a Set of entry ids while choosing entries for Tax W/H on/off
+  const [taxBusy, setTaxBusy] = useState(false);
+  const [taxMsg, setTaxMsg] = useState('');
 
   const reload = useCallback(() => {
     api.getLedger(companyId || null).then((r) => setData(r.data)).catch((e) => setErr(e.message));
@@ -258,7 +261,7 @@ export default function Ledger() {
       PERIOD - 14,                                            // Covered Period
       cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
       widest('amount', money, '0.00') + RO,
-      widest('tax_withheld', money, '0.00') + RO,
+      widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
       widest('surcharge', money, '0.00') + RO,
       widest('rebate', money, '0.00') + RO,
       widest('receivable_amount', peso, '₱0.00') + CELL,
@@ -320,6 +323,31 @@ export default function Ledger() {
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
     if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate'].includes(field)) reload();
+  }
+
+  // Switch the automatic Tax W/H off (or back on) for the chosen entries only.
+  async function applyTaxOff(ids, off) {
+    const rows = entries.filter((e) => ids.includes(e.id) && e.account_type !== 'CHARGE' && !!e.tax_off !== off);
+    if (!rows.length) { setTaxMsg(off ? 'Those entries already have Tax W/H turned off.' : 'Those entries already have Tax W/H turned on.'); return; }
+    if (off) {
+      const settled = rows.filter((e) => (Number(e.paid_amount) || 0) > 0.009 && r2(Number(e.balance) || 0) <= 0.009);
+      if (settled.length) {
+        const extra = settled.reduce((t, e) => t + (Number(e.tax_withheld) || 0), 0);
+        if (!window.confirm(`${settled.length} of these ${settled.length === 1 ? 'entry is' : 'entries are'} already fully paid.\n\nWithout Tax W/H the Receivable goes up, so ${settled.length === 1 ? 'it' : 'they'} will show an unpaid balance of ${peso(extra)} in total until the payment is adjusted.\n\nTurn Tax W/H off anyway?`)) return;
+      }
+    }
+    setTaxBusy(true); setTaxMsg('');
+    try {
+      const r = await api.setTaxOff(rows.map((e) => e.id), off);
+      setData((d) => ({ ...d, entries: d.entries.map((e) => (r.rows && r.rows[e.id] ? { ...e, ...r.rows[e.id] } : e)) }));
+      setTaxMsg(r.message || '');
+      setTaxSel(null);
+      reload();
+    } catch (e) {
+      setTaxMsg(e.message || 'Could not change Tax W/H.');
+    } finally {
+      setTaxBusy(false);
+    }
   }
 
   // Settle: the client paid something but less than the receivable and the entry is closed. The leftover
@@ -561,6 +589,18 @@ export default function Ledger() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m20 20-4.3-4.3" /></svg>
             <input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          {company && !staff && (
+            taxSel ? (
+              <div className="tax-bar">
+                <b>{taxSel.size}</b> selected
+                <button type="button" className="btn btn-sm" disabled={!taxSel.size || taxBusy} onClick={() => applyTaxOff([...taxSel], true)}>Turn Tax W/H OFF</button>
+                <button type="button" className="btn btn-sm btn-secondary" disabled={!taxSel.size || taxBusy} onClick={() => applyTaxOff([...taxSel], false)}>Turn ON</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setTaxSel(null); setTaxMsg(''); }}>Cancel</button>
+              </div>
+            ) : (
+              <button type="button" className="btn btn-sm btn-secondary" title="Choose several entries, then turn their Tax W/H off or on" onClick={() => { setTaxSel(new Set()); setTaxMsg(''); }}>Tax W/H: select entries</button>
+            )
+          )}
           {company && highlightId && (() => {
             const hit = entries.find((e) => String(e.id) === highlightId);
             if (!hit) return null;
@@ -577,6 +617,7 @@ export default function Ledger() {
             {company ? `${filtered.length} entries` : `${activityRows.length} of ${filtered.length} entries shown`}
           </span>
         </div>
+        {taxMsg && <div className="flash flash-success tax-msg" role="status">{taxMsg} <button type="button" onClick={() => setTaxMsg('')} aria-label="Dismiss">×</button></div>}
 
         {!company ? (
           <div className="activity-feed">
@@ -618,7 +659,15 @@ export default function Ledger() {
               <thead>
                 <tr>
                   <th>Billing Date</th><th>Covered Period</th><th>SOA #</th>
-                  <th className="text-right">Amount</th><th className="text-right">Tax W/H</th>
+                  <th className="text-right">Amount</th>
+                  <th className="text-right">
+                    {taxSel && (
+                      <input type="checkbox" className="tax-check" title="Select every entry shown" aria-label="Select every entry shown"
+                        checked={filtered.filter((r) => r.account_type !== 'CHARGE').length > 0 && filtered.filter((r) => r.account_type !== 'CHARGE').every((r) => taxSel.has(r.id))}
+                        onChange={(e) => setTaxSel(e.target.checked ? new Set(filtered.filter((r) => r.account_type !== 'CHARGE').map((r) => r.id)) : new Set())} />
+                    )}
+                    Tax W/H
+                  </th>
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
@@ -646,7 +695,7 @@ export default function Ledger() {
                         <td><div className="ro-cell">{coveredLabel(r.period_from, r.period_to, r.period_date) || '—'}</div></td>
                         <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.tax_withheld)}</div></td>
+                        <td><div className="ro-cell ro-num">{r.tax_off && <span className="tax-off-tag" title="Tax W/H is turned off for this entry">OFF</span>}{money(r.tax_withheld)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                       </>
@@ -656,7 +705,20 @@ export default function Ledger() {
                         <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
                         <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
                         <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'amount', value: v })} onSave={(v) => saveField(r.id, 'amount', v)} /></td>
-                        <td><div className="ro-cell ro-num" title="Automatic: Amount x tax %">{money(r.tax_withheld)}</div></td>
+                        <td>
+                          <div className={`ro-cell ro-num tax-cell${r.tax_off ? ' is-off' : ''}`} title={r.tax_off ? 'Tax W/H is turned off for this entry' : 'Automatic: Amount x tax %'}>
+                            {r.account_type !== 'CHARGE' && (taxSel ? (
+                              <input type="checkbox" className="tax-check" aria-label="Select this entry" checked={taxSel.has(r.id)}
+                                onChange={(e) => setTaxSel((cur) => { const n = new Set(cur); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} />
+                            ) : (
+                              <button type="button" className={`tax-switch${r.tax_off ? '' : ' on'}`} disabled={taxBusy}
+                                title={r.tax_off ? 'Tax W/H is OFF for this entry. Click to turn it back on.' : 'Tax W/H is ON. Click to turn it off for this entry.'}
+                                aria-label={r.tax_off ? 'Turn Tax W/H on for this entry' : 'Turn Tax W/H off for this entry'}
+                                onClick={(e) => { e.stopPropagation(); applyTaxOff([r.id], !r.tax_off); }}><span /></button>
+                            ))}
+                            <span className="tax-amt">{money(r.tax_withheld)}</span>
+                          </div>
+                        </td>
                         <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
                         <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                       </>

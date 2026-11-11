@@ -121,7 +121,7 @@ const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 // What an executive (owner / accounting) account may call: reports, the ledger (edit + delete, like Admin).
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
-  'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'delete_ledger',
+  'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'set_tax_off', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
@@ -152,7 +152,16 @@ async function paymentsEnabled() {
   return !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
 }
 
+// Per-entry "Tax W/H off" switch. The column is created the first time it is needed (no manual SQL).
+let taxOffReady = false;
+async function ensureTaxOffColumn() {
+  if (taxOffReady) return;
+  await exec('ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS tax_off BOOLEAN NOT NULL DEFAULT FALSE');
+  taxOffReady = true;
+}
+
 async function autoTaxFor(row) {
+  if (row.tax_off) return 0; // this entry was switched to "no Tax W/H"
   const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
   return acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
 }
@@ -858,6 +867,7 @@ const actions = {
   async get_ledger(input, auth) {
     const companyId = isSet(input.company_id) && input.company_id !== '' ? toInt(input.company_id) : null;
     if (companyId) await requireCompanyAccess(auth, companyId);
+    await ensureTaxOffColumn();
     let sql = 'SELECT l.*, c.name as company_name, c.status as company_status, c.account_type as account_type, h.name as via_hmo_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id LEFT JOIN companies h ON h.id = l.via_hmo_id';
     let params = [];
     if (companyId) {
@@ -965,6 +975,38 @@ const actions = {
       [cid, cName || null, billingDate, cp?.from ?? null, cp?.to ?? null, cp ? normalizePeriod(cp.from) : null]
     );
     return { ok: true, id };
+  },
+
+  // Switch the automatic Tax W/H off (or back on) for the chosen ledger entries only.
+  // Off = Tax W/H 0, so Receivable = Amount + Surcharge - Rebate. Nothing else on the entry changes.
+  async set_tax_off(input, auth) {
+    if (auth.isStaff()) jsonExit({ ok: false, error: 'Staff accounts cannot change Tax W/H.' }, 403);
+    const ids = [...new Set((Array.isArray(input.ids) ? input.ids : []).map(toInt).filter((n) => n > 0))];
+    if (!ids.length) jsonExit({ ok: false, error: 'Choose at least one ledger entry.' }, 400);
+    if (ids.length > 1000) jsonExit({ ok: false, error: 'Please choose 1,000 entries or fewer at a time.' }, 400);
+    const off = truthy(input.off);
+    await ensureTaxOffColumn();
+    const pct = await taxWithheldPercent();
+    const done = {};
+    let changed = 0;
+    let who = '';
+    for (const id of ids) {
+      const row = await one('SELECT l.*, c.account_type AS acct_type, c.name AS co_name FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.id = ?', [id]);
+      if (!row) continue;
+      await requireCompanyAccess(auth, toInt(row.company_id));
+      if (row.acct_type === 'CHARGE') continue; // Charge to Company accounts never have Tax W/H
+      if (!who) who = row.co_name || row.company_name || '';
+      const tax = off ? 0 : round(toFloat(row.amount) * pct / 100, 2);
+      row.tax_withheld = tax;
+      const [receivable, balance] = recalcRow(row);
+      await exec(
+        `UPDATE ledger_entries SET tax_off = ?, tax_withheld = ?, receivable_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?`,
+        [off, tax, receivable, balance, id]);
+      done[id] = { tax_off: off, tax_withheld: tax, receivable_amount: receivable, balance };
+      changed++;
+    }
+    if (!changed) jsonExit({ ok: false, error: 'Nothing to change: Charge to Company entries never have Tax W/H.' }, 400);
+    return { ok: true, count: changed, off, who, rows: done, message: `Tax W/H turned ${off ? 'OFF' : 'ON'} for ${changed} entr${changed === 1 ? 'y' : 'ies'}.` };
   },
 
 
@@ -1108,7 +1150,7 @@ const actions = {
     // Rebate is NOT calculated: only a rebate that someone actually enters reduces the balance. An unpaid
     // difference stays outstanding until it is paid.
     const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
-    const autoTax = acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+    const autoTax = (acctType === 'CHARGE' || row.tax_off) ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
     row.tax_withheld = autoTax;
     const [receivable, balance] = recalcRow(row);
 
@@ -1527,10 +1569,11 @@ const actions = {
     const cid = isSet(input.company_id) ? toInt(input.company_id) : null;
     if (truthy(input.recalc_existing) && cid && (await canAccessCompany(auth, cid))) {
       const recalcIsCharge = (await scalar('SELECT account_type FROM companies WHERE id = ?', [cid])) === 'CHARGE';
-      const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount FROM ledger_entries WHERE company_id = ?', [cid]);
+      await ensureTaxOffColumn();
+      const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount, tax_off FROM ledger_entries WHERE company_id = ?', [cid]);
       for (const r of rows) {
         const amount = toFloat(r.amount);
-        const tax = recalcIsCharge ? 0 : round((amount * percent) / 100, 2);
+        const tax = (recalcIsCharge || r.tax_off) ? 0 : round((amount * percent) / 100, 2);
         const receivable = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
         if (Math.abs(paid - toFloat(r.receivable_amount)) < 0.01) paid = receivable;
