@@ -2001,3 +2001,7 @@ select.rec-input { min-width: 112px; }
 .tax-msg { margin: 0 0 10px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .tax-msg button { background: none; border: 0; font-size: 18px; line-height: 1; cursor: pointer; color: inherit; }
 .mf-note { margin-left: 6px; font-size: 11px; font-weight: 400; color: #8a93a0; }
+
+.mf-sign { margin-right: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid #e0b3b3; background: #fdecec; color: #a12a2a; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.mf-sign.is-add { border-color: #b7dccb; background: #e8f6ef; color: #1b6b4a; }
+.mf-sign:hover { filter: brightness(.96); }

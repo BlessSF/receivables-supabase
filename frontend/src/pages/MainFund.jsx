@@ -24,12 +24,16 @@ const toForm = (d) => ({
   receivables_label: d.receivables_label || '',
   receivables_date: d.receivables_date || '',
   receivables: d.receivables ? String(d.receivables) : '',
+  run_extra: d.run_extra ? String(d.run_extra) : '',
+  run_extra_date: d.run_extra_date || '',
+  run_extra_add: !!d.run_extra_add,
 });
 const toData = (f) => ({
   passbook: num(f.passbook), deposit: num(f.deposit), aub: num(f.aub), aub_label: f.aub_label,
   pull: f.pull.map((p) => ({ label: p.label, amount: num(p.amount) })),
   checks: f.checks.map((c) => ({ id: c.id, name: c.name, amount: num(c.amount) })),
   receivables_label: f.receivables_label, receivables_date: f.receivables_date, receivables: num(f.receivables),
+  run_extra: num(f.run_extra), run_extra_date: f.run_extra_date, run_extra_add: !!f.run_extra_add,
 });
 
 // One saved day, opened from the History list: its figures laid out like the Main page, the change against the
@@ -119,6 +123,7 @@ function DayOverview({ history, date, todayD, onClose, onPick }) {
           </Group>
           <Group title="Add">
             <Line label="Receivables" sub={det?.receivables_date ? `as of ${fdate(det.receivables_date)}` : ''} value={h.receivables} k="receivables" />
+            {h.run_extra !== undefined && Number(h.run_extra) !== 0 && <Line label={h.run_extra < 0 ? 'Less: running payables (typed)' : 'Add: running payables (typed)'} sub={det?.run_extra_date ? `as of ${fdate(det.run_extra_date)}` : ''} value={h.run_extra} k="run_extra" />}
             {h.past_due !== undefined && <Line label="Past due" value={h.past_due} k="past_due" />}
             {h.due !== undefined && <Line label="Due that month" value={h.due} k="due" />}
           </Group>
@@ -264,7 +269,7 @@ export default function MainFund() {
         <div className="mf-card mf-card-main">
           <div className="mf-card-label">Total net fund</div>
           <div className="mf-card-value">{sgn(calc.total)}</div>
-          <div className="mf-card-sub">Cashflow after pull out + receivables + past due + due</div>
+          <div className="mf-card-sub">Cashflow after pull out + receivables + running payables + past due + due</div>
         </div>
         <div className="mf-card">
           <div className="mf-card-label">Excess fund · {bank}</div>
@@ -451,6 +456,11 @@ export default function MainFund() {
             <span className="mf-lbl">Receivables as of</span>
             <span className="mf-date"><LongDateInput value={f.receivables_date} onChange={(v) => edit({ receivables_date: v })} ariaLabel="Receivables date" /></span>
             <MoneyInput className="mf-in" value={f.receivables} onChange={(v) => edit({ receivables: v })} placeholder="0.00" />
+          </div>
+          <div className="mf-row">
+            <span className="mf-lbl"><button type="button" className={`mf-sign${f.run_extra_add ? ' is-add' : ''}`} title="Click to switch between Less (taken off the total) and Add (added to the total)" onClick={() => edit({ run_extra_add: !f.run_extra_add })}>{f.run_extra_add ? 'Add' : 'Less'}</button> Running payables as of</span>
+            <span className="mf-date"><LongDateInput value={f.run_extra_date} onChange={(v) => edit({ run_extra_date: v })} ariaLabel="Running payables date" /></span>
+            <MoneyInput className="mf-in" value={f.run_extra} onChange={(v) => edit({ run_extra: v })} placeholder="0.00" />
           </div>
           <div className="mf-row mf-auto">
             <span className="mf-lbl">Past due <i>auto</i> <Link to="/past-due" className="pay-link-btn">{recv.past_due_count} {recv.past_due_count === 1 ? 'entry' : 'entries'}</Link></span>

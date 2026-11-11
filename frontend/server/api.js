@@ -358,6 +358,7 @@ async function recordMainSnapshot(data, live) {
     pull: (data.pull || []).map((p) => ({ amount: toFloat(p.amount) })),
     checks: (data.checks || []).map((c) => ({ id: c.id, name: c.name, amount: toFloat(c.amount) })),
     receivables: toFloat(data.receivables),
+    run_extra: toFloat(data.run_extra), run_extra_add: !!data.run_extra_add,
   };
   const dueFig = live.dueFig || { past_due: 0, due: 0 };
   const c = computeMain(d, live.linked, live.running, dueFig.past_due + dueFig.due);
@@ -365,7 +366,7 @@ async function recordMainSnapshot(data, live) {
     d: todayYmd(), total: r2(c.total), excess: r2(c.excess), after: r2(c.after), available: r2(c.available),
     passbook: r2(d.passbook), deposit: r2(d.deposit), aub: r2(d.aub), pulls: r2(c.pulls), receivables: r2(d.receivables),
     checks: r2(c.checksTotal), checks_n: c.checksCount, running: r2(live.running), running_n: live.runningN,
-    past_due: r2(dueFig.past_due), due: r2(dueFig.due),
+    past_due: r2(dueFig.past_due), due: r2(dueFig.due), run_extra: r2(c.runExtra),
   };
   const hist = (await readMainHistory()).filter((x) => x && x.d && x.d !== row.d);
   hist.push(row);
@@ -381,7 +382,7 @@ async function recordMainSnapshot(data, live) {
       released: live.linked.map((u) => ({ p: u.payee, a: u.amount, d: u.check_date })),
       manual: d.checks.filter((x) => !c.dupIds.has(x.id)).map((x) => ({ p: x.name, a: x.amount })),
       pull: (data.pull || []).map((p) => ({ l: p.label || '', a: toFloat(p.amount) })).filter((p) => p.l || p.a),
-      aub_label: data.aub_label || '', receivables_date: data.receivables_date || '',
+      aub_label: data.aub_label || '', receivables_date: data.receivables_date || '', run_extra_date: data.run_extra_date || '',
     };
     const dates = Object.keys(det).sort();
     for (const k of dates.slice(0, Math.max(0, dates.length - 60))) delete det[k];
@@ -412,6 +413,9 @@ function cleanMainFund(src) {
     receivables_label: trim(o.receivables_label ?? '').slice(0, 80),
     receivables_date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.receivables_date ?? '')) ? o.receivables_date : '',
     receivables: money2(o.receivables),
+    run_extra: money2(o.run_extra), // typed running payables (the Main page line under Receivables)
+    run_extra_date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.run_extra_date ?? '')) ? o.run_extra_date : '',
+    run_extra_add: o.run_extra_add === true || o.run_extra_add === 1 || o.run_extra_add === '1', // false = Less (default)
     updated_at: trim(o.updated_at ?? '').slice(0, 40) || null,
   };
 }

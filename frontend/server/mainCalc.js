@@ -16,6 +16,8 @@ export function computeMain(d, linked, running, extra = 0) {
   const excess = available + d.deposit - running;
   const pulls = d.pull.reduce((t, p) => t + p.amount, 0);
   const after = d.aub + excess - pulls;
-  const total = after + d.receivables + (Number(extra) || 0);
-  return { checksTotal, checksCount, dupIds, linkedKeys, available, excess, pulls, after, total };
+  // typed "Running payables as of" line: taken off (Less) unless it was switched to Add
+  const runExtra = (d.run_extra_add ? 1 : -1) * (Number(d.run_extra) || 0);
+  const total = after + d.receivables + runExtra + (Number(extra) || 0);
+  return { checksTotal, checksCount, dupIds, linkedKeys, available, excess, pulls, after, total, runExtra };
 }
