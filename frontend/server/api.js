@@ -323,6 +323,29 @@ async function mainLive() {
     unpaid: unpaid.map((r) => ({ payee: r.payee, amount: toFloat(r.amount), check_date: r.check_date })) };
 }
 
+// Past due and "Due this month" from the Ledger, for the Main page (automatic).
+// Past due = unpaid balance already past its due date (same as the Past due card). Due = unpaid balance whose due date is
+// later this month (not past due yet), so the two never count the same entry twice.
+async function mainDueFigures(auth) {
+  const [bw, bp] = branchWhere(auth, 'c');
+  const rows = await all(
+    `SELECT l.id, l.balance, l.billing_date, l.period_date, l.period_from, l.period_to, l.due_date
+     FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.balance > 0.009 ${bw}`, bp);
+  const implicit = await makeImplicitDue();
+  const nowKey = currentMonthKey();
+  const out = { past_due: 0, past_due_count: 0, due: 0, due_count: 0, month_label: monthLabel(nowKey) };
+  for (const r of rows) {
+    const bal = toFloat(r.balance);
+    const dd = dueOf(r, implicit);
+    const d = daysOverdue(dd);
+    if (d !== null && d > 0) { out.past_due += bal; out.past_due_count++; }
+    else if (dd && monthKey(dd) === nowKey) { out.due += bal; out.due_count++; }
+  }
+  out.past_due = Math.round(out.past_due * 100) / 100;
+  out.due = Math.round(out.due * 100) / 100;
+  return out;
+}
+
 // Main history: one saved row per day (date -> figures). Today's row is refreshed whenever Main is opened or saved,
 // so a past day keeps the last figures it had (a static record). Kept in app_settings, no database change needed.
 async function readMainHistory() {
@@ -336,11 +359,13 @@ async function recordMainSnapshot(data, live) {
     checks: (data.checks || []).map((c) => ({ id: c.id, name: c.name, amount: toFloat(c.amount) })),
     receivables: toFloat(data.receivables),
   };
-  const c = computeMain(d, live.linked, live.running);
+  const dueFig = live.dueFig || { past_due: 0, due: 0 };
+  const c = computeMain(d, live.linked, live.running, dueFig.past_due + dueFig.due);
   const row = {
     d: todayYmd(), total: r2(c.total), excess: r2(c.excess), after: r2(c.after), available: r2(c.available),
     passbook: r2(d.passbook), deposit: r2(d.deposit), aub: r2(d.aub), pulls: r2(c.pulls), receivables: r2(d.receivables),
     checks: r2(c.checksTotal), checks_n: c.checksCount, running: r2(live.running), running_n: live.runningN,
+    past_due: r2(dueFig.past_due), due: r2(dueFig.due),
   };
   const hist = (await readMainHistory()).filter((x) => x && x.d && x.d !== row.d);
   hist.push(row);
@@ -1960,9 +1985,10 @@ const actions = {
     await ensurePayablesTable();
     const data = await getMainFund();
     const live = await mainLive();
+    live.dueFig = await mainDueFigures(auth);
     let history = [];
     try { history = await recordMainSnapshot(data, live); } catch (e) { console.error('main history', e); } // never blocks Main
-    return { ok: true, data, running_payables: live.running, running_count: live.runningN, released_payables: live.linked, history: history.slice(-120) };
+    return { ok: true, data, running_payables: live.running, running_count: live.runningN, released_payables: live.linked, receivable_due: live.dueFig, history: history.slice(-120) };
   },
 
   // One saved day: its figures plus what was inside them (running payables / released checks that day).
@@ -1982,8 +2008,9 @@ const actions = {
     data.updated_at = todayYmd();
     await setSetting('main_fund', JSON.stringify(data));
     let history = null;
-    try { history = await recordMainSnapshot(data, await mainLive()); } catch (e) { console.error('main history', e); } // never blocks saving
-    return history ? { ok: true, data, history: history.slice(-120) } : { ok: true, data };
+    let dueFig = null;
+    try { const live = await mainLive(); dueFig = await mainDueFigures(auth); live.dueFig = dueFig; history = await recordMainSnapshot(data, live); } catch (e) { console.error('main history', e); } // never blocks saving
+    return history ? { ok: true, data, receivable_due: dueFig, history: history.slice(-120) } : { ok: true, data };
   },
 
   // ---------------------------------------------------------------- CASH POSITION
