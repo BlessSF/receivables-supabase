@@ -119,6 +119,8 @@ function DayOverview({ history, date, todayD, onClose, onPick }) {
           </Group>
           <Group title="Add">
             <Line label="Receivables" sub={det?.receivables_date ? `as of ${fdate(det.receivables_date)}` : ''} value={h.receivables} k="receivables" />
+            {h.past_due !== undefined && <Line label="Past due" value={h.past_due} k="past_due" />}
+            {h.due !== undefined && <Line label="Due that month" value={h.due} k="due" />}
           </Group>
           <div className="mf-dtotal"><span>Total net fund</span><strong>{sgn(h.total)}</strong><span className="mf-dl-chg">{chg('total', 'fund')}</span></div>
         </div>
@@ -151,6 +153,7 @@ export default function MainFund() {
   const [notice, setNotice] = useState(null);
   const [running, setRunning] = useState(0);
   const [runningN, setRunningN] = useState(0);
+  const [recv, setRecv] = useState({ past_due: 0, past_due_count: 0, due: 0, due_count: 0, month_label: '' }); // Past due + Due this month, from the Ledger (automatic)
   const [updated, setUpdated] = useState(null);
   const [history, setHistory] = useState([]); // one saved row per day, newest last
   const [viewDay, setViewDay] = useState(null); // date opened in the day overview
@@ -165,7 +168,7 @@ export default function MainFund() {
 
   useEffect(() => {
     api.getMainFund()
-      .then((r) => { setF(toForm(r.data)); setRunning(r.running_payables); setRunningN(r.running_count); setLinked(r.released_payables || []); setUpdated(r.data.updated_at); setHistory(r.history || []); })
+      .then((r) => { setF(toForm(r.data)); setRunning(r.running_payables); setRunningN(r.running_count); setLinked(r.released_payables || []); if (r.receivable_due) setRecv(r.receivable_due); setUpdated(r.data.updated_at); setHistory(r.history || []); })
       .catch((e) => { setErr(e.message); setState('error'); });
   }, []);
 
@@ -219,7 +222,7 @@ export default function MainFund() {
     return () => document.removeEventListener('paste', onPaste);
   }, []);
 
-  const calc = useMemo(() => (f ? computeMain(toData(f), linked, running) : null), [f, running, linked]);
+  const calc = useMemo(() => (f ? computeMain(toData(f), linked, running, recv.past_due + recv.due) : null), [f, running, linked, recv]);
 
   if (!f || !calc) {
     return (
@@ -261,7 +264,7 @@ export default function MainFund() {
         <div className="mf-card mf-card-main">
           <div className="mf-card-label">Total net fund</div>
           <div className="mf-card-value">{sgn(calc.total)}</div>
-          <div className="mf-card-sub">Cashflow after pull out + receivables</div>
+          <div className="mf-card-sub">Cashflow after pull out + receivables + past due + due</div>
         </div>
         <div className="mf-card">
           <div className="mf-card-label">Excess fund · {bank}</div>
@@ -448,6 +451,14 @@ export default function MainFund() {
             <span className="mf-lbl">Receivables as of</span>
             <span className="mf-date"><LongDateInput value={f.receivables_date} onChange={(v) => edit({ receivables_date: v })} ariaLabel="Receivables date" /></span>
             <MoneyInput className="mf-in" value={f.receivables} onChange={(v) => edit({ receivables: v })} placeholder="0.00" />
+          </div>
+          <div className="mf-row mf-auto">
+            <span className="mf-lbl">Past due <i>auto</i> <Link to="/past-due" className="pay-link-btn">{recv.past_due_count} {recv.past_due_count === 1 ? 'entry' : 'entries'}</Link></span>
+            <span className="mf-val">{sgn(recv.past_due)}</span>
+          </div>
+          <div className="mf-row mf-auto">
+            <span className="mf-lbl">Due · {recv.month_label || 'this month'} <i>auto</i> <span className="mf-note">{recv.due_count} {recv.due_count === 1 ? 'entry' : 'entries'}, not past due yet</span></span>
+            <span className="mf-val">{sgn(recv.due)}</span>
           </div>
           <div className="mf-row mf-final">
             <span className="mf-lbl">Total net fund</span>
