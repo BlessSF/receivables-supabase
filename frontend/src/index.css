@@ -2005,3 +2005,10 @@ select.rec-input { min-width: 112px; }
 .mf-sign { margin-right: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid #e0b3b3; background: #fdecec; color: #a12a2a; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .mf-sign.is-add { border-color: #b7dccb; background: #e8f6ef; color: #1b6b4a; }
 .mf-sign:hover { filter: brightness(.96); }
+
+/* HMO · Both Branches */
+.cb-branch td { background: #eef1f6; font-weight: 700; letter-spacing: .02em; color: #34405a; }
+.cb-sub td { font-weight: 700; background: #f7f8fb; border-top: 1px solid #dde2ea; }
+.cb-grand td { font-weight: 800; background: #14213d; color: #fff; }
+.cb-none { color: #8a93a0; font-style: italic; }
+.cb-note { margin: 10px 4px 2px; font-size: 12px; color: #8a93a0; }

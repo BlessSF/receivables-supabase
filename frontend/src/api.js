@@ -101,6 +101,8 @@ export const api = {
   // reports
   getAging: (params) => call('get_aging', { params }),
   getPastDue: () => call('get_past_due'),
+  getCombinedNames: () => call('get_combined_names'),
+  getCombinedHmo: (name, from, to) => call('get_combined_hmo', { params: { name, from: from || '', to: to || '' } }),
   getMonthlyReport: (params) => call('get_monthly_report', { params }),
 
   // soa tracker

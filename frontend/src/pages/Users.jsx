@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
-import { IconEdit, IconTrash, IconDashboard, IconList, IconCalendar, IconBuilding, IconHeart, IconCoins, IconReceipt, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconWallet, IconBook, IconChecklist, IconPenPlus } from '../icons';
+import { IconEdit, IconTrash, IconDashboard, IconList, IconCalendar, IconBuilding, IconHeart, IconCoins, IconReceipt, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconWallet, IconBook, IconChecklist, IconPenPlus, IconBranches } from '../icons';
 
 const ROLE_LABEL = { admin: 'Admin', accounting: 'Accounting', staff: 'Staff', branch: 'Branch', executive: 'Executive' };
 const ROLE_BADGE = { admin: 'badge-info', accounting: 'badge-info', staff: 'badge-success', branch: 'badge-secondary', executive: 'badge-warning' };
@@ -10,27 +10,27 @@ const MANAGED = ['staff', 'accounting']; // roles that can be edited / deleted o
 const PAGE_LABEL = {
   '/': 'Dashboard', '/summary': 'Summary', '/reports-by-month': 'Reports by Month', '/companies': 'Companies', '/hmos': 'HMOs',
   '/company-charges': 'Company Charges', '/billing': 'Billing', '/ledger': 'Ledger', '/aging': 'Aging Report',
-  '/past-due': 'Past Due', '/soa-tracker': 'SOA Tracker', '/monitoring': 'Monitoring',
+  '/past-due': 'Past Due', '/soa-tracker': 'SOA Tracker', '/monitoring': 'Monitoring', '/combined': 'HMO · Both Branches',
   '/payables/cash-position': 'Cash Position', '/payables/main': 'Main', '/payables/running': 'Running Payables',
   '/payables/record': 'Payment Record', '/payables/titles': 'Account Titles',
 };
 const PAGE_ICON = {
   '/': IconDashboard, '/summary': IconList, '/reports-by-month': IconCalendar, '/companies': IconBuilding, '/hmos': IconHeart,
   '/company-charges': IconCoins, '/billing': IconReceipt, '/ledger': IconTable, '/aging': IconClock, '/past-due': IconAlert,
-  '/soa-tracker': IconHash, '/monitoring': IconActivity, '/payables/cash-position': IconWallet, '/payables/main': IconBook,
+  '/soa-tracker': IconHash, '/monitoring': IconActivity, '/combined': IconBranches, '/payables/cash-position': IconWallet, '/payables/main': IconBook,
   '/payables/running': IconChecklist, '/payables/record': IconPenPlus, '/payables/titles': IconList,
 };
 const PAGE_DESC = {
   '/': 'Totals, due and past due', '/summary': 'Past due summary', '/reports-by-month': 'Billed and collected by month',
   '/companies': 'Company list', '/hmos': 'HMO list', '/company-charges': 'Charge-to-company accounts', '/billing': 'Import SOA and post billing',
   '/ledger': 'Entries, payments, balances', '/aging': 'Aging by bucket', '/past-due': 'Past due by company',
-  '/soa-tracker': 'SOA numbers', '/monitoring': 'Follow-ups',
+  '/soa-tracker': 'SOA numbers', '/monitoring': 'Follow-ups', '/combined': 'One HMO across both branches',
   '/payables/cash-position': 'Bank, receivables and payables', '/payables/main': 'Cash fund and released checks',
   '/payables/running': 'Checks and release status', '/payables/record': 'Enter new payments', '/payables/titles': 'Titles and names',
 };
 const ACCESS_GROUPS = [
   { module: 'Receivables', groups: [
-    { label: 'Overview', pages: ['/', '/summary', '/reports-by-month'] },
+    { label: 'Overview', pages: ['/', '/summary', '/reports-by-month', '/combined'] },
     { label: 'Accounts', pages: ['/companies', '/hmos', '/company-charges', '/billing', '/ledger'] },
     { label: 'Collections', pages: ['/aging', '/past-due', '/soa-tracker', '/monitoring'] },
   ] },

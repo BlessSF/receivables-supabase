@@ -9,6 +9,7 @@ import { backupInfo } from './backup.js';
 import { isRecyclable, captureDelete, saveDeleted, listDeleted, loadItem, restoreItem } from './recycle.js';
 import { isAudited, auditBefore, auditWrite, auditLogin, readAudit } from './audit.js';
 import { computeMain } from './mainCalc.js';
+import { combinedAllowed, combinedNames, combinedReport } from './combined.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -32,14 +33,16 @@ const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 // Sidebar pages a role may be given (Settings > Users > Sidebar access). Admin always sees everything.
 // A role can only be switched on/off inside its own list; pages outside it stay closed for that role.
 const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring',
-  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles'];
+  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles', '/combined'];
+// '/combined' (HMO across both branches) is only for Admin and Accounting.
+const NAV_NO_COMBINED = NAV_PAGES.filter((p) => p !== '/combined');
 // Payables pages start switched OFF for every role except Admin until Admin / Executive ticks them.
 const NAV_DEFAULT_OFF = NAV_PAGES.filter((p) => p.startsWith('/payables'));
 // Every role can be given every page. NAV_DEFAULT is what a role has until Admin / Executive changes it.
-const NAV_BASE = { accounting: NAV_PAGES, branch: NAV_PAGES, staff: NAV_PAGES, executive: NAV_PAGES };
+const NAV_BASE = { accounting: NAV_PAGES, branch: NAV_NO_COMBINED, staff: NAV_NO_COMBINED, executive: NAV_NO_COMBINED };
 const NAV_DEFAULT = {
   accounting: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
-  branch: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
+  branch: NAV_NO_COMBINED.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
   staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
   executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger', '/payables/cash-position'],
 };
@@ -1663,6 +1666,18 @@ const actions = {
   },
 
   // ---------------------------------------------------------------- PAST DUE
+  // ---- HMO across both branches (read only): this system plus the other branch's database
+  async get_combined_names(input, auth) {
+    if (!combinedAllowed(auth)) jsonExit({ ok: false, error: 'Only Admin and Accounting can open this page.' }, 403);
+    return { ok: true, data: await combinedNames() };
+  },
+  async get_combined_hmo(input, auth) {
+    if (!combinedAllowed(auth)) jsonExit({ ok: false, error: 'Only Admin and Accounting can open this page.' }, 403);
+    const name = trim(input.name ?? '');
+    if (!name) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
+    return { ok: true, data: await combinedReport(name, trim(input.from ?? ''), trim(input.to ?? '')) };
+  },
+
   async get_past_due(input, auth) {
     const [bw, bp] = branchWhere(auth, 'c');
     const rows = await all(

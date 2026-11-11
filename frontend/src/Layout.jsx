@@ -15,6 +15,7 @@ const NAV_GROUPS = [
       { to: '/', label: 'Dashboard', end: true, Icon: IconDashboard },
       { to: '/summary', label: 'Summary', Icon: IconList },
       { to: '/reports-by-month', label: 'Reports by Month', Icon: IconCalendar },
+      { to: '/combined', label: 'HMO · Both Branches', Icon: IconBranches },
     ],
   },
   {

@@ -11,6 +11,7 @@ import Hmos from './pages/Hmos';
 import CompanyCharges from './pages/CompanyCharges';
 import Aging from './pages/Aging';
 import PastDue from './pages/PastDue';
+import Combined from './pages/Combined';
 import SoaTracker from './pages/SoaTracker';
 import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
@@ -51,6 +52,7 @@ function Gate() {
     <Route key="ledger" path="/ledger" element={g('/ledger', <Ledger />)} />,
     <Route key="aging" path="/aging" element={g('/aging', <Aging />)} />,
     <Route key="pastdue" path="/past-due" element={g('/past-due', <PastDue />)} />,
+    <Route key="combined" path="/combined" element={g('/combined', <Combined />)} />,
     <Route key="soa" path="/soa-tracker" element={g('/soa-tracker', <SoaTracker />)} />,
     <Route key="monitoring" path="/monitoring" element={g('/monitoring', <Monitoring />)} />,
     <Route key="p0" path="/payables" element={<Navigate to="/" replace />} />,
@@ -118,6 +120,7 @@ function Gate() {
         <Route path="/ledger" element={g("/ledger", <Ledger />)} />
         <Route path="/aging" element={g("/aging", <Aging />)} />
         <Route path="/past-due" element={g("/past-due", <PastDue />)} />
+        <Route path="/combined" element={g("/combined", <Combined />)} />
         <Route path="/soa-tracker" element={g("/soa-tracker", <SoaTracker />)} />
         <Route path="/monitoring" element={g("/monitoring", <Monitoring />)} />
         <Route path="/settings" element={<Settings />} />

@@ -83,3 +83,36 @@ export async function transaction(fn) {
     client.release();
   }
 }
+
+// ---------------------------------------------------------------- the OTHER branch's database (read only)
+// Set PEER_DATABASE_URL (the other branch's Supabase connection string) to let the "Both branches" page read it.
+// Every query runs inside a READ ONLY transaction, so this system can never change the other branch's data.
+let peerPool = null;
+export function peerConfigured() {
+  return !!String(process.env.PEER_DATABASE_URL || '').trim();
+}
+function getPeerPool() {
+  if (peerPool) return peerPool;
+  const url = String(process.env.PEER_DATABASE_URL || '').trim();
+  const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+  peerPool = new pg.Pool({
+    connectionString: url,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    max: 2,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 8000,
+  });
+  return peerPool;
+}
+/** Runs SELECT queries on the other branch's database. run(q) gets q(sql, params) -> rows. */
+export async function peerRead(run) {
+  const client = await getPeerPool().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    const q = async (sql, params = []) => (await client.query(toPg(sql), params)).rows;
+    return await run(q);
+  } finally {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    client.release();
+  }
+}

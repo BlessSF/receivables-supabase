@@ -6,6 +6,7 @@ import { toInt, toFloat, toStr } from './php.js';
 import { excelSerial, periodLabel, coveredLabel, monthName } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
 import { makeBackupFile } from './backup.js';
+import { combinedAllowed, combinedReport } from './combined.js';
 import {
   daysOverdue, agingBucket, agingRangeFromRequest, agingInRange, makeImplicitDue, dueOf,
   branchWhere, branchWhereStandalone, canAccessCompany,
@@ -427,6 +428,29 @@ export async function handleXlsx(req, res) {
     }
     writeMonthlySheet(wb, report, user.full_name || user.username || '');
     return send(`reports_by_month_${report.all_year ? `${report.all_year}_all_months` : report.month}.xlsx`);
+  }
+
+  if (type === 'combined') { // one HMO, this branch + the other branch (read only)
+    if (!combinedAllowed(auth)) return sendText(res, 403, 'Only Admin and Accounting can download this report.');
+    const name = String(query.name ?? '').trim();
+    if (!name) return sendText(res, 400, 'Choose an HMO.');
+    const rep = await combinedReport(name, String(query.from ?? ''), String(query.to ?? ''));
+    const sheet = new Sheet(wb, 'Both branches', [
+      { header: 'Branch', width: 16, type: 'string' },
+      { header: 'Billing Date', width: 13, type: 'date' },
+      { header: 'Covered Period', width: 26, type: 'string' },
+      { header: 'SOA #', width: 14, type: 'string' },
+      { header: 'Amount', width: 16, type: 'money' },
+      { header: 'Receivable', width: 16, type: 'money' },
+      { header: 'Paid', width: 16, type: 'money' },
+      { header: 'Balance', width: 16, type: 'money' },
+    ], { freezeFirstCol: false });
+    for (const b of rep.branches) {
+      for (const r of b.rows) sheet.addRow([b.label, r.billing_date, r.covered, r.soa_number, r.amount, r.receivable, r.paid, r.balance]);
+      sheet.addRow([`${b.label} total`, '', `${b.total.count} billing${b.total.count === 1 ? '' : 's'}`, '', b.total.amount, b.total.receivable, b.total.paid, b.total.balance], { 0: 'gray', 4: 'gray', 5: 'gray', 6: 'gray', 7: 'gray' });
+    }
+    sheet.setTotals([`${rep.name} · BOTH BRANCHES`, '', `${rep.combined.count} billings`, '', rep.combined.amount, rep.combined.receivable, rep.combined.paid, rep.combined.balance]);
+    return send(`${rep.name.replace(/[^A-Za-z0-9]+/g, '_')}_both_branches.xlsx`);
   }
 
   if (type === 'aging') {
