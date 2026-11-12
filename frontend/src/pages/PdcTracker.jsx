@@ -3,26 +3,55 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
+import LongDateInput from '../LongDateInput';
 
 const num = (v) => Number(v) || 0;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+const lastDay = (y, m) => new Date(y, m, 0).getDate();
+const clampDay = (y, m, d) => Math.min(Math.max(1, d), lastDay(y, m));
+const mon = (y, m) => `${MONTHS[m - 1].slice(0, 3)} ${y}`;
 
-// PDC Tracker: every Future payable (Cash Position) has its own tracker. The item's amount is its beginning balance;
-// type the PDC paid each month and it is taken off month after month until the item is paid. New items show up by themselves.
+// One cell from Excel to a number: "216,388.89", "(0.04)", "₱1,000" ... (blank or text gives null)
+function cellNum(t) {
+  const s = String(t ?? '').trim();
+  if (!s || /[a-z]/i.test(s.replace(/e\+?\d+$/i, ''))) return null;
+  const neg = /^\(.*\)$/.test(s) || /^-/.test(s);
+  const n = Number(s.replace(/[(),₱$\s-]/g, ''));
+  return Number.isFinite(n) ? (neg ? -n : n) : null;
+}
+// One cell from Excel to YYYY-MM-DD: 02/18/25, 2/18/2025, 2025-02-18, Feb 18, 2025 (else null)
+function cellDate(t) {
+  const s = String(t ?? '').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) { let y = Number(m[3]); if (y < 100) y += 2000; return Number(m[1]) >= 1 && Number(m[1]) <= 12 && Number(m[2]) >= 1 && Number(m[2]) <= 31 ? ymd(y, Number(m[1]), Number(m[2])) : null; }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return s;
+  if (/[a-z]/i.test(s) && /\d{4}/.test(s)) { const d = new Date(s); if (!Number.isNaN(d.getTime())) return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
+  return null;
+}
+
+// PDC Tracker: every Future payable (Cash Position) has its own tracker. Type its balance and the "as of" date, then the PDC
+// paid each month (or make the rows, or paste them from Excel); the amount comes off the balance until it is paid.
 export default function PdcTracker() {
   const [year, setYear] = useState(null);
   const [data, setData] = useState(null);
   const [typed, setTyped] = useState({}); // { itemId: [12 text boxes] }
-  const [sel, setSel] = useState(''); // the item shown below the summary
+  const [dates, setDates] = useState({}); // { itemId: [12 'YYYY-MM-DD' or ''] } the exact date issued
+  const [setup, setSetup] = useState({}); // { itemId: { amount, date, monthly, day } } text boxes of the balance box
+  const [sel, setSel] = useState('');
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState('');
-  const [pick, setPick] = useState(0); // month (1-12) the running payables list is filtered to, 0 = all
-  const lastSaved = useRef({});
+  const [busy, setBusy] = useState(false);
+  const [pick, setPick] = useState(0);
+  const lastSaved = useRef({}); // { itemId: [{ a, d }] }
   const [tip, setTip] = useState(null); // hover card: { id, m (0 = beginning, 1-12), left, w, top | bottom }
   const tipTimer = useRef(null);
   const [showList, setShowList] = useState(() => { try { return localStorage.getItem('pdc_show_list') === '1'; } catch { return false; } }); // Running payables list: hidden by default
   const toggleList = () => setShowList((v) => { const n = !v; try { localStorage.setItem('pdc_show_list', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const flash = (t) => { setSaved(t); setTimeout(() => setSaved(''), 2600); };
   function openTip(id, m, el) {
     clearTimeout(tipTimer.current);
     const r = el.getBoundingClientRect();
@@ -38,60 +67,149 @@ export default function PdcTracker() {
     return api.getPdcTracker(y || '')
       .then((r) => {
         setData(r.data); setYear(r.data.year);
-        const t = {}; const ls = {};
-        for (const it of r.data.items || []) { t[it.id] = it.months.map((n) => (n ? String(n) : '')); ls[it.id] = it.months.slice(); }
-        setTyped(t); lastSaved.current = ls;
+        const t = {}; const dt = {}; const ls = {}; const su = {};
+        for (const it of r.data.items || []) {
+          t[it.id] = it.months.map((n) => (n ? String(n) : ''));
+          dt[it.id] = it.dates.slice();
+          ls[it.id] = it.months.map((n, i) => ({ a: n, d: it.dates[i] || '' }));
+          su[it.id] = { amount: it.start_amount === null ? '' : String(it.start_amount), date: it.start_date || '', monthly: it.monthly ? String(it.monthly) : '', day: it.pay_day ? String(it.pay_day) : '' };
+        }
+        setTyped(t); setDates(dt); lastSaved.current = ls; setSetup(su);
         setSel((cur) => ((r.data.items || []).some((it) => it.id === cur) ? cur : (r.data.items?.[0]?.id || '')));
       })
       .catch((e) => setErr(e.message));
   }
   useEffect(() => { load(); }, []);
 
-  // unpaid running payables with no check date (for the list below)
   const due = useMemo(() => {
     const none = { total: 0, count: 0 };
     for (const p of data?.payables || []) if (!p.check_date) { none.total += p.amount; none.count++; }
     return { none };
   }, [data]);
 
-  async function commit(it, i) {
-    const amount = num(typed[it.id]?.[i]);
-    if (r2(amount) === r2(lastSaved.current[it.id]?.[i])) return;
+  // ---- saving one month (amount + exact date)
+  async function commit(it, i, over = {}) {
+    const amount = num(over.a !== undefined ? over.a : typed[it.id]?.[i]);
+    let d = over.d !== undefined ? over.d : (dates[it.id]?.[i] || '');
+    const day = num(setup[it.id]?.day);
+    if (!d && amount > 0 && day >= 1 && day <= 31) { d = ymd(year, i + 1, clampDay(year, i + 1, day)); setDates((x) => ({ ...x, [it.id]: x[it.id].map((v, k) => (k === i ? d : v)) })); }
+    const was = lastSaved.current[it.id]?.[i] || { a: 0, d: '' };
+    if (r2(amount) === r2(was.a) && d === was.d) return;
     try {
-      await api.savePdcAmount(year, i + 1, amount, it.id);
-      lastSaved.current[it.id][i] = amount;
-      setSaved(`${it.label} · ${MONTHS[i]} saved`); setTimeout(() => setSaved(''), 2200);
+      await api.savePdcAmount(year, i + 1, amount, it.id, d || null);
+      lastSaved.current[it.id][i] = { a: amount, d };
+      flash(`${it.label} · ${MONTHS[i]} saved`);
     } catch (e) { setErr(e.message); }
+  }
+
+  // ---- the balance box of one item
+  const setupBody = (it, patch = {}) => {
+    const s = { ...(setup[it.id] || {}), ...patch };
+    return { start_amount: s.amount === '' || s.amount === undefined ? null : num(s.amount), start_date: s.date || null, monthly: num(s.monthly), pay_day: num(s.day) || null };
+  };
+  async function commitSetup(it, patch) {
+    const b = setupBody(it, patch);
+    if ((b.start_amount ?? null) === (it.start_amount ?? null) && (b.start_date || '') === (it.start_date || '') && b.monthly === num(it.monthly) && (b.pay_day || 0) === num(it.pay_day)) return;
+    try { await api.savePdcItem(it.id, b); flash(`${it.label} balance saved`); await load(year); } catch (e) { setErr(e.message); }
+  }
+  async function generate(it) {
+    const b = setupBody(it);
+    if (!(b.start_amount > 0)) { setErr('Type the balance first.'); return; }
+    if (!b.start_date) { setErr('Choose the date of that balance ("as of").'); return; }
+    if (!(b.monthly > 0)) { setErr('Type the monthly PDC amount.'); return; }
+    if (!(b.pay_day >= 1 && b.pay_day <= 31)) { setErr('Type the day of the month (1 to 31).'); return; }
+    let y = Number(b.start_date.slice(0, 4)); let m = Number(b.start_date.slice(5, 7));
+    if (ymd(y, m, clampDay(y, m, b.pay_day)) <= b.start_date) { m += 1; if (m > 12) { m = 1; y += 1; } } // the first payment is after the "as of" date
+    const entries = []; let left = b.start_amount;
+    for (let n = 0; n < 600 && left > 0.004; n++) {
+      const pay = r2(Math.min(b.monthly, left));
+      entries.push({ year: y, month: m, amount: pay, pay_date: ymd(y, m, clampDay(y, m, b.pay_day)) });
+      left = r2(left - pay);
+      m += 1; if (m > 12) { m = 1; y += 1; }
+    }
+    if (!entries.length) return;
+    const a = entries[0]; const z = entries[entries.length - 1];
+    if (!window.confirm(`Make ${entries.length} rows for ${it.label}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)}, ${peso(b.monthly)} each month on day ${b.pay_day}?\n\nThis replaces the amounts and dates already in those months.`)) return;
+    setBusy(true);
+    try { await api.savePdcItem(it.id, b); await api.savePdcBulk(it.id, entries); flash(`${entries.length} rows made for ${it.label}`); await load(year); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  // ---- paste from Excel: Date issued | Amount | Balance (or only the amounts). Paste into any row of the table.
+  async function onPasteRows(e) {
+    const text = e.clipboardData?.getData('text') || '';
+    if (!/[\n\t]/.test(text.trim())) return; // one value: normal paste
+    const tr = e.target.closest ? e.target.closest('tr[data-m]') : null;
+    const it = items.find((x) => x.id === sel);
+    if (!tr || !it) return;
+    e.preventDefault();
+    const day = num(setup[it.id]?.day);
+    let y = year; let m = Number(tr.dataset.m);
+    const entries = []; let start = null;
+    for (const line of text.replace(/\r/g, '').split('\n')) {
+      if (!line.trim()) continue;
+      const cells = line.split('\t').map((c) => c.trim());
+      // columns as in Excel: Date issued | Amount | Balance (two columns: Date | Amount, or Amount | Balance; one: Amount)
+      let when = null; let amount = null; let balance = null;
+      if (cells.length >= 3) { when = cellDate(cells[0]); amount = cellNum(cells[1]); balance = cellNum(cells[2]); }
+      else if (cells.length === 2) { if (cellDate(cells[0])) { when = cellDate(cells[0]); amount = cellNum(cells[1]); } else { amount = cellNum(cells[0]); balance = cellNum(cells[1]); } }
+      else amount = cellNum(cells[0]);
+      if (amount === null && balance !== null && !entries.length && !start) { start = { amount: balance, date: when }; continue; } // the top row: the balance it starts from
+      if (amount === null || amount < 0) continue;
+      if (when) { entries.push({ year: Number(when.slice(0, 4)), month: Number(when.slice(5, 7)), amount: r2(amount), pay_date: when }); y = Number(when.slice(0, 4)); m = Number(when.slice(5, 7)) + 1; }
+      else entries.push({ year: y, month: m, amount: r2(amount), pay_date: day >= 1 && day <= 31 ? ymd(y, m, clampDay(y, m, day)) : null });
+      if (!when) m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    if (!entries.length && !start) { setErr('Nothing to paste. Copy the Date issued and Amount columns from Excel.'); return; }
+    const a = entries[0]; const z = entries[entries.length - 1];
+    if (!window.confirm(`Paste into ${it.label}?${entries.length ? `\n\n${entries.length} month${entries.length === 1 ? '' : 's'}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)} (replaces what is in those months).` : ''}${start ? `\nBalance ${peso(start.amount)}${start.date ? ` as of ${fdate(start.date)}` : ''} (replaces the current balance).` : ''}`)) return;
+    setBusy(true);
+    try {
+      if (start) { const b = setupBody(it); await api.savePdcItem(it.id, { ...b, start_amount: start.amount, start_date: start.date || b.start_date }); }
+      if (entries.length) await api.savePdcBulk(it.id, entries);
+      flash(`Pasted ${entries.length} month${entries.length === 1 ? '' : 's'} into ${it.label}`); await load(year);
+    } catch (er) { setErr(er.message); }
+    setBusy(false);
   }
 
   if (!data && !err) return <div className="loading-state">Loading…</div>;
   if (!data) return <div className="flash flash-error">{err}</div>;
 
   // beginning balance and the balance after each month, per item
-  const calc = (it) => {
-    const begin = r2(it.amount - it.paid_before);
-    const bal = []; let run = begin;
-    for (let i = 0; i < 12; i++) { run = r2(run - num(typed[it.id]?.[i])); bal.push(run); }
-    const paid = r2((typed[it.id] || []).reduce((t, v) => t + num(v), 0));
-    return { begin, bal, paid, end: bal[11] };
-  };
   const items = data.items || [];
+  const calc = (it) => {
+    const startAmt = it.start_amount === null ? it.amount : it.start_amount; // typed balance, else the Future payables amount
+    const sk = it.start_date ? Number(it.start_date.slice(0, 4)) * 12 + Number(it.start_date.slice(5, 7)) : 0;
+    const begin = r2(startAmt - it.paid_before);
+    const bal = []; let run = begin; let paid = 0;
+    for (let i = 0; i < 12; i++) {
+      const k = year * 12 + i + 1; const d = dates[it.id]?.[i] || '';
+      if (sk && k < sk) { bal.push(null); continue; } // before the "as of" month there is no balance yet
+      const counts = !sk || k > sk || (k === sk && d && d > it.start_date);
+      if (counts) { const a = num(typed[it.id]?.[i]); run = r2(run - a); paid = r2(paid + a); }
+      bal.push(run);
+    }
+    return { startAmt, begin, bal, paid, end: run };
+  };
   const calcs = Object.fromEntries(items.map((it) => [it.id, calc(it)]));
   const sum = (k) => r2(items.reduce((t, it) => t + calcs[it.id][k], 0));
   const cur = items.find((it) => it.id === sel) || items[0];
   const cc = cur ? calcs[cur.id] : null;
+  const su = cur ? setup[cur.id] || {} : {};
   const shown = (data.payables || []).filter((p) => {
     const mo = p.check_date ? Number(p.check_date.slice(5, 7)) : 0;
     return !pick || mo === pick;
   });
   const shownTotal = r2(shown.reduce((t, p) => t + p.amount, 0));
+  const setSu = (patch) => setSetup((s) => ({ ...s, [cur.id]: { ...(s[cur.id] || {}), ...patch } }));
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Each future payable has its own card. Click a card to open its tracker, type the PDC for each month and it comes off the balance until it is paid.</div>
+          <div className="subtitle">Each future payable has its own card. Click a card, type its balance and the date of that balance, then the PDC for each month. Use ‹ › to go to other years.</div>
         </div>
         <div className="pdc-year">
           <button type="button" className="btn btn-secondary" onClick={() => load(year - 1)} aria-label="Previous year">‹</button>
@@ -111,18 +229,18 @@ export default function PdcTracker() {
           <div className="pdc-card pdc-card-all">
             <span className="pdc-card-name">All future payables</span>
             <b className="pdc-card-bal">{sgn(sum('end'))}</b>
-            <span className="pdc-card-sub">left at end of {year} · started at {sgn(sum('begin'))}</span>
+            <span className="pdc-card-sub">left at end of {year} · started {year} at {sgn(sum('begin'))}</span>
             <span className="pdc-card-sub">PDC in {year}: {peso(sum('paid'))}</span>
           </div>
           {items.map((it) => {
             const k = calcs[it.id];
-            const share = it.amount > 0 ? Math.max(0, Math.min(100, ((it.amount - k.end) / it.amount) * 100)) : 0;
+            const share = k.startAmt > 0 ? Math.max(0, Math.min(100, ((k.startAmt - k.end) / k.startAmt) * 100)) : 0;
             const on = cur && cur.id === it.id;
             return (
               <button type="button" key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} aria-pressed={on}>
                 <span className="pdc-card-name">{it.label}</span>
                 <b className={`pdc-card-bal ${k.end < 0 ? 'neg' : ''}`}>{sgn(k.end)}</b>
-                <span className="pdc-card-sub">left at end of {year} · started at {sgn(k.begin)}</span>
+                <span className="pdc-card-sub">left at end of {year} · started at {sgn(k.startAmt)}{it.start_date ? ` (${fdate(it.start_date)})` : ''}</span>
                 <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
                 <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC in {year}: {peso(k.paid)}</span>
                 <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
@@ -135,18 +253,27 @@ export default function PdcTracker() {
       {cur && (
         <div className="panel">
           <div className="pdc-list-head"><h2>{cur.label} · {year}</h2></div>
-          <div className="table-wrap">
+          <div className="pdc-setup">
+            <label><span>Balance</span><MoneyInput className="pdc-in" placeholder={peso(cur.amount)} aria-label="Balance" value={su.amount || ''} onChange={(v) => setSu({ amount: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+            <label><span>as of</span><LongDateInput value={su.date || ''} onChange={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} ariaLabel="Balance as of" placeholder="Date" /></label>
+            <label><span>Monthly PDC</span><MoneyInput className="pdc-in" placeholder="0.00" aria-label="Monthly PDC" value={su.monthly || ''} onChange={(v) => setSu({ monthly: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+            <label><span>Day of month</span><input className="pdc-in pdc-day" type="number" min="1" max="31" placeholder="15" aria-label="Day of the month" value={su.day || ''} onChange={(e) => setSu({ day: e.target.value })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => generate(cur)}>Generate rows</button>
+          </div>
+          <p className="pdc-tip">The balance is typed here (blank = the Future payables amount). “Generate rows” makes one row a month until it is paid. You can also copy the Date issued and Amount columns from Excel and paste them into any row below.</p>
+          <div className="table-wrap" onPaste={onPasteRows}>
             <table className="data-table pdc-table">
               <thead>
                 <tr>
                   <th>Month</th>
+                  <th>Date issued</th>
                   <th className="text-right">PDC amount (type here)</th>
                   <th className="text-right">Balance <span className="pdc-hint">hover an amount to see why</span></th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="pdc-total">
-                  <td>Beginning balance <small className="pdc-none">{cur.label}{cur.paid_before ? ` less PDC paid before ${year}` : ''}</small></td>
+                  <td colSpan={2}>Beginning balance <small className="pdc-none">{cur.start_date ? `as of ${fdate(cur.start_date)}` : cur.start_amount === null ? 'Future payables amount' : ''}{cur.paid_before ? ` less PDC paid before ${year}` : ''}</small></td>
                   <td />
                   <td className="text-right pdc-bal">
                     <span className="pdc-why" tabIndex={0} aria-label={`Why the beginning balance is ${sgn(cc.begin)}`}
@@ -155,29 +282,35 @@ export default function PdcTracker() {
                   </td>
                 </tr>
                 {MONTHS.map((name, i) => (
-                  <tr key={name}>
+                  <tr key={name} data-m={i + 1}>
                     <td><span style={{ fontWeight: 600 }}>{name}</span></td>
+                    <td>
+                      <LongDateInput value={dates[cur.id]?.[i] || ''} ariaLabel={`Date issued ${cur.label} ${name}`} placeholder="Date"
+                        onChange={(v) => { setDates((x) => ({ ...x, [cur.id]: x[cur.id].map((d, k) => (k === i ? v : d)) })); commit(cur, i, { d: v || '' }); }} />
+                    </td>
                     <td className="text-right">
                       <MoneyInput className="pdc-in" aria-label={`PDC amount ${cur.label} ${name}`} placeholder="0.00" value={typed[cur.id]?.[i] || ''}
                         onChange={(v) => setTyped((t) => ({ ...t, [cur.id]: (t[cur.id] || []).map((x, k) => (k === i ? v : x)) }))}
                         onBlur={() => commit(cur, i)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
                     </td>
                     <td className="text-right pdc-bal">
-                      <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${sgn(cc.bal[i])}`}
-                        onMouseEnter={(e) => openTip(cur.id, i + 1, e.currentTarget)} onMouseLeave={closeTip}
-                        onFocus={(e) => openTip(cur.id, i + 1, e.currentTarget)} onBlur={closeTip}>{sgn(cc.bal[i])}</span>
+                      {cc.bal[i] === null ? '—' : (
+                        <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${sgn(cc.bal[i])}`}
+                          onMouseEnter={(e) => openTip(cur.id, i + 1, e.currentTarget)} onMouseLeave={closeTip}
+                          onFocus={(e) => openTip(cur.id, i + 1, e.currentTarget)} onBlur={closeTip}>{sgn(cc.bal[i])}{cc.bal[i] <= 0.004 && cc.bal[i] > -0.005 && num(typed[cur.id]?.[i]) > 0 ? ' · END' : ''}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
                 <tr className="pdc-total">
-                  <td>Total PDC · balance at the end of {year}</td>
+                  <td colSpan={2}>Total PDC · balance at the end of {year}</td>
                   <td className="text-right">{peso(cc.paid)}</td>
                   <td className="text-right">{sgn(cc.end)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div className="pdc-foot"><span>{saved || 'Amounts save as soon as you leave the box.'}</span></div>
+          <div className="pdc-foot"><span>{busy ? 'Saving…' : saved || 'Amounts and dates save as soon as you leave the box.'}</span></div>
         </div>
       )}
 
@@ -216,21 +349,23 @@ export default function PdcTracker() {
         const it = items.find((x) => x.id === tip.id);
         if (!it) return null;
         const k = calcs[it.id]; const m = tip.m;
-        const before = m === 1 ? k.begin : k.bal[m - 2];
+        let before = k.begin;
+        if (m > 1) { for (let q = m - 2; q >= 0; q--) { if (k.bal[q] !== null) { before = k.bal[q]; break; } } }
+        const prevName = m > 1 ? MONTHS[m - 2] : '';
         return (
           <div className="pdc-pop" role="tooltip" style={{ left: tip.left, width: tip.w, top: tip.top, bottom: tip.bottom }}
             onMouseEnter={() => clearTimeout(tipTimer.current)} onMouseLeave={closeTip}>
             {m === 0 ? (
               <>
                 <div className="pdc-pop-head"><b>{it.label}</b><span>Beginning balance {year}</span></div>
-                <div className="pdc-pop-total"><span>Future payable amount (Cash Position)</span><b>{sgn(it.amount)}</b></div>
+                <div className="pdc-pop-total"><span>{it.start_amount === null ? 'Future payables amount (Cash Position)' : `Balance typed${it.start_date ? ` as of ${fdate(it.start_date)}` : ''}`}</span><b>{sgn(k.startAmt)}</b></div>
                 {it.paid_before !== 0 && <div className="pdc-pop-total"><span>Less: PDC paid before {year}</span><b>− {peso(it.paid_before)}</b></div>}
                 <div className="pdc-pop-total"><span>Beginning balance</span><b>{sgn(k.begin)}</b></div>
               </>
             ) : (
               <>
-                <div className="pdc-pop-head"><b>{it.label} · {MONTHS[m - 1]} {year}</b><span>{m === 1 ? 'Beginning balance' : `Balance after ${MONTHS[m - 2]}`} less this month's PDC</span></div>
-                <div className="pdc-pop-total"><span>{m === 1 ? 'Beginning balance' : `Balance after ${MONTHS[m - 2]}`}</span><b>{sgn(before)}</b></div>
+                <div className="pdc-pop-head"><b>{it.label} · {MONTHS[m - 1]} {year}</b><span>{m === 1 || before === k.begin ? 'Beginning balance' : `Balance after ${prevName}`} less this month's PDC</span></div>
+                <div className="pdc-pop-total"><span>{m === 1 || before === k.begin ? 'Beginning balance' : `Balance after ${prevName}`}</span><b>{sgn(before)}</b></div>
                 <div className="pdc-pop-total"><span>Less: PDC amount {MONTHS[m - 1]}</span><b>− {peso(num(typed[it.id]?.[m - 1]))}</b></div>
                 <div className="pdc-pop-total"><span>Balance</span><b>{sgn(k.bal[m - 1])}</b></div>
               </>

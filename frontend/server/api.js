@@ -117,7 +117,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -128,7 +128,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk',
 ]);
 
 function recalcRow(d) {
@@ -305,7 +305,23 @@ async function ensurePdcTable() {
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (item_id, year, month)
   )`);
+  await exec(`ALTER TABLE pdc_item_months ADD COLUMN IF NOT EXISTS pay_date DATE`); // the exact date issued
+  // The balance of each item is typed (amount + "as of" date), with the monthly PDC and the day of the month used to make the rows
+  await exec(`CREATE TABLE IF NOT EXISTS pdc_items (
+    item_id TEXT PRIMARY KEY,
+    start_amount NUMERIC(14,2),
+    start_date DATE,
+    monthly NUMERIC(14,2),
+    pay_day INT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
   pdcReady = true;
+}
+function cleanYmd(v) { // 'YYYY-MM-DD' that is a real date, else null
+  const t = trim(v ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const d = new Date(`${t}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t ? null : t;
 }
 // Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
 async function getAccountTitles() {
@@ -2002,16 +2018,26 @@ const actions = {
     for (const r of rows) { const m = toInt(r.month); if (m >= 1 && m <= 12) months[m - 1] = toFloat(r.amount); }
     // one tracker per Future payable: beginning balance = the item's amount, less what was paid in earlier years
     const future = (await getCashPositionSettings()).future;
-    const itemRows = await all('SELECT item_id, year, month, amount FROM pdc_item_months');
+    const itemRows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date FROM pdc_item_months');
+    const setups = await all('SELECT item_id, start_amount, start_date::text AS start_date, monthly, pay_day FROM pdc_items');
     const items = future.map((f) => {
+      const su = setups.find((x) => x.item_id === f.id);
+      const startAmount = su && su.start_amount !== null && su.start_amount !== undefined ? toFloat(su.start_amount) : null;
+      const startDate = su?.start_date || '';
+      const sk = startDate ? toInt(startDate.slice(0, 4)) * 12 + toInt(startDate.slice(5, 7)) : 0;
+      // a payment counts when it is after the "as of" date of the typed balance
+      const counted = (y, m, pd) => !startDate || y * 12 + m > sk || (y * 12 + m === sk && !!pd && pd > startDate);
       const m12 = Array.from({ length: 12 }, () => 0);
+      const d12 = Array.from({ length: 12 }, () => '');
       let before = 0;
       for (const r of itemRows) {
         if (r.item_id !== f.id) continue;
-        if (toInt(r.year) === year) { const m = toInt(r.month); if (m >= 1 && m <= 12) m12[m - 1] = toFloat(r.amount); }
-        else if (toInt(r.year) < year) before += toFloat(r.amount);
+        const ry = toInt(r.year); const rm = toInt(r.month);
+        if (ry === year) { if (rm >= 1 && rm <= 12) { m12[rm - 1] = toFloat(r.amount); d12[rm - 1] = r.pay_date || ''; } }
+        else if (ry < year && counted(ry, rm, r.pay_date)) before += toFloat(r.amount);
       }
-      return { id: f.id, label: f.label || '(no name)', amount: f.amount, months: m12, paid_before: Math.round(before * 100) / 100 };
+      return { id: f.id, label: f.label || '(no name)', amount: f.amount, start_amount: startAmount, start_date: startDate,
+        monthly: su ? toFloat(su.monthly) : 0, pay_day: su ? toInt(su.pay_day) : 0, months: m12, dates: d12, paid_before: Math.round(before * 100) / 100 };
     });
     const payables = await all(
       `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, release_status
@@ -2037,15 +2063,59 @@ const actions = {
     if (itemId) { // the PDC of one Future payable
       const item = (await getCashPositionSettings()).future.find((f) => f.id === itemId);
       if (!item) jsonExit({ ok: false, error: 'This future payable is not in Cash Position any more.' }, 400);
+      const payDate = cleanYmd(input.pay_date);
       await exec(
-        `INSERT INTO pdc_item_months (item_id, year, month, amount, updated_at) VALUES (?, ?, ?, ?, NOW())
-         ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()`, [itemId, year, month, amount]);
+        `INSERT INTO pdc_item_months (item_id, year, month, amount, pay_date, updated_at) VALUES (?, ?, ?, ?, ?::date, NOW())
+         ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date, updated_at = NOW()`, [itemId, year, month, amount, payDate]);
       return { ok: true, year, month, amount, item_id: itemId, label: item.label || '(no name)' };
     }
     await exec(
       `INSERT INTO pdc_months (year, month, amount, updated_at) VALUES (?, ?, ?, NOW())
        ON CONFLICT (year, month) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()`, [year, month, amount]);
     return { ok: true, year, month, amount };
+  },
+
+  // The typed balance of one future payable (amount + "as of" date), plus the monthly PDC and the day of the month for its rows
+  async save_pdc_item(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    const itemId = trim(input.item_id ?? '').slice(0, 40);
+    const item = (await getCashPositionSettings()).future.find((f) => f.id === itemId);
+    if (!item) jsonExit({ ok: false, error: 'This future payable is not in Cash Position any more.' }, 400);
+    const hasStart = input.start_amount !== null && input.start_amount !== undefined && String(input.start_amount).trim() !== '';
+    const startAmount = hasStart ? Math.round(toFloat(input.start_amount) * 100) / 100 : null;
+    const monthly = Math.round(Math.max(0, toFloat(input.monthly)) * 100) / 100;
+    const payDay = toInt(input.pay_day);
+    if (Math.abs(startAmount ?? 0) > 99999999999 || monthly > 99999999999) jsonExit({ ok: false, error: 'That amount is too large.' }, 400);
+    await exec(
+      `INSERT INTO pdc_items (item_id, start_amount, start_date, monthly, pay_day, updated_at) VALUES (?, ?, ?::date, ?, ?, NOW())
+       ON CONFLICT (item_id) DO UPDATE SET start_amount = EXCLUDED.start_amount, start_date = EXCLUDED.start_date, monthly = EXCLUDED.monthly, pay_day = EXCLUDED.pay_day, updated_at = NOW()`,
+      [itemId, startAmount, cleanYmd(input.start_date), monthly, payDay >= 1 && payDay <= 31 ? payDay : null]);
+    return { ok: true, item_id: itemId, label: item.label || '(no name)', start_amount: startAmount, start_date: cleanYmd(input.start_date) };
+  },
+
+  // Many months of one future payable at once (generated rows, or rows pasted from Excel)
+  async save_pdc_bulk(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    const itemId = trim(input.item_id ?? '').slice(0, 40);
+    const item = (await getCashPositionSettings()).future.find((f) => f.id === itemId);
+    if (!item) jsonExit({ ok: false, error: 'This future payable is not in Cash Position any more.' }, 400);
+    const list = Array.isArray(input.entries) ? input.entries.slice(0, 600) : [];
+    const byKey = new Map();
+    for (const e of list) {
+      const y = toInt(e?.year); const m = toInt(e?.month);
+      const a = Math.round(toFloat(e?.amount) * 100) / 100;
+      if (y < 2000 || y > 2100 || m < 1 || m > 12 || !(a >= 0) || a > 99999999999) continue;
+      byKey.set(`${y}-${m}`, { y, m, a, d: cleanYmd(e?.pay_date) });
+    }
+    const rows = [...byKey.values()];
+    if (!rows.length) jsonExit({ ok: false, error: 'There is nothing to save.' }, 400);
+    await exec(
+      `INSERT INTO pdc_item_months (item_id, year, month, amount, pay_date, updated_at) VALUES ${rows.map(() => '(?, ?, ?, ?, ?::date, NOW())').join(', ')}
+       ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date, updated_at = NOW()`,
+      rows.flatMap((r) => [itemId, r.y, r.m, r.a, r.d]));
+    return { ok: true, item_id: itemId, label: item.label || '(no name)', count: rows.length };
   },
 
   async save_payable(input, auth) {

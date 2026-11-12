@@ -71,6 +71,14 @@ const RULES = {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC amount ${['January','February','March','April','May','June','July','August','September','October','November','December'][(num(i.month) || 1) - 1]} ${num(i.year)}: ${peso(i.amount)}`,
   },
+  save_pdc_item: {
+    area: 'PDC Tracker', kind: 'edit',
+    text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC balance set to ${o?.start_amount === null || o?.start_amount === undefined ? '(Future payables amount)' : peso(o.start_amount)}${o?.start_date ? ` as of ${o.start_date}` : ''}`,
+  },
+  save_pdc_bulk: {
+    area: 'PDC Tracker', kind: 'edit',
+    text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC schedule saved for ${o?.count ?? 0} month${o?.count === 1 ? '' : 's'}`,
+  },
   add_payables_bulk: {
     area: (i) => (i.released === true ? 'Main' : 'Payment Record'), kind: 'add',
     text: (i, o) => {
