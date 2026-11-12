@@ -20,6 +20,8 @@ export default function PdcTracker() {
   const lastSaved = useRef([]);
   const [tip, setTip] = useState(null); // hover card: { m (1-12), left, top | bottom }
   const tipTimer = useRef(null);
+  const [showList, setShowList] = useState(() => { try { return localStorage.getItem('pdc_show_list') === '1'; } catch { return false; } }); // Running payables list: hidden by default
+  const toggleList = () => setShowList((v) => { const n = !v; try { localStorage.setItem('pdc_show_list', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   const [future, setFuture] = useState([]); // Future payables from Cash Position (the beginning balance)
   const [carry, setCarry] = useState(0); // PDC already paid in earlier years (when viewing a later year)
   function openTip(m, el) {
@@ -163,9 +165,13 @@ export default function PdcTracker() {
       <div className="panel">
         <div className="pdc-list-head">
           <h2>Running payables {pick ? `· ${MONTHS[pick - 1]} ${year}` : `· ${year}`}</h2>
-          {pick > 0 && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPick(0)}>Show all months</button>}
+          <span>
+            {showList && pick > 0 && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPick(0)}>Show all months</button>}{' '}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={toggleList}>{showList ? 'Hide' : 'Show'}</button>
+          </span>
         </div>
-        <div className="table-wrap">
+        {!showList && <div className="pdc-foot"><span>Hidden. {shown.length} unpaid payable{shown.length === 1 ? '' : 's'} ({peso(shownTotal)}). Click Show to see the list.</span></div>}
+        {showList && <><div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr><th>Check date</th><th>Payee</th><th>Account title</th><th>Status</th><th className="text-right">Amount</th></tr>
@@ -185,7 +191,7 @@ export default function PdcTracker() {
             </tbody>
           </table>
         </div>
-        {!pick && due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date, so they are not counted in any month above ({peso(due.none.total)}).</span></div>}
+        {!pick && due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date, so they are not counted in any month above ({peso(due.none.total)}).</span></div>}</>}
       </div>
       {tip && (() => {
         const m = tip.m;
