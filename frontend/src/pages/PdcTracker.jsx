@@ -308,9 +308,9 @@ export default function PdcTracker() {
               <thead>
                 <tr>
                   <th>Date issued</th>
+                  <th style={{ textAlign: 'center' }}>Paid?</th>
                   <th className="text-right">PDC amount (type here)</th>
                   <th className="text-right">Balance <span className="pdc-hint">hover an amount to see why</span></th>
-                  <th style={{ textAlign: "center" }}>Paid</th>
                   <th />
                 </tr>
               </thead>
@@ -318,23 +318,24 @@ export default function PdcTracker() {
                 <tr className="pdc-total">
                   <td>Beginning balance <small className="pdc-none">{cur.start_date ? `as of ${flong(cur.start_date)}` : cur.start_amount === null ? 'Future payables amount' : ''}</small></td>
                   <td />
+                  <td />
                   <td className="text-right pdc-bal">
                     <span className="pdc-why" tabIndex={0} aria-label={`Why the beginning balance is ${sgn(cc.startAmt)}`}
                       onMouseEnter={(e) => openTip(cur.id, -1, e.currentTarget)} onMouseLeave={closeTip}
                       onFocus={(e) => openTip(cur.id, -1, e.currentTarget)} onBlur={closeTip}>{sgn(cc.startAmt)}</span>
                   </td>
                   <td />
-                  <td />
                 </tr>
                 {curRows.map((r, idx) => (
                   <Fragment key={rkey(r.year, r.month)}>
                     {(idx === 0 || curRows[idx - 1].year !== r.year) && (
-                      <tr key={`y${r.year}`} className="pdc-yearrow"><td colSpan={2}>{r.year}</td><td className="text-right">PDC {r.year}: {peso(yearPaid(r.year))}</td><td /><td /></tr>
+                      <tr key={`y${r.year}`} className="pdc-yearrow"><td colSpan={3}>{r.year}</td><td className="text-right">PDC {r.year}: {peso(yearPaid(r.year))}</td><td /></tr>
                     )}
                     <tr data-ym={rkey(r.year, r.month)} className={r.p ? 'pdc-paid' : ''}>
                       <td>
                         <DateBox value={r.d} ariaLabel={`Date issued ${cur.label} ${MONTHS[r.month - 1]} ${r.year}`} placeholder={`${MONTHS[r.month - 1]} ${r.year}`} onCommit={(v) => changeDate(cur, idx, v)} />
                       </td>
+                      <td style={{ textAlign: 'center' }}><button type="button" className={`pdc-check ${r.p ? 'on' : ''}`} aria-pressed={!!r.p} aria-label={r.p ? 'Paid. Click to uncheck' : 'Mark as paid'} title={r.p ? 'Already paid (click to uncheck)' : 'Click when this is already paid'} onClick={() => togglePaid(cur, idx)}>{r.p ? '✓ Paid' : 'Mark paid'}</button></td>
                       <td className="text-right">
                         <MoneyInput className="pdc-in" aria-label={`PDC amount ${cur.label} ${MONTHS[r.month - 1]} ${r.year}`} placeholder="0.00" value={r.a}
                           onChange={(v) => patchRow(cur.id, idx, { a: v })}
@@ -347,7 +348,6 @@ export default function PdcTracker() {
                             onFocus={(e) => openTip(cur.id, idx, e.currentTarget)} onBlur={closeTip}>{sgn(cc.bal[idx])}{Math.abs(cc.bal[idx]) < 0.005 && num(r.a) > 0 ? ' · END' : ''}</span>
                         )}
                       </td>
-                      <td style={{ textAlign: "center" }}><button type="button" className={`pdc-check ${r.p ? 'on' : ''}`} aria-pressed={!!r.p} aria-label={r.p ? 'Paid. Click to uncheck' : 'Mark as paid'} title={r.p ? 'Already paid (click to uncheck)' : 'Click when this is already paid'} onClick={() => togglePaid(cur, idx)}>✓</button></td>
                       <td className="text-right"><button type="button" className="at-x" onClick={() => removeRow(cur, idx)} aria-label="Remove row" title="Remove this row">×</button></td>
                     </tr>
                   </Fragment>
@@ -359,10 +359,10 @@ export default function PdcTracker() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td>Total PDC · balance left <small className="pdc-none">{curRows.filter((r) => r.p).length} of {curRows.length} rows paid ✓</small></td>
+                  <td>Total PDC · balance left</td>
+                  <td style={{ textAlign: 'center' }}><small className="pdc-none">{curRows.filter((r) => r.p).length} of {curRows.length} paid ✓</small></td>
                   <td className="text-right">{peso(cc.paid)}</td>
                   <td className="text-right">{sgn(cc.end)}</td>
-                  <td />
                   <td />
                 </tr>
               </tfoot>
