@@ -342,13 +342,18 @@ export default function PdcTracker() {
                   </Fragment>
                 ))}
                 {curRows.length === 0 && <tr><td colSpan={4} className="pdc-none">No rows yet. Type the first date above and press + Add row.</td></tr>}
-                <tr className="pdc-total">
+                <tr>
+                  <td colSpan={4}><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>{curRows.length === 0 && <span className="pdc-none"> Type the first date above first.</span>}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
                   <td>Total PDC · balance left</td>
                   <td className="text-right">{peso(cc.paid)}</td>
                   <td className="text-right">{sgn(cc.end)}</td>
                   <td />
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
           <div className="pdc-foot"><span>{busy ? 'Saving…' : saved || 'Amounts and dates save as soon as you leave the box.'}</span></div>
