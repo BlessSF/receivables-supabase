@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
-import LongDateInput from '../LongDateInput';
 
 const num = (v) => Number(v) || 0;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -13,6 +12,29 @@ const ymd = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 const lastDay = (y, m) => new Date(y, m, 0).getDate();
 const clampDay = (y, m, d) => Math.min(Math.max(1, d), lastDay(y, m));
 const mon = (y, m) => `${MONTHS[m - 1].slice(0, 3)} ${y}`;
+const fus = (d) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : ''); // 2026-09-25 -> 09/25/2026
+function parseUs(t) { // 9/25/2026, 09/25/26, 2026-09-25 -> YYYY-MM-DD (null if it is not a real date)
+  const s = String(t ?? '').trim();
+  let y; let m; let d;
+  let a = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/);
+  if (a) { m = Number(a[1]); d = Number(a[2]); y = Number(a[3]); if (y < 100) y += 2000; }
+  else if ((a = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = Number(a[1]); m = Number(a[2]); d = Number(a[3]); }
+  else return null;
+  if (m < 1 || m > 12 || d < 1 || d > lastDay(y, m) || y < 2000 || y > 2100) return null;
+  return ymd(y, m, d);
+}
+// Date box shown as MM/DD/YYYY (type it, or paste it)
+function DateBox({ value, onCommit, ariaLabel, placeholder = 'MM/DD/YYYY' }) {
+  const [t, setT] = useState(fus(value));
+  useEffect(() => { setT(fus(value)); }, [value]);
+  const done = () => {
+    if (!t.trim()) { if (value) onCommit(''); return; }
+    const v = parseUs(t);
+    if (v) { setT(fus(v)); if (v !== value) onCommit(v); } else setT(fus(value));
+  };
+  return <input className="pdc-in pdc-date" inputMode="numeric" value={t} placeholder={placeholder} aria-label={ariaLabel}
+    onChange={(e) => setT(e.target.value)} onBlur={done} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
+}
 
 // One cell from Excel to a number: "216,388.89", "(0.04)", "₱1,000" ... (blank or text gives null)
 function cellNum(t) {
@@ -42,6 +64,7 @@ export default function PdcTracker() {
   const [dates, setDates] = useState({}); // { itemId: [12 'YYYY-MM-DD' or ''] } the exact date issued
   const [setup, setSetup] = useState({}); // { itemId: { amount, date, monthly, day } } text boxes of the balance box
   const [sel, setSel] = useState('');
+  const [firstTxt, setFirstTxt] = useState(''); // the first date typed for an item that has no rows yet
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState('');
   const [busy, setBusy] = useState(false);
@@ -72,7 +95,7 @@ export default function PdcTracker() {
           t[it.id] = it.months.map((n) => (n ? String(n) : ''));
           dt[it.id] = it.dates.slice();
           ls[it.id] = it.months.map((n, i) => ({ a: n, d: it.dates[i] || '' }));
-          su[it.id] = { amount: it.start_amount === null ? '' : String(it.start_amount), date: it.start_date || '', monthly: it.monthly ? String(it.monthly) : '', day: it.pay_day ? String(it.pay_day) : '' };
+          su[it.id] = { amount: it.start_amount === null ? '' : String(it.start_amount), date: it.start_date || '' };
         }
         setTyped(t); setDates(dt); lastSaved.current = ls; setSetup(su);
         setSel((cur) => ((r.data.items || []).some((it) => it.id === cur) ? cur : (r.data.items?.[0]?.id || '')));
@@ -87,64 +110,75 @@ export default function PdcTracker() {
     return { none };
   }, [data]);
 
-  // ---- saving one month (amount + exact date)
+  // ---- saving one row (amount + exact date)
   async function commit(it, i, over = {}) {
     const amount = num(over.a !== undefined ? over.a : typed[it.id]?.[i]);
-    let d = over.d !== undefined ? over.d : (dates[it.id]?.[i] || '');
-    const day = num(setup[it.id]?.day);
-    if (!d && amount > 0 && day >= 1 && day <= 31) { d = ymd(year, i + 1, clampDay(year, i + 1, day)); setDates((x) => ({ ...x, [it.id]: x[it.id].map((v, k) => (k === i ? d : v)) })); }
+    const d = over.d !== undefined ? over.d : (dates[it.id]?.[i] || '');
     const was = lastSaved.current[it.id]?.[i] || { a: 0, d: '' };
     if (r2(amount) === r2(was.a) && d === was.d) return;
     try {
       await api.savePdcAmount(year, i + 1, amount, it.id, d || null);
       lastSaved.current[it.id][i] = { a: amount, d };
-      flash(`${it.label} · ${MONTHS[i]} saved`);
+      flash(`${it.label} · ${d ? fus(d) : MONTHS[i]} saved`);
     } catch (e) { setErr(e.message); }
+  }
+
+  // a new date typed in a row: the same month just changes the day; another month moves the row there
+  async function changeDate(it, i, v) {
+    const was = dates[it.id]?.[i] || '';
+    if (!v) { setDates((x) => ({ ...x, [it.id]: x[it.id].map((d, k) => (k === i ? '' : d)) })); await commit(it, i, { d: '' }); return; }
+    const ny = Number(v.slice(0, 4)); const nm = Number(v.slice(5, 7));
+    if (ny === year && nm === i + 1) { setDates((x) => ({ ...x, [it.id]: x[it.id].map((d, k) => (k === i ? v : d)) })); await commit(it, i, { d: v }); return; }
+    if (ny === year && existsRow(it, nm - 1)) { setErr(`${MONTHS[nm - 1]} ${ny} already has a row. Change that row instead.`); setDates((x) => ({ ...x })); return; }
+    if (ny !== year && !window.confirm(`Move this row to ${fus(v)}? If ${MONTHS[nm - 1]} ${ny} already has a row, it is replaced.`)) { setDates((x) => ({ ...x })); return; }
+    try {
+      await api.savePdcAmount(ny, nm, num(typed[it.id]?.[i]), it.id, v);
+      await api.savePdcAmount(year, i + 1, 0, it.id, null);
+      flash(`${it.label} · moved to ${fus(v)}`); await load(ny);
+    } catch (e) { setErr(e.message); }
+  }
+  const existsRow = (it, i) => !!(dates[it.id]?.[i]) || num(typed[it.id]?.[i]) > 0;
+
+  // + Add row: the next month after the last row, on the same day as the first row (also into the next year)
+  async function addRow(it) {
+    let ny; let nm; let nd;
+    if (it.last_date) {
+      ny = Number(it.last_date.slice(0, 4)); nm = Number(it.last_date.slice(5, 7)) + 1;
+      if (nm > 12) { nm = 1; ny += 1; }
+      nd = ymd(ny, nm, clampDay(ny, nm, Number((it.first_date || it.last_date).slice(8, 10))));
+    } else {
+      nd = parseUs(firstTxt);
+      if (!nd) { setErr('Type the first date as MM/DD/YYYY (for example 09/25/2026).'); return; }
+      ny = Number(nd.slice(0, 4)); nm = Number(nd.slice(5, 7));
+    }
+    if (ny > 2100) { setErr('That year is too far ahead.'); return; }
+    try { await api.savePdcAmount(ny, nm, 0, it.id, nd); setFirstTxt(''); flash(`Row ${fus(nd)} added`); await load(ny); } catch (e) { setErr(e.message); }
+  }
+  async function removeRow(it, i) {
+    if (!window.confirm(`Remove the row ${dates[it.id]?.[i] ? fus(dates[it.id][i]) : MONTHS[i]} (${peso(num(typed[it.id]?.[i]))}) from ${it.label}?`)) return;
+    try { await api.savePdcAmount(year, i + 1, 0, it.id, null); flash('Row removed'); await load(year); } catch (e) { setErr(e.message); }
   }
 
   // ---- the balance box of one item
   const setupBody = (it, patch = {}) => {
     const s = { ...(setup[it.id] || {}), ...patch };
-    return { start_amount: s.amount === '' || s.amount === undefined ? null : num(s.amount), start_date: s.date || null, monthly: num(s.monthly), pay_day: num(s.day) || null };
+    return { start_amount: s.amount === '' || s.amount === undefined ? null : num(s.amount), start_date: s.date || null, monthly: 0, pay_day: null };
   };
   async function commitSetup(it, patch) {
     const b = setupBody(it, patch);
-    if ((b.start_amount ?? null) === (it.start_amount ?? null) && (b.start_date || '') === (it.start_date || '') && b.monthly === num(it.monthly) && (b.pay_day || 0) === num(it.pay_day)) return;
+    if ((b.start_amount ?? null) === (it.start_amount ?? null) && (b.start_date || '') === (it.start_date || '')) return;
     try { await api.savePdcItem(it.id, b); flash(`${it.label} balance saved`); await load(year); } catch (e) { setErr(e.message); }
   }
-  async function generate(it) {
-    const b = setupBody(it);
-    if (!(b.start_amount > 0)) { setErr('Type the balance first.'); return; }
-    if (!b.start_date) { setErr('Choose the date of that balance ("as of").'); return; }
-    if (!(b.monthly > 0)) { setErr('Type the monthly PDC amount.'); return; }
-    if (!(b.pay_day >= 1 && b.pay_day <= 31)) { setErr('Type the day of the month (1 to 31).'); return; }
-    let y = Number(b.start_date.slice(0, 4)); let m = Number(b.start_date.slice(5, 7));
-    if (ymd(y, m, clampDay(y, m, b.pay_day)) <= b.start_date) { m += 1; if (m > 12) { m = 1; y += 1; } } // the first payment is after the "as of" date
-    const entries = []; let left = b.start_amount;
-    for (let n = 0; n < 600 && left > 0.004; n++) {
-      const pay = r2(Math.min(b.monthly, left));
-      entries.push({ year: y, month: m, amount: pay, pay_date: ymd(y, m, clampDay(y, m, b.pay_day)) });
-      left = r2(left - pay);
-      m += 1; if (m > 12) { m = 1; y += 1; }
-    }
-    if (!entries.length) return;
-    const a = entries[0]; const z = entries[entries.length - 1];
-    if (!window.confirm(`Make ${entries.length} rows for ${it.label}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)}, ${peso(b.monthly)} each month on day ${b.pay_day}?\n\nThis replaces the amounts and dates already in those months.`)) return;
-    setBusy(true);
-    try { await api.savePdcItem(it.id, b); await api.savePdcBulk(it.id, entries); flash(`${entries.length} rows made for ${it.label}`); await load(year); } catch (e) { setErr(e.message); }
-    setBusy(false);
-  }
-
   // ---- paste from Excel: Date issued | Amount | Balance (or only the amounts). Paste into any row of the table.
   async function onPasteRows(e) {
     const text = e.clipboardData?.getData('text') || '';
     if (!/[\n\t]/.test(text.trim())) return; // one value: normal paste
     const tr = e.target.closest ? e.target.closest('tr[data-m]') : null;
     const it = items.find((x) => x.id === sel);
-    if (!tr || !it) return;
+    const fromBox = !!(e.target.dataset && e.target.dataset.paste); // the First date box (no rows yet)
+    if ((!tr && !fromBox) || !it) return;
     e.preventDefault();
-    const day = num(setup[it.id]?.day);
-    let y = year; let m = Number(tr.dataset.m);
+    let y = year; let m = tr ? Number(tr.dataset.m) : new Date().getMonth() + 1;
     const entries = []; let start = null;
     for (const line of text.replace(/\r/g, '').split('\n')) {
       if (!line.trim()) continue;
@@ -157,13 +191,13 @@ export default function PdcTracker() {
       if (amount === null && balance !== null && !entries.length && !start) { start = { amount: balance, date: when }; continue; } // the top row: the balance it starts from
       if (amount === null || amount < 0) continue;
       if (when) { entries.push({ year: Number(when.slice(0, 4)), month: Number(when.slice(5, 7)), amount: r2(amount), pay_date: when }); y = Number(when.slice(0, 4)); m = Number(when.slice(5, 7)) + 1; }
-      else entries.push({ year: y, month: m, amount: r2(amount), pay_date: day >= 1 && day <= 31 ? ymd(y, m, clampDay(y, m, day)) : null });
+      else entries.push({ year: y, month: m, amount: r2(amount), pay_date: ymd(y, m, clampDay(y, m, it.first_date ? Number(it.first_date.slice(8, 10)) : 1)) });
       if (!when) m += 1;
       if (m > 12) { m = 1; y += 1; }
     }
     if (!entries.length && !start) { setErr('Nothing to paste. Copy the Date issued and Amount columns from Excel.'); return; }
     const a = entries[0]; const z = entries[entries.length - 1];
-    if (!window.confirm(`Paste into ${it.label}?${entries.length ? `\n\n${entries.length} month${entries.length === 1 ? '' : 's'}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)} (replaces what is in those months).` : ''}${start ? `\nBalance ${peso(start.amount)}${start.date ? ` as of ${fdate(start.date)}` : ''} (replaces the current balance).` : ''}`)) return;
+    if (!window.confirm(`Paste into ${it.label}?${entries.length ? `\n\n${entries.length} month${entries.length === 1 ? '' : 's'}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)} (replaces what is in those months).` : ''}${start ? `\nBalance ${peso(start.amount)}${start.date ? ` as of ${fus(start.date)}` : ''} (replaces the current balance).` : ''}`)) return;
     setBusy(true);
     try {
       if (start) { const b = setupBody(it); await api.savePdcItem(it.id, { ...b, start_amount: start.amount, start_date: start.date || b.start_date }); }
@@ -240,7 +274,7 @@ export default function PdcTracker() {
               <button type="button" key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} aria-pressed={on}>
                 <span className="pdc-card-name">{it.label}</span>
                 <b className={`pdc-card-bal ${k.end < 0 ? 'neg' : ''}`}>{sgn(k.end)}</b>
-                <span className="pdc-card-sub">left at end of {year} · started at {sgn(k.startAmt)}{it.start_date ? ` (${fdate(it.start_date)})` : ''}</span>
+                <span className="pdc-card-sub">left at end of {year} · started at {sgn(k.startAmt)}{it.start_date ? ` (${fus(it.start_date)})` : ''}</span>
                 <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
                 <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC in {year}: {peso(k.paid)}</span>
                 <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
@@ -255,38 +289,36 @@ export default function PdcTracker() {
           <div className="pdc-list-head"><h2>{cur.label} · {year}</h2></div>
           <div className="pdc-setup">
             <label><span>Balance</span><MoneyInput className="pdc-in" placeholder={peso(cur.amount)} aria-label="Balance" value={su.amount || ''} onChange={(v) => setSu({ amount: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
-            <label><span>as of</span><LongDateInput value={su.date || ''} onChange={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} ariaLabel="Balance as of" placeholder="Date" /></label>
-            <label><span>Monthly PDC</span><MoneyInput className="pdc-in" placeholder="0.00" aria-label="Monthly PDC" value={su.monthly || ''} onChange={(v) => setSu({ monthly: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
-            <label><span>Day of month</span><input className="pdc-in pdc-day" type="number" min="1" max="31" placeholder="15" aria-label="Day of the month" value={su.day || ''} onChange={(e) => setSu({ day: e.target.value })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
-            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => generate(cur)}>Generate rows</button>
+            <label><span>as of</span><DateBox value={su.date || ''} ariaLabel="Balance as of" onCommit={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} /></label>
+            {!cur.last_date && <label><span>First date</span><input className="pdc-in pdc-date" inputMode="numeric" placeholder="09/25/2026" aria-label="First date" data-paste="1" onPaste={onPasteRows} value={firstTxt} onChange={(e) => setFirstTxt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addRow(cur); }} /></label>}
+            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>
           </div>
-          <p className="pdc-tip">The balance is typed here (blank = the Future payables amount). “Generate rows” makes one row a month until it is paid. You can also copy the Date issued and Amount columns from Excel and paste them into any row below.</p>
+          <p className="pdc-tip">{cur.last_date ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like 09/25/2026) and press + Add row. The next rows follow month by month.'} The balance is typed here (blank = the Future payables amount). You can also copy rows from Excel and paste them into the table.</p>
           <div className="table-wrap" onPaste={onPasteRows}>
             <table className="data-table pdc-table">
               <thead>
                 <tr>
-                  <th>Month</th>
                   <th>Date issued</th>
                   <th className="text-right">PDC amount (type here)</th>
                   <th className="text-right">Balance <span className="pdc-hint">hover an amount to see why</span></th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 <tr className="pdc-total">
-                  <td colSpan={2}>Beginning balance <small className="pdc-none">{cur.start_date ? `as of ${fdate(cur.start_date)}` : cur.start_amount === null ? 'Future payables amount' : ''}{cur.paid_before ? ` less PDC paid before ${year}` : ''}</small></td>
+                  <td>Beginning balance <small className="pdc-none">{cur.start_date ? `as of ${fus(cur.start_date)}` : cur.start_amount === null ? 'Future payables amount' : ''}{cur.paid_before ? ` less PDC paid before ${year}` : ''}</small></td>
                   <td />
                   <td className="text-right pdc-bal">
                     <span className="pdc-why" tabIndex={0} aria-label={`Why the beginning balance is ${sgn(cc.begin)}`}
                       onMouseEnter={(e) => openTip(cur.id, 0, e.currentTarget)} onMouseLeave={closeTip}
                       onFocus={(e) => openTip(cur.id, 0, e.currentTarget)} onBlur={closeTip}>{sgn(cc.begin)}</span>
                   </td>
+                  <td />
                 </tr>
-                {MONTHS.map((name, i) => (
+                {MONTHS.map((name, i) => (!existsRow(cur, i) ? null : (
                   <tr key={name} data-m={i + 1}>
-                    <td><span style={{ fontWeight: 600 }}>{name}</span></td>
                     <td>
-                      <LongDateInput value={dates[cur.id]?.[i] || ''} ariaLabel={`Date issued ${cur.label} ${name}`} placeholder="Date"
-                        onChange={(v) => { setDates((x) => ({ ...x, [cur.id]: x[cur.id].map((d, k) => (k === i ? v : d)) })); commit(cur, i, { d: v || '' }); }} />
+                      <DateBox value={dates[cur.id]?.[i] || ''} ariaLabel={`Date issued ${cur.label} ${name}`} placeholder={`${name.slice(0, 3)} ${year}`} onCommit={(v) => changeDate(cur, i, v)} />
                     </td>
                     <td className="text-right">
                       <MoneyInput className="pdc-in" aria-label={`PDC amount ${cur.label} ${name}`} placeholder="0.00" value={typed[cur.id]?.[i] || ''}
@@ -300,12 +332,15 @@ export default function PdcTracker() {
                           onFocus={(e) => openTip(cur.id, i + 1, e.currentTarget)} onBlur={closeTip}>{sgn(cc.bal[i])}{cc.bal[i] <= 0.004 && cc.bal[i] > -0.005 && num(typed[cur.id]?.[i]) > 0 ? ' · END' : ''}</span>
                       )}
                     </td>
+                    <td className="text-right"><button type="button" className="at-x" onClick={() => removeRow(cur, i)} aria-label="Remove row" title="Remove this row">×</button></td>
                   </tr>
-                ))}
+                )))}
+                {!MONTHS.some((_, i) => existsRow(cur, i)) && <tr><td colSpan={4} className="pdc-none">No rows in {year}. {cur.last_date ? `Use ‹ › to find the other years, or press + Add row to continue after ${fus(cur.last_date)}.` : 'Type the first date above and press + Add row.'}</td></tr>}
                 <tr className="pdc-total">
-                  <td colSpan={2}>Total PDC · balance at the end of {year}</td>
+                  <td>Total PDC · balance at the end of {year}</td>
                   <td className="text-right">{peso(cc.paid)}</td>
                   <td className="text-right">{sgn(cc.end)}</td>
+                  <td />
                 </tr>
               </tbody>
             </table>
@@ -358,7 +393,7 @@ export default function PdcTracker() {
             {m === 0 ? (
               <>
                 <div className="pdc-pop-head"><b>{it.label}</b><span>Beginning balance {year}</span></div>
-                <div className="pdc-pop-total"><span>{it.start_amount === null ? 'Future payables amount (Cash Position)' : `Balance typed${it.start_date ? ` as of ${fdate(it.start_date)}` : ''}`}</span><b>{sgn(k.startAmt)}</b></div>
+                <div className="pdc-pop-total"><span>{it.start_amount === null ? 'Future payables amount (Cash Position)' : `Balance typed${it.start_date ? ` as of ${fus(it.start_date)}` : ''}`}</span><b>{sgn(k.startAmt)}</b></div>
                 {it.paid_before !== 0 && <div className="pdc-pop-total"><span>Less: PDC paid before {year}</span><b>− {peso(it.paid_before)}</b></div>}
                 <div className="pdc-pop-total"><span>Beginning balance</span><b>{sgn(k.begin)}</b></div>
               </>

@@ -2020,6 +2020,10 @@ const actions = {
     const future = (await getCashPositionSettings()).future;
     const itemRows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date FROM pdc_item_months');
     const setups = await all('SELECT item_id, start_amount, start_date::text AS start_date, monthly, pay_day FROM pdc_items');
+    // first and last row of each item (a row = a date or an amount), so "Add row" can continue from the last one, also into the next year
+    const spans = await all(
+      `SELECT item_id, MIN(COALESCE(pay_date, make_date(year, month, 1)))::text AS first_date, MAX(COALESCE(pay_date, make_date(year, month, 1)))::text AS last_date
+       FROM pdc_item_months WHERE pay_date IS NOT NULL OR amount > 0 GROUP BY item_id`);
     const items = future.map((f) => {
       const su = setups.find((x) => x.item_id === f.id);
       const startAmount = su && su.start_amount !== null && su.start_amount !== undefined ? toFloat(su.start_amount) : null;
@@ -2036,7 +2040,8 @@ const actions = {
         if (ry === year) { if (rm >= 1 && rm <= 12) { m12[rm - 1] = toFloat(r.amount); d12[rm - 1] = r.pay_date || ''; } }
         else if (ry < year && counted(ry, rm, r.pay_date)) before += toFloat(r.amount);
       }
-      return { id: f.id, label: f.label || '(no name)', amount: f.amount, start_amount: startAmount, start_date: startDate,
+      const span = spans.find((x) => x.item_id === f.id);
+      return { id: f.id, label: f.label || '(no name)', amount: f.amount, first_date: span?.first_date || '', last_date: span?.last_date || '', start_amount: startAmount, start_date: startDate,
         monthly: su ? toFloat(su.monthly) : 0, pay_day: su ? toInt(su.pay_day) : 0, months: m12, dates: d12, paid_before: Math.round(before * 100) / 100 };
     });
     const payables = await all(
