@@ -6,8 +6,8 @@ import MoneyInput from '../MoneyInput';
 const num = (v) => Number(v) || 0;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// PDC Tracker: type the PDC amount for each month (January to December); the Balance is that amount minus the
-// unpaid Running Payables whose check date falls in the month. The running payables are listed below.
+// PDC Tracker: type the PDC amount for each month (January to December); the Balance is the unpaid Running Payables
+// whose check date falls in the month, minus the PDC amount typed for that month. The running payables are listed below.
 export default function PdcTracker() {
   const [year, setYear] = useState(null);
   const [data, setData] = useState(null);
@@ -66,6 +66,8 @@ export default function PdcTracker() {
 
   const totalAmount = r2(typed.reduce((t, v) => t + num(v), 0));
   const totalDue = r2(due.m.reduce((t, x) => t + x.total, 0));
+  const balOf = (i) => r2(due.m[i].total - num(typed[i])); // payables minus the PDC typed
+  const totalBal = r2(totalDue - totalAmount);
   const shown = (data.payables || []).filter((p) => {
     const mo = p.check_date ? Number(p.check_date.slice(5, 7)) : 0;
     return !pick || mo === pick;
@@ -77,7 +79,7 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Type the PDC amount for each month. Balance = the unpaid running payables with a check date in that month.</div>
+          <div className="subtitle">Type the PDC amount for each month. Balance = the unpaid running payables with a check date in that month, minus the PDC amount you type.</div>
         </div>
         <div className="pdc-year">
           <button type="button" className="btn btn-secondary" onClick={() => load(year - 1)} aria-label="Previous year">‹</button>
@@ -95,7 +97,7 @@ export default function PdcTracker() {
               <tr>
                 <th>Month</th>
                 <th className="text-right">PDC amount (type here)</th>
-                <th className="text-right">Balance (unpaid running payables) <span className="pdc-hint">hover an amount to see why</span></th>
+                <th className="text-right">Balance (payables − PDC) <span className="pdc-hint">hover an amount to see why</span></th>
               </tr>
             </thead>
             <tbody>
@@ -109,11 +111,11 @@ export default function PdcTracker() {
                         onBlur={() => commit(i)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
                     </td>
                     <td className="text-right pdc-bal">
-                      {due.m[i].count ? (
-                        <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${peso(due.m[i].total)}`}
+                      {due.m[i].count || num(typed[i]) ? (
+                        <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${peso(balOf(i))}`}
                           onMouseEnter={(e) => openTip(i + 1, e.currentTarget)} onMouseLeave={closeTip}
                           onFocus={(e) => openTip(i + 1, e.currentTarget)} onBlur={closeTip}>
-                          {peso(due.m[i].total)} <span className="pdc-n">{due.m[i].count}</span>
+                          {peso(balOf(i))} {due.m[i].count > 0 && <span className="pdc-n">{due.m[i].count}</span>}
                         </span>
                       ) : '—'}
                     </td>
@@ -123,7 +125,7 @@ export default function PdcTracker() {
               <tr className="pdc-total">
                 <td>Total</td>
                 <td className="text-right">{peso(totalAmount)}</td>
-                <td className="text-right">{peso(totalDue)}</td>
+                <td className="text-right">{peso(totalBal)}</td>
               </tr>
             </tbody>
           </table>
@@ -164,6 +166,7 @@ export default function PdcTracker() {
       {tip && (() => {
         const list = (data.payables || []).filter((p) => p.check_date && Number(p.check_date.slice(5, 7)) === tip.m);
         const tot = r2(list.reduce((t, p) => t + p.amount, 0));
+        const pdc = r2(num(typed[tip.m - 1]));
         return (
           <div className="pdc-pop" role="tooltip" style={{ left: tip.left, width: tip.w, top: tip.top, bottom: tip.bottom }}
             onMouseEnter={() => clearTimeout(tipTimer.current)} onMouseLeave={closeTip}>
@@ -180,7 +183,9 @@ export default function PdcTracker() {
                 </div>
               ))}
             </div>
-            <div className="pdc-pop-total"><span>Balance</span><b>{peso(tot)}</b></div>
+            <div className="pdc-pop-total"><span>Unpaid payables</span><b>{peso(tot)}</b></div>
+            <div className="pdc-pop-total"><span>Less: PDC amount</span><b>− {peso(pdc)}</b></div>
+            <div className="pdc-pop-total"><span>Balance</span><b>{peso(r2(tot - pdc))}</b></div>
           </div>
         );
       })()}
