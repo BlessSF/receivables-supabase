@@ -296,6 +296,15 @@ async function ensurePdcTable() {
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (year, month)
   )`);
+  // One tracker per Future payable (Cash Position): the typed PDC amount for each item, year and month
+  await exec(`CREATE TABLE IF NOT EXISTS pdc_item_months (
+    item_id TEXT NOT NULL,
+    year INT NOT NULL,
+    month INT NOT NULL,
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (item_id, year, month)
+  )`);
   pdcReady = true;
 }
 // Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
@@ -1991,6 +2000,19 @@ const actions = {
     const rows = await all('SELECT month, amount FROM pdc_months WHERE year = ?', [year]);
     const months = Array.from({ length: 12 }, () => 0);
     for (const r of rows) { const m = toInt(r.month); if (m >= 1 && m <= 12) months[m - 1] = toFloat(r.amount); }
+    // one tracker per Future payable: beginning balance = the item's amount, less what was paid in earlier years
+    const future = (await getCashPositionSettings()).future;
+    const itemRows = await all('SELECT item_id, year, month, amount FROM pdc_item_months');
+    const items = future.map((f) => {
+      const m12 = Array.from({ length: 12 }, () => 0);
+      let before = 0;
+      for (const r of itemRows) {
+        if (r.item_id !== f.id) continue;
+        if (toInt(r.year) === year) { const m = toInt(r.month); if (m >= 1 && m <= 12) m12[m - 1] = toFloat(r.amount); }
+        else if (toInt(r.year) < year) before += toFloat(r.amount);
+      }
+      return { id: f.id, label: f.label || '(no name)', amount: f.amount, months: m12, paid_before: Math.round(before * 100) / 100 };
+    });
     const payables = await all(
       `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, release_status
        FROM running_payables
@@ -1999,7 +2021,7 @@ const actions = {
     const [other] = await all(
       `SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS total FROM running_payables
        WHERE status = 'Unpaid' AND check_date IS NOT NULL AND EXTRACT(YEAR FROM check_date) <> ?`, [year]);
-    return { ok: true, data: { year, this_year: nowYear, months, payables: payables.map((p) => ({ ...p, amount: toFloat(p.amount) })),
+    return { ok: true, data: { year, this_year: nowYear, months, items, payables: payables.map((p) => ({ ...p, amount: toFloat(p.amount) })),
       other_years: { count: toInt(other?.n), total: toFloat(other?.total) } } };
   },
 
@@ -2011,6 +2033,15 @@ const actions = {
     if (year < 2000 || year > 2100 || month < 1 || month > 12) jsonExit({ ok: false, error: 'Choose a valid month.' }, 400);
     const amount = Math.round(toFloat(input.amount) * 100) / 100;
     if (!(amount >= 0) || amount > 99999999999) jsonExit({ ok: false, error: 'Enter an amount of 0 or more.' }, 400);
+    const itemId = trim(input.item_id ?? '').slice(0, 40);
+    if (itemId) { // the PDC of one Future payable
+      const item = (await getCashPositionSettings()).future.find((f) => f.id === itemId);
+      if (!item) jsonExit({ ok: false, error: 'This future payable is not in Cash Position any more.' }, 400);
+      await exec(
+        `INSERT INTO pdc_item_months (item_id, year, month, amount, updated_at) VALUES (?, ?, ?, ?, NOW())
+         ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()`, [itemId, year, month, amount]);
+      return { ok: true, year, month, amount, item_id: itemId, label: item.label || '(no name)' };
+    }
     await exec(
       `INSERT INTO pdc_months (year, month, amount, updated_at) VALUES (?, ?, ?, NOW())
        ON CONFLICT (year, month) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()`, [year, month, amount]);

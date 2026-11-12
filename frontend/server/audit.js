@@ -69,7 +69,7 @@ const RULES = {
   },
   save_pdc_amount: {
     area: 'PDC Tracker', kind: 'edit',
-    text: (i) => `PDC amount ${['January','February','March','April','May','June','July','August','September','October','November','December'][(num(i.month) || 1) - 1]} ${num(i.year)}: ${peso(i.amount)}`,
+    text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC amount ${['January','February','March','April','May','June','July','August','September','October','November','December'][(num(i.month) || 1) - 1]} ${num(i.year)}: ${peso(i.amount)}`,
   },
   add_payables_bulk: {
     area: (i) => (i.released === true ? 'Main' : 'Payment Record'), kind: 'add',
