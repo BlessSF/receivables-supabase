@@ -77,6 +77,7 @@ export default function PdcTracker() {
   const [rows, setRows] = useState({}); // { itemId: [{ year, month, a (text), d ('YYYY-MM-DD' or '') }] }
   const [setup, setSetup] = useState({}); // { itemId: { amount, date } } the balance box
   const [sel, setSel] = useState('');
+  const [edit, setEdit] = useState(null); // the Edit window: { id, name, amount, date, del (asking to confirm the removal) }
   const [adding, setAdding] = useState(false); // the "+ Add future payable" form
   const [newName, setNewName] = useState('');
   const [newAmt, setNewAmt] = useState('');
@@ -194,14 +195,25 @@ export default function PdcTracker() {
       await load(); setSel(r.item_id);
     } catch (e) { setErr(e.message); }
   }
-  async function renameItem(it) {
-    const name = window.prompt('New name for this future payable:', it.label);
-    if (name === null || !name.trim() || name.trim() === it.label) return;
-    try { await api.managePdcItem({ op: 'rename', item_id: it.id, label: name.trim() }); flash('Renamed'); await load(); } catch (e) { setErr(e.message); }
+  const openEdit = (it) => { const k = calcs[it.id]; setEdit({ id: it.id, name: it.label, amount: String(k ? k.startAmt : it.amount), date: it.start_date || '', del: false }); };
+  async function saveEdit() {
+    const it = items.find((x) => x.id === edit.id); if (!it) return;
+    const name = edit.name.trim();
+    if (!name) { setErr('Type the name.'); return; }
+    const amount = edit.amount === '' ? null : num(edit.amount);
+    setBusy(true);
+    try {
+      if (name !== it.label) await api.managePdcItem({ op: 'rename', item_id: it.id, label: name });
+      if ((amount ?? null) !== (it.start_amount ?? null) || (edit.date || '') !== (it.start_date || '')) await api.savePdcItem(it.id, { start_amount: amount, start_date: edit.date || null, monthly: 0, pay_day: null });
+      flash(`${name} saved`); setEdit(null); await load();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
   }
-  async function removeItem(it) {
-    if (!window.confirm(`Remove "${it.label}" and all its rows?\n\nIt also leaves the Future payables in Cash Position. This cannot be undone.`)) return;
-    try { await api.managePdcItem({ op: 'delete', item_id: it.id }); flash(`${it.label} removed`); await load(); } catch (e) { setErr(e.message); }
+  async function removeItem() {
+    const it = items.find((x) => x.id === edit.id); if (!it) return;
+    setBusy(true);
+    try { await api.managePdcItem({ op: 'delete', item_id: it.id }); flash(`${it.label} removed`); setEdit(null); await load(); } catch (e) { setErr(e.message); }
+    setBusy(false);
   }
 
   // ---- the balance box of one item
@@ -314,15 +326,16 @@ export default function PdcTracker() {
             const share = k.startAmt > 0 ? Math.max(0, Math.min(100, ((k.startAmt - k.end) / k.startAmt) * 100)) : 0;
             const on = cur && cur.id === it.id;
             return (
-              <button type="button" key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} aria-pressed={on}>
+              <div role="button" tabIndex={0} key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(it.id); } }} aria-pressed={on}>
+                <button type="button" className="pdc-card-edit" onClick={(e) => { e.stopPropagation(); openEdit(it); }} onKeyDown={(e) => e.stopPropagation()} title="Edit the name and the first amount" aria-label={`Edit ${it.label}`}>✎ Edit</button>
                 <span className="pdc-card-name">{it.label}</span>
                 <b className={`pdc-card-bal ${k.end < 0 ? 'neg' : ''}`}>{sgn(k.end)}</b>
-                <span className="pdc-card-sub">balance left · started at {sgn(k.startAmt)}{it.start_date ? ` (${flong(it.start_date)})` : ''}</span>
+                <span className="pdc-card-sub">balance left · first amount <b className="pdc-card-first" onClick={(e) => { e.stopPropagation(); openEdit(it); }} title="Click to change the first amount">{sgn(k.startAmt)}</b>{it.start_date ? ` (${flong(it.start_date)})` : ''}</span>
                 <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
                 <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC paid: {peso(k.paid)}</span>
                 {(() => { const n = nextDue(it); return <span className="pdc-card-sub"><b>Next to pay:</b> {n ? `${n.d ? flong(n.d) : mon(n.year, n.month)} · ${peso(num(n.a))}` : 'nothing left'}</span>; })()}
                 <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
-              </button>
+              </div>
             );
           })}
           <div className="pdc-card pdc-card-add">
@@ -340,7 +353,7 @@ export default function PdcTracker() {
 
       {cur && (
         <div className="panel">
-          <div className="pdc-list-head"><h2>{cur.label}</h2><span><button type="button" className="btn btn-secondary btn-sm" onClick={() => renameItem(cur)}>Rename</button>{' '}<button type="button" className="btn btn-danger btn-sm" onClick={() => removeItem(cur)}>Remove</button></span></div>
+          <div className="pdc-list-head"><h2>{cur.label}</h2><span><button type="button" className="btn btn-secondary btn-sm" onClick={() => openEdit(cur)}>✎ Edit name / first amount</button></span></div>
           <div className="pdc-setup">
             <label><span>Balance</span><MoneyInput className="pdc-in" placeholder={peso(cur.amount)} aria-label="Balance" value={su.amount || ''} onChange={(v) => setSu({ amount: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
             <label><span>as of</span><DateBox value={su.date || ''} ariaLabel="Balance as of" onCommit={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} /></label>
@@ -447,6 +460,35 @@ export default function PdcTracker() {
         </div>
         {due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date ({peso(due.none.total)}).</span></div>}</>}
       </div>
+      {edit && (
+        <div className="pdc-modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEdit(null); }}>
+          <div className="pdc-modal" role="dialog" aria-modal="true" aria-label="Edit future payable">
+            <h3>Edit future payable</h3>
+            <p className="pdc-modal-sub">The first amount is the balance the PDC rows go down from.</p>
+            <label className="pdc-modal-field"><span>Name</span>
+              <input className="pdc-in" value={edit.name} autoFocus maxLength={120} onChange={(e) => setEdit((x) => ({ ...x, name: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }} />
+            </label>
+            <label className="pdc-modal-field"><span>First amount (balance)</span>
+              <MoneyInput className="pdc-in" placeholder="0.00" value={edit.amount} onChange={(v) => setEdit((x) => ({ ...x, amount: v }))} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }} />
+            </label>
+            <label className="pdc-modal-field"><span>As of (date of that amount)</span>
+              <DateBox value={edit.date} ariaLabel="First amount as of" onCommit={(v) => setEdit((x) => ({ ...x, date: v }))} />
+            </label>
+            {edit.del ? (
+              <div className="pdc-modal-del">
+                <p>Remove <b>{edit.name}</b> and all its rows? It also leaves the Future payables in Cash Position. This cannot be undone.</p>
+                <div className="pdc-modal-actions"><button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={removeItem}>Yes, remove it</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setEdit((x) => ({ ...x, del: false }))}>Back</button></div>
+              </div>
+            ) : (
+              <div className="pdc-modal-actions">
+                <button type="button" className="btn btn-danger btn-sm pdc-modal-left" onClick={() => setEdit((x) => ({ ...x, del: true }))}>Remove</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setEdit(null)}>Cancel</button>
+                <button type="button" className="btn" disabled={busy} onClick={saveEdit}>{busy ? 'Saving…' : 'Save'}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {tip && (() => {
         const it = items.find((x) => x.id === tip.id);
         if (!it) return null;

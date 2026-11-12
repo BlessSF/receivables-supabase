@@ -2092,3 +2092,28 @@ select.rec-input { min-width: 112px; }
 .pdc-card-add { border-style: dashed; background: #fafbfc; justify-content: center; }
 .pdc-add-btn { background: none; border: 0; font: inherit; font-weight: 700; color: var(--teal); cursor: pointer; padding: 22px 0; text-align: center; }
 .pdc-card-add .pdc-in { max-width: none; }
+.pdc-card { position: relative; }
+.pdc-card-edit { position: absolute; top: 10px; right: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid #c9d1dc; background: #fff; color: #3d4756; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.pdc-card-edit:hover { border-color: var(--teal); color: var(--teal); }
+.pdc-card-all .pdc-card-edit { display: none; }
+.pdc-card-name { padding-right: 62px; }
+.pdc-card-first { color: var(--teal); text-decoration: underline dotted; cursor: pointer; }
+.pdc-card-pick:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.pdc-modal-bg { position: fixed; inset: 0; z-index: 80; background: rgba(20, 33, 61, .5); display: flex; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(2px); }
+.pdc-modal { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: #fff; border-radius: 18px; padding: 24px 26px 22px; box-shadow: 0 24px 60px rgba(20, 33, 61, .35); }
+.pdc-modal h3 { margin: 0 0 4px; font-size: 19px; font-weight: 700; color: #14213d; }
+.pdc-modal-sub { margin: 0 0 16px; font-size: 13px; color: #8a93a0; }
+.pdc-modal-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #5b6574; }
+.pdc-modal-field .pdc-in { max-width: none; width: 100%; text-align: left; box-sizing: border-box; font-size: 15px; text-transform: none; letter-spacing: 0; font-weight: 500; color: #14213d; }
+.pdc-modal-field .pdc-datewrap { max-width: none; }
+.pdc-modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 8px; }
+.pdc-modal-left { margin-right: auto; }
+.pdc-modal-del { margin-top: 6px; padding: 12px 14px; border-radius: 12px; background: #fdf1f0; border: 1px solid #f3c9c4; }
+.pdc-modal-del p { margin: 0 0 10px; font-size: 13px; color: #7a1f16; }
+.pdc-modal-sm { width: min(420px, 100%); }
+.pdc-modal-sm h3 { margin-bottom: 12px; }
+.pdc-modal-info { margin: 0 0 6px; padding: 12px 14px; border-radius: 12px; background: #f4f7fa; border: 1px solid #e1e7ee; }
+.pdc-modal-info p, .pdc-modal-sm .pdc-modal-del p { margin: 0 0 6px; font-size: 13.5px; line-height: 1.4; }
+.pdc-modal-info p { color: #3d4756; }
+.pdc-modal-sm .pdc-modal-del p:last-child, .pdc-modal-info p:last-child { margin-bottom: 0; }
+.pdc-modal-sm .pdc-modal-actions { margin-top: 14px; }
