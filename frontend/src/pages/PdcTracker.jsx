@@ -91,7 +91,7 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Each future payable has its own tracker. Its amount is the beginning balance; type the PDC for each month and it comes off the balance until it is paid.</div>
+          <div className="subtitle">Each future payable has its own card. Click a card to open its tracker, type the PDC for each month and it comes off the balance until it is paid.</div>
         </div>
         <div className="pdc-year">
           <button type="button" className="btn btn-secondary" onClick={() => load(year - 1)} aria-label="Previous year">‹</button>
@@ -107,25 +107,28 @@ export default function PdcTracker() {
       )}
 
       {items.length > 0 && (
-        <div className="panel">
-          <div className="table-wrap">
-            <table className="data-table pdc-table">
-              <thead>
-                <tr><th>Future payable <span className="pdc-hint">click one to open its tracker</span></th><th className="text-right">Beginning balance</th><th className="text-right">PDC in {year}</th><th className="text-right">Balance at end of {year}</th></tr>
-              </thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={it.id} className={cur && cur.id === it.id ? 'pdc-picked' : ''}>
-                    <td><button type="button" className="pdc-month" onClick={() => setSel(it.id)}>{it.label}</button></td>
-                    <td className="text-right">{sgn(calcs[it.id].begin)}</td>
-                    <td className="text-right">{peso(calcs[it.id].paid)}</td>
-                    <td className="text-right pdc-bal">{sgn(calcs[it.id].end)}</td>
-                  </tr>
-                ))}
-                <tr className="pdc-total"><td>Total of all</td><td className="text-right">{sgn(sum('begin'))}</td><td className="text-right">{peso(sum('paid'))}</td><td className="text-right">{sgn(sum('end'))}</td></tr>
-              </tbody>
-            </table>
+        <div className="pdc-cards">
+          <div className="pdc-card pdc-card-all">
+            <span className="pdc-card-name">All future payables</span>
+            <b className="pdc-card-bal">{sgn(sum('end'))}</b>
+            <span className="pdc-card-sub">left at end of {year} · started at {sgn(sum('begin'))}</span>
+            <span className="pdc-card-sub">PDC in {year}: {peso(sum('paid'))}</span>
           </div>
+          {items.map((it) => {
+            const k = calcs[it.id];
+            const share = it.amount > 0 ? Math.max(0, Math.min(100, ((it.amount - k.end) / it.amount) * 100)) : 0;
+            const on = cur && cur.id === it.id;
+            return (
+              <button type="button" key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} aria-pressed={on}>
+                <span className="pdc-card-name">{it.label}</span>
+                <b className={`pdc-card-bal ${k.end < 0 ? 'neg' : ''}`}>{sgn(k.end)}</b>
+                <span className="pdc-card-sub">left at end of {year} · started at {sgn(k.begin)}</span>
+                <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
+                <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC in {year}: {peso(k.paid)}</span>
+                <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
