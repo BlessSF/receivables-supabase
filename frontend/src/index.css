@@ -2068,3 +2068,5 @@ select.rec-input { min-width: 112px; }
 .pdc-setup .pdc-day { max-width: 90px; text-align: center; }
 .pdc-tip { margin: 8px 16px 12px; font-size: 12px; color: #8a93a0; }
 .pdc-in.pdc-date { max-width: 140px; text-align: left; }
+.pdc-in.pdc-date { max-width: 210px; }
+.pdc-yearrow td { background: #eef2f6; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #5b6574; padding-top: 7px; padding-bottom: 7px; }

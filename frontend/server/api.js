@@ -2041,7 +2041,11 @@ const actions = {
         else if (ry < year && counted(ry, rm, r.pay_date)) before += toFloat(r.amount);
       }
       const span = spans.find((x) => x.item_id === f.id);
-      return { id: f.id, label: f.label || '(no name)', amount: f.amount, first_date: span?.first_date || '', last_date: span?.last_date || '', start_amount: startAmount, start_date: startDate,
+      // every row of this item, from every year (a row = a date or an amount), oldest first
+      const allRows = itemRows.filter((r) => r.item_id === f.id && (r.pay_date || toFloat(r.amount) > 0))
+        .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '' }))
+        .sort((a, b) => a.year - b.year || a.month - b.month);
+      return { id: f.id, label: f.label || '(no name)', amount: f.amount, first_date: span?.first_date || '', last_date: span?.last_date || '', rows: allRows, start_amount: startAmount, start_date: startDate,
         monthly: su ? toFloat(su.monthly) : 0, pay_day: su ? toInt(su.pay_day) : 0, months: m12, dates: d12, paid_before: Math.round(before * 100) / 100 };
     });
     const payables = await all(
