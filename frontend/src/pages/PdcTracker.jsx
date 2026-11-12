@@ -66,7 +66,7 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Type the PDC amount for each month. Balance = PDC amount − unpaid running payables with a check date in that month.</div>
+          <div className="subtitle">Type the PDC amount for each month. Balance = the unpaid running payables with a check date in that month.</div>
         </div>
         <div className="pdc-year">
           <button type="button" className="btn btn-secondary" onClick={() => load(year - 1)} aria-label="Previous year">‹</button>
@@ -84,14 +84,11 @@ export default function PdcTracker() {
               <tr>
                 <th>Month</th>
                 <th className="text-right">PDC amount (type here)</th>
-                <th className="text-right">Running payables</th>
-                <th className="text-right">Balance</th>
+                <th className="text-right">Balance (unpaid running payables)</th>
               </tr>
             </thead>
             <tbody>
               {MONTHS.map((name, i) => {
-                const bal = r2(num(typed[i]) - due.m[i].total);
-                const has = num(typed[i]) > 0 || due.m[i].count > 0;
                 return (
                   <tr key={name} className={pick === i + 1 ? 'pdc-picked' : ''}>
                     <td><button type="button" className="pdc-month" title="Show this month's payables below" onClick={() => { setPick(pick === i + 1 ? 0 : i + 1); }}>{name}</button></td>
@@ -100,8 +97,7 @@ export default function PdcTracker() {
                         onChange={(v) => setTyped((t) => t.map((x, k) => (k === i ? v : x)))}
                         onBlur={() => commit(i)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
                     </td>
-                    <td className="text-right pdc-due">{due.m[i].count ? <>{peso(due.m[i].total)} <span className="pdc-n">{due.m[i].count}</span></> : '—'}</td>
-                    <td className={`text-right pdc-bal${bal < 0 ? ' neg' : ''}`}>{has ? peso(bal) : '—'}</td>
+                    <td className="text-right pdc-bal">{due.m[i].count ? <>{peso(due.m[i].total)} <span className="pdc-n">{due.m[i].count}</span></> : '—'}</td>
                   </tr>
                 );
               })}
@@ -109,7 +105,6 @@ export default function PdcTracker() {
                 <td>Total</td>
                 <td className="text-right">{peso(totalAmount)}</td>
                 <td className="text-right">{peso(totalDue)}</td>
-                <td className={`text-right${r2(totalAmount - totalDue) < 0 ? ' pdc-neg' : ''}`}>{peso(r2(totalAmount - totalDue))}</td>
               </tr>
             </tbody>
           </table>
