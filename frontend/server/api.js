@@ -117,7 +117,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -128,7 +128,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item',
 ]);
 
 function recalcRow(d) {
@@ -475,6 +475,26 @@ function cleanFuture(list) {
 }
 async function getCashPositionSettings() {
   try { const o = JSON.parse(await getSetting('cash_position', '{}')); return { future: cleanFuture(o?.future) }; } catch { return { future: [] }; }
+}
+
+// Cash Position -> Future payables are not typed any more: each PDC Tracker item shows its next unpaid row (date, name, PDC amount).
+// When that row is checked paid, the next month's row takes its place. Rows dated before the item's "as of" date are not counted.
+async function pdcNextDue() {
+  await ensurePdcTable();
+  const future = (await getCashPositionSettings()).future;
+  const rows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date, paid FROM pdc_item_months WHERE pay_date IS NOT NULL OR amount > 0');
+  const setups = await all('SELECT item_id, start_date::text AS start_date FROM pdc_items');
+  const ym = (r) => r.date || `${r.year}-${String(r.month).padStart(2, '0')}-01`;
+  const out = [];
+  for (const f of future) {
+    const sd = setups.find((x) => x.item_id === f.id)?.start_date || '';
+    const mine = rows.filter((r) => r.item_id === f.id && r.paid !== true && toFloat(r.amount) > 0)
+      .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '' }))
+      .filter((r) => !sd || ym(r) >= sd)
+      .sort((a, b) => (ym(a) < ym(b) ? -1 : ym(a) > ym(b) ? 1 : 0));
+    if (mine[0]) out.push({ id: f.id, label: f.label || '(no name)', amount: mine[0].amount, date: mine[0].date, year: mine[0].year, month: mine[0].month });
+  }
+  return out.sort((a, b) => (ym(a) < ym(b) ? -1 : ym(a) > ym(b) ? 1 : 0));
 }
 
 const actions = {
@@ -2229,16 +2249,44 @@ const actions = {
     const [row] = await all("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM running_payables WHERE status = 'Unpaid'");
     const released = await all(
       `SELECT id, payee, amount FROM running_payables WHERE status = 'Paid' AND release_status = 'Released' AND cleared_at IS NULL`);
-    return { ok: true, as_of: todayYmd(), payment_terms: terms, receivables: rec, main: await getMainFund(), future: (await getCashPositionSettings()).future,
+    return { ok: true, as_of: todayYmd(), payment_terms: terms, receivables: rec, main: await getMainFund(), future: await pdcNextDue(),
       running_payables: toFloat(row?.total), running_count: toInt(row?.n),
       released_payables: released.map((r) => ({ id: toInt(r.id), payee: r.payee, amount: toFloat(r.amount) })) };
   },
 
   async save_cash_position(input, auth) {
     await requirePayablesAdmin(auth, '/payables/cash-position');
-    const future = cleanFuture(input.future);
+    jsonExit({ ok: false, error: 'Future payables now come from the PDC Tracker. Add or change them there.' }, 400);
+  },
+
+  // Add, rename or remove a future payable (it lives in the PDC Tracker now)
+  async manage_pdc_item(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    const op = trim(input.op ?? '');
+    let future = (await getCashPositionSettings()).future;
+    const label = trim(input.label ?? '').replace(/\s+/g, ' ').slice(0, 120);
+    let itemId = trim(input.item_id ?? '').slice(0, 40);
+    if (op === 'add') {
+      if (!label) jsonExit({ ok: false, error: 'Type the name of the future payable.' }, 400);
+      if (future.length >= 100) jsonExit({ ok: false, error: 'That is too many future payables.' }, 400);
+      itemId = `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      future = [...future, { id: itemId, label, amount: money2(input.amount) }];
+    } else if (op === 'rename' || op === 'delete') {
+      const cur = future.find((f) => f.id === itemId);
+      if (!cur) jsonExit({ ok: false, error: 'This future payable was not found.' }, 400);
+      if (op === 'rename') {
+        if (!label) jsonExit({ ok: false, error: 'Type the name.' }, 400);
+        future = future.map((f) => (f.id === itemId ? { ...f, label } : f));
+      } else {
+        future = future.filter((f) => f.id !== itemId);
+        await exec('DELETE FROM pdc_item_months WHERE item_id = ?', [itemId]);
+        await exec('DELETE FROM pdc_items WHERE item_id = ?', [itemId]);
+      }
+    } else jsonExit({ ok: false, error: 'Unknown action.' }, 400);
     await setSetting('cash_position', JSON.stringify({ future }));
-    return { ok: true, future };
+    const now = future.find((f) => f.id === itemId);
+    return { ok: true, op, item_id: itemId, label: now?.label || label };
   },
 
   async save_account_titles(input, auth) {

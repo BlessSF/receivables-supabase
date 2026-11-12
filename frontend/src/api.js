@@ -104,6 +104,7 @@ export const api = {
   getPdcTracker: (year) => call('get_pdc_tracker', { params: { year } }),
   savePdcAmount: (year, month, amount, item_id, pay_date) => call('save_pdc_amount', { method: 'POST', body: { year, month, amount, item_id, pay_date } }),
   savePdcItem: (item_id, d) => call('save_pdc_item', { method: 'POST', body: { item_id, ...d } }),
+  managePdcItem: (d) => call('manage_pdc_item', { method: 'POST', body: d }),
   setPdcPaid: (item_id, year, month, paid) => call('set_pdc_paid', { method: 'POST', body: { item_id, year, month, paid } }),
   savePdcBulk: (item_id, entries) => call('save_pdc_bulk', { method: 'POST', body: { item_id, entries } }),
   getCombinedNames: () => call('get_combined_names'),

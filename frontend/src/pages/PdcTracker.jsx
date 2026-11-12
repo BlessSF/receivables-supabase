@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { peso, fdate, MONTHS } from '../utils';
 import MoneyInput from '../MoneyInput';
@@ -78,6 +77,9 @@ export default function PdcTracker() {
   const [rows, setRows] = useState({}); // { itemId: [{ year, month, a (text), d ('YYYY-MM-DD' or '') }] }
   const [setup, setSetup] = useState({}); // { itemId: { amount, date } } the balance box
   const [sel, setSel] = useState('');
+  const [adding, setAdding] = useState(false); // the "+ Add future payable" form
+  const [newName, setNewName] = useState('');
+  const [newAmt, setNewAmt] = useState('');
   const [firstTxt, setFirstTxt] = useState(''); // the first date typed for an item that has no rows yet
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState('');
@@ -183,6 +185,25 @@ export default function PdcTracker() {
     try { await api.savePdcAmount(r.year, r.month, 0, it.id, null); flash('Row removed'); await load(); } catch (e) { setErr(e.message); }
   }
 
+  // ---- future payables live here now: add, rename, remove (Cash Position shows the next unpaid row of each)
+  async function addItem() {
+    if (!newName.trim()) { setErr('Type the name of the future payable.'); return; }
+    try {
+      const r = await api.managePdcItem({ op: 'add', label: newName.trim(), amount: num(newAmt) });
+      setNewName(''); setNewAmt(''); setAdding(false); flash(`${r.label} added`);
+      await load(); setSel(r.item_id);
+    } catch (e) { setErr(e.message); }
+  }
+  async function renameItem(it) {
+    const name = window.prompt('New name for this future payable:', it.label);
+    if (name === null || !name.trim() || name.trim() === it.label) return;
+    try { await api.managePdcItem({ op: 'rename', item_id: it.id, label: name.trim() }); flash('Renamed'); await load(); } catch (e) { setErr(e.message); }
+  }
+  async function removeItem(it) {
+    if (!window.confirm(`Remove "${it.label}" and all its rows?\n\nIt also leaves the Future payables in Cash Position. This cannot be undone.`)) return;
+    try { await api.managePdcItem({ op: 'delete', item_id: it.id }); flash(`${it.label} removed`); await load(); } catch (e) { setErr(e.message); }
+  }
+
   // ---- the balance box of one item
   const setupBody = (it, patch = {}) => {
     const s = { ...(setup[it.id] || {}), ...patch };
@@ -254,6 +275,8 @@ export default function PdcTracker() {
     return { startAmt, bal, paid, end: run };
   };
   const calcs = Object.fromEntries(items.map((it) => [it.id, calc(it)]));
+  // the next unpaid row of each item: this is what Cash Position shows under Future payables
+  const nextDue = (it) => (rows[it.id] || []).find((r) => !r.p && num(r.a) > 0 && (!it.start_date || (r.d || ymd(r.year, r.month, 1)) >= it.start_date));
   const sum = (k) => r2(items.reduce((t, it) => t + calcs[it.id][k], 0));
   const cur = items.find((it) => it.id === sel) || items[0];
   const cc = cur ? calcs[cur.id] : null;
@@ -269,23 +292,23 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Each future payable has its own card. Click a card, type its balance and the date of that balance, then press + Add row for every PDC. All years are shown together.</div>
+          <div className="subtitle">Add each future payable here. Click a card, type its balance and the date of that balance, then press + Add row for every PDC. Cash Position shows the next unpaid row of each one.</div>
         </div>
       </div>
       {err && <div className="flash flash-error" role="alert">{err}</div>}
 
       {items.length === 0 && (
-        <div className="panel"><div className="pdc-foot"><span>No future payables yet. Add them in <Link to="/payables/cash-position" className="pay-link-btn">Cash Position</Link> and each one gets its own tracker here.</span></div></div>
+        <div className="panel"><div className="pdc-foot"><span>No future payables yet. Press <b>+ Add future payable</b> below to start one.</span></div></div>
       )}
 
-      {items.length > 0 && (
+      {(
         <div className="pdc-cards">
-          <div className="pdc-card pdc-card-all">
+          {items.length > 0 && <div className="pdc-card pdc-card-all">
             <span className="pdc-card-name">All future payables</span>
             <b className="pdc-card-bal">{sgn(sum('end'))}</b>
             <span className="pdc-card-sub">balance left · started at {sgn(sum('startAmt'))}</span>
             <span className="pdc-card-sub">PDC paid: {peso(sum('paid'))}</span>
-          </div>
+          </div>}
           {items.map((it) => {
             const k = calcs[it.id];
             const share = k.startAmt > 0 ? Math.max(0, Math.min(100, ((k.startAmt - k.end) / k.startAmt) * 100)) : 0;
@@ -297,23 +320,34 @@ export default function PdcTracker() {
                 <span className="pdc-card-sub">balance left · started at {sgn(k.startAmt)}{it.start_date ? ` (${flong(it.start_date)})` : ''}</span>
                 <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
                 <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC paid: {peso(k.paid)}</span>
+                {(() => { const n = nextDue(it); return <span className="pdc-card-sub"><b>Next to pay:</b> {n ? `${n.d ? flong(n.d) : mon(n.year, n.month)} · ${peso(num(n.a))}` : 'nothing left'}</span>; })()}
                 <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
               </button>
             );
           })}
+          <div className="pdc-card pdc-card-add">
+            {!adding ? <button type="button" className="pdc-add-btn" onClick={() => setAdding(true)}>+ Add future payable</button> : (
+              <>
+                <span className="pdc-card-name">New future payable</span>
+                <input className="pdc-in" placeholder="Name (for example Machine)" aria-label="Name of the future payable" value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} />
+                <MoneyInput className="pdc-in" placeholder="Balance 0.00" aria-label="Balance" value={newAmt} onChange={(v) => setNewAmt(v)} onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} />
+                <span><button type="button" className="btn btn-sm" onClick={addItem}>Add</button>{' '}<button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAdding(false); setNewName(''); setNewAmt(''); }}>Cancel</button></span>
+              </>
+            )}
+          </div>
         </div>
       )}
 
       {cur && (
         <div className="panel">
-          <div className="pdc-list-head"><h2>{cur.label}</h2></div>
+          <div className="pdc-list-head"><h2>{cur.label}</h2><span><button type="button" className="btn btn-secondary btn-sm" onClick={() => renameItem(cur)}>Rename</button>{' '}<button type="button" className="btn btn-danger btn-sm" onClick={() => removeItem(cur)}>Remove</button></span></div>
           <div className="pdc-setup">
             <label><span>Balance</span><MoneyInput className="pdc-in" placeholder={peso(cur.amount)} aria-label="Balance" value={su.amount || ''} onChange={(v) => setSu({ amount: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
             <label><span>as of</span><DateBox value={su.date || ''} ariaLabel="Balance as of" onCommit={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} /></label>
             {curRows.length === 0 && <label><span>First date</span><DateBox value={firstTxt} ariaLabel="First date" placeholder="September 25, 2026" pasteBox onPaste={onPasteRows} onCommit={(v) => setFirstTxt(v)} /></label>}
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>
           </div>
-          <p className="pdc-tip">{curRows.length ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like September 25, 2026) and press + Add row. The next rows follow month by month.'} The balance is typed here (blank = the Future payables amount). You can also copy rows from Excel and paste them into the table.</p>
+          <p className="pdc-tip">{curRows.length ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like September 25, 2026) and press + Add row. The next rows follow month by month.'} The next row that is not checked paid shows in Cash Position under Future payables; check it paid and the next month shows there. The balance is typed here (blank = the amount typed when the item was added). You can also copy rows from Excel and paste them into the table.</p>
           <div className="table-wrap" onPaste={onPasteRows}>
             <table className="data-table pdc-table">
               <thead>

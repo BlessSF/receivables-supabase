@@ -1,51 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { peso, fdate } from '../utils';
-import MoneyInput, { rawNum } from '../MoneyInput';
 import { computeMain } from '../mainCalc';
 
 const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
-const uid = () => Math.random().toString(36).slice(2, 10);
-const toRow = (x) => ({ id: x.id, label: x.label, neg: x.amount < 0, amount: x.amount ? String(Math.abs(x.amount)) : '' });
-const rowVal = (x) => (Number(rawNum(x.amount)) || 0) * (x.neg ? -1 : 1);
+const LONG = { month: 'long', day: 'numeric', year: 'numeric' }; // January 11, 2026
 
 export default function CashPosition() {
   const { user } = useAuth();
   const bank = user?.bank_name || 'Security Bank';
   const [d, setD] = useState(null);
   const [mf, setMf] = useState(null); // the typed "Receivables as of <date>" from the Main page
-  const [future, setFuture] = useState([]);
-  const [state, setState] = useState('idle');
   const [err, setErr] = useState('');
-  const dirty = useRef(false);
-  const timer = useRef(null);
-  const latest = useRef([]);
 
   useEffect(() => {
     api.getCashPosition()
-      .then((r) => { setD(r); setFuture(r.future.map(toRow)); })
+      .then((r) => setD(r))
       .catch((e) => setErr(e.message || 'Could not load.'));
     api.getMainFund().then((r) => setMf(r.data)).catch(() => {}); // if this fails, the figures from Cash Position are used
   }, []);
-
-  latest.current = future;
-  function editFuture(fn) {
-    setFuture((cur) => fn(cur));
-    dirty.current = true; setState('saving');
-    clearTimeout(timer.current);
-    timer.current = setTimeout(flush, 800);
-  }
-  async function flush() {
-    if (!dirty.current) return;
-    dirty.current = false;
-    try {
-      await api.saveCashPosition(latest.current.map((x) => ({ id: x.id, label: x.label, amount: rowVal(x) })));
-      setErr(''); setState(dirty.current ? 'saving' : 'saved');
-    } catch (e) { setErr(e.message || 'Could not save.'); setState('error'); dirty.current = true; }
-  }
-  useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) flush(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const c = useMemo(() => {
     if (!d) return null;
@@ -61,13 +36,14 @@ export default function CashPosition() {
     const released = main.checksTotal;
     const running = d.running_payables;
     const current = released + running;
-    const futureTotal = future.reduce((t, x) => t + rowVal(x), 0);
+    const future = d.future || []; // read-only: the next unpaid PDC of each item (from the PDC Tracker)
+    const futureTotal = future.reduce((t, x) => t + (Number(x.amount) || 0), 0);
     const allAP = current + futureTotal;
     return {
-      m, bank, due, notYet, typedAR, typedDate, ledgerAR, totalAR, released, running, current, futureTotal, allAP,
+      m, bank, due, notYet, typedAR, typedDate, ledgerAR, totalAR, released, running, current, future, futureTotal, allAP,
       net1: bank - current, net2: bank + due - current, net3: bank + totalAR - allAP,
     };
-  }, [d, mf, future]);
+  }, [d, mf]);
 
   if (!d || !c) {
     return (
@@ -96,9 +72,8 @@ export default function CashPosition() {
           <div className="subtitle">As of {fdate(d.as_of)} · figures update by themselves from Main, Running Payables and your ledger</div>
         </div>
         <div className="dlc-right"><span className="dlc-badge" title="Demic Lab Main"><span className="dlc-a">DLC</span><span className="dlc-b">MAIN</span></span></div>
-        <span className={`at-status mf-state ${state}`}>{state === 'saving' ? 'Saving…' : state === 'error' ? 'Not saved' : ''}</span>
       </div>
-      {state === 'error' && err && <div className="flash flash-error">{err}</div>}
+      {err && <div className="flash flash-error">{err}</div>}
 
       <div className="mf-hero cp-hero">
         <div className="mf-card">
@@ -164,20 +139,18 @@ export default function CashPosition() {
           <div className="mf-row mf-auto"><span className="mf-lbl">Payables for releasing <i>auto</i> <Link to="/payables/running" className="pay-link-btn">{d.running_count} unpaid</Link></span><span className="mf-val">{peso(c.running)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total current accounts payable</span><span className="mf-val">{peso(c.current)}</span></div>
 
-          <div className="mf-block">Future payables <span className="cp-edit">can be edited</span></div>
-          <p className="at-help cp-note" style={{ marginTop: 0 }}>For example machine, Jaro capex, incorporator. Use − for something taken off.</p>
-          <ul className="cp-future">
-            {future.map((x) => (
+          <div className="mf-block">Future payables <span className="cp-edit">from the PDC Tracker</span></div>
+          <p className="at-help cp-note" style={{ marginTop: 0 }}>Each item shows its next PDC that is not paid yet: the date, the name and the amount to pay. When you check it paid in the <Link to="/payables/pdc" className="pay-link-btn">PDC Tracker</Link>, the next month shows here. Add or change items there.</p>
+          <ul className="cp-fro">
+            {c.future.map((x) => (
               <li key={x.id}>
-                <input className="mf-lbl-in" value={x.label} placeholder="What is it for?" maxLength={120} onChange={(e) => editFuture((cur) => cur.map((y) => (y.id === x.id ? { ...y, label: e.target.value } : y)))} aria-label="Label" />
-                <button type="button" className={`cp-sign ${x.neg ? 'neg' : ''}`} onClick={() => editFuture((cur) => cur.map((y) => (y.id === x.id ? { ...y, neg: !y.neg } : y)))} title={x.neg ? 'Taken off (click for add)' : 'Added (click for take off)'} aria-label="Add or take off">{x.neg ? '−' : '+'}</button>
-                <MoneyInput className="mf-in" value={x.amount} placeholder="0.00" onChange={(v) => editFuture((cur) => cur.map((y) => (y.id === x.id ? { ...y, amount: v } : y)))} aria-label="Amount" />
-                <button type="button" className="at-x" onClick={() => editFuture((cur) => cur.filter((y) => y.id !== x.id))} aria-label="Remove" title="Remove">×</button>
+                <span className="cp-fdate">{x.date ? fdate(x.date, LONG) : `${x.month}/${x.year}`}</span>
+                <span className="cp-fname">{x.label}</span>
+                <b>{peso(x.amount)}</b>
               </li>
             ))}
-            {future.length === 0 && <li className="at-empty">No future payables yet.</li>}
+            {c.future.length === 0 && <li className="at-empty">Nothing to pay yet. Add a future payable in the PDC Tracker.</li>}
           </ul>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => editFuture((cur) => [...cur, { id: uid(), label: '', neg: false, amount: '' }])}>+ Add item</button>
           <div className="mf-row mf-sub" style={{ marginTop: 12 }}><span className="mf-lbl">Future payables total</span><span className="mf-val">{sgn(c.futureTotal)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total payables incl. future</span><span className="mf-val">{peso(c.allAP)}</span></div>
         </section>

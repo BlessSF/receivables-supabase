@@ -75,6 +75,10 @@ const RULES = {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC balance set to ${o?.start_amount === null || o?.start_amount === undefined ? '(Future payables amount)' : peso(o.start_amount)}${o?.start_date ? ` as of ${o.start_date}` : ''}`,
   },
+  manage_pdc_item: {
+    area: 'PDC Tracker', kind: (i) => (i.op === 'add' ? 'add' : i.op === 'delete' ? 'delete' : 'edit'),
+    text: (i, o) => (o?.op === 'add' ? `Added future payable "${o?.label}" (${peso(i.amount)})` : o?.op === 'delete' ? `Removed future payable ${o?.label ? `"${o.label}"` : ''}` : `Renamed a future payable to "${o?.label}"`),
+  },
   set_pdc_paid: {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}${o?.date || `${o?.month}/${o?.year}`} marked ${o?.paid ? 'PAID (check mark)' : 'not paid'}`,
