@@ -6,8 +6,10 @@ import MoneyInput from '../MoneyInput';
 const num = (v) => Number(v) || 0;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// PDC Tracker: type the PDC amount for each month (January to December); the Balance is the unpaid Running Payables
-// whose check date falls in the month, minus the PDC amount typed for that month. The running payables are listed below.
+// PDC Tracker: the Future payables total (from Cash Position) is the beginning balance. Type the PDC amount paid each month
+// (January to December) and it is taken off the balance month after month, like a loan schedule, until it is paid.
+// The unpaid Running Payables are still listed below.
+const sgn = (n) => (n < 0 ? `−${peso(-n)}` : peso(n));
 export default function PdcTracker() {
   const [year, setYear] = useState(null);
   const [data, setData] = useState(null);
@@ -18,6 +20,8 @@ export default function PdcTracker() {
   const lastSaved = useRef([]);
   const [tip, setTip] = useState(null); // hover card: { m (1-12), left, top | bottom }
   const tipTimer = useRef(null);
+  const [future, setFuture] = useState([]); // Future payables from Cash Position (the beginning balance)
+  const [carry, setCarry] = useState(0); // PDC already paid in earlier years (when viewing a later year)
   function openTip(m, el) {
     clearTimeout(tipTimer.current);
     const r = el.getBoundingClientRect();
@@ -31,14 +35,24 @@ export default function PdcTracker() {
   function load(y) {
     setErr('');
     return api.getPdcTracker(y || '')
-      .then((r) => {
+      .then(async (r) => {
+        const yr = r.data.year, base = r.data.this_year;
+        let carried = 0;
+        if (yr > base && yr - base <= 10) { // a later year starts from what is left after the earlier years' PDC
+          const prev = await Promise.all(Array.from({ length: yr - base }, (_, k) => api.getPdcTracker(base + k)));
+          carried = r2(prev.reduce((t, x) => t + x.data.months.reduce((a, n) => a + num(n), 0), 0));
+        }
+        setCarry(carried);
         setData(r.data); setYear(r.data.year);
         const t = r.data.months.map((n) => (n ? String(n) : ''));
         setTyped(t); lastSaved.current = r.data.months.slice();
       })
       .catch((e) => setErr(e.message));
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.getCashPosition().then((r) => setFuture(r.future || [])).catch(() => {});
+  }, []);
 
   // unpaid running payables per month (by check date) + the ones with no check date
   const due = useMemo(() => {
@@ -65,9 +79,12 @@ export default function PdcTracker() {
   if (!data) return <div className="flash flash-error">{err}</div>;
 
   const totalAmount = r2(typed.reduce((t, v) => t + num(v), 0));
-  const totalDue = r2(due.m.reduce((t, x) => t + x.total, 0));
-  const balOf = (i) => r2(due.m[i].total - num(typed[i])); // payables minus the PDC typed
-  const totalBal = r2(totalDue - totalAmount);
+  const futureTotal = r2(future.reduce((t, x) => t + (Number(x.amount) || 0), 0));
+  const begin = r2(futureTotal - carry); // beginning balance for this year
+  const bal = []; // balance after each month's PDC
+  { let run = begin; for (let i = 0; i < 12; i++) { run = r2(run - num(typed[i])); bal.push(run); } }
+  const prevBal = (i) => (i === 0 ? begin : bal[i - 1]);
+  const endBal = bal[11];
   const shown = (data.payables || []).filter((p) => {
     const mo = p.check_date ? Number(p.check_date.slice(5, 7)) : 0;
     return !pick || mo === pick;
@@ -79,7 +96,7 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Type the PDC amount for each month. Balance = the unpaid running payables with a check date in that month, minus the PDC amount you type.</div>
+          <div className="subtitle">The Future payables total is the beginning balance. Type the PDC amount for each month and it is taken off the balance until it is paid.</div>
         </div>
         <div className="pdc-year">
           <button type="button" className="btn btn-secondary" onClick={() => load(year - 1)} aria-label="Previous year">‹</button>
@@ -97,10 +114,19 @@ export default function PdcTracker() {
               <tr>
                 <th>Month</th>
                 <th className="text-right">PDC amount (type here)</th>
-                <th className="text-right">Balance (payables − PDC) <span className="pdc-hint">hover an amount to see why</span></th>
+                <th className="text-right">Balance <span className="pdc-hint">hover an amount to see why</span></th>
               </tr>
             </thead>
             <tbody>
+              <tr className="pdc-total">
+                <td>Beginning balance <small className="pdc-none">Future payables{carry ? ` less PDC paid before ${year}` : ''}</small></td>
+                <td />
+                <td className="text-right pdc-bal">
+                  <span className="pdc-why" tabIndex={0} aria-label={`Why the beginning balance is ${sgn(begin)}`}
+                    onMouseEnter={(e) => openTip(0, e.currentTarget)} onMouseLeave={closeTip}
+                    onFocus={(e) => openTip(0, e.currentTarget)} onBlur={closeTip}>{sgn(begin)}</span>
+                </td>
+              </tr>
               {MONTHS.map((name, i) => {
                 return (
                   <tr key={name} className={pick === i + 1 ? 'pdc-picked' : ''}>
@@ -111,21 +137,19 @@ export default function PdcTracker() {
                         onBlur={() => commit(i)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
                     </td>
                     <td className="text-right pdc-bal">
-                      {due.m[i].count || num(typed[i]) ? (
-                        <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${peso(balOf(i))}`}
-                          onMouseEnter={(e) => openTip(i + 1, e.currentTarget)} onMouseLeave={closeTip}
-                          onFocus={(e) => openTip(i + 1, e.currentTarget)} onBlur={closeTip}>
-                          {peso(balOf(i))} {due.m[i].count > 0 && <span className="pdc-n">{due.m[i].count}</span>}
-                        </span>
-                      ) : '—'}
+                      <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${sgn(bal[i])}`}
+                        onMouseEnter={(e) => openTip(i + 1, e.currentTarget)} onMouseLeave={closeTip}
+                        onFocus={(e) => openTip(i + 1, e.currentTarget)} onBlur={closeTip}>
+                        {sgn(bal[i])}
+                      </span>
                     </td>
                   </tr>
                 );
               })}
               <tr className="pdc-total">
-                <td>Total</td>
+                <td>Total PDC · balance at the end of {year}</td>
                 <td className="text-right">{peso(totalAmount)}</td>
-                <td className="text-right">{peso(totalBal)}</td>
+                <td className="text-right">{sgn(endBal)}</td>
               </tr>
             </tbody>
           </table>
@@ -164,28 +188,31 @@ export default function PdcTracker() {
         {!pick && due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date, so they are not counted in any month above ({peso(due.none.total)}).</span></div>}
       </div>
       {tip && (() => {
-        const list = (data.payables || []).filter((p) => p.check_date && Number(p.check_date.slice(5, 7)) === tip.m);
-        const tot = r2(list.reduce((t, p) => t + p.amount, 0));
-        const pdc = r2(num(typed[tip.m - 1]));
+        const m = tip.m;
         return (
           <div className="pdc-pop" role="tooltip" style={{ left: tip.left, width: tip.w, top: tip.top, bottom: tip.bottom }}
             onMouseEnter={() => clearTimeout(tipTimer.current)} onMouseLeave={closeTip}>
-            <div className="pdc-pop-head">
-              <b>{MONTHS[tip.m - 1]} {year}</b>
-              <span>{list.length} unpaid payable{list.length === 1 ? '' : 's'} with a check date this month</span>
-            </div>
-            <div className="pdc-pop-body">
-              {list.map((p) => (
-                <div className="pdc-pop-row" key={p.id}>
-                  <span className="pdc-pop-date">{fdate(p.check_date)}</span>
-                  <span className="pdc-pop-who">{p.payee}<small>{p.category}{p.title_name ? ` · ${p.title_name}` : ''}</small></span>
-                  <span className="pdc-pop-amt">{peso(p.amount)}</span>
+            {m === 0 ? (
+              <>
+                <div className="pdc-pop-head"><b>Beginning balance {year}</b><span>The Future payables from Cash Position</span></div>
+                <div className="pdc-pop-body">
+                  {future.map((x) => (
+                    <div className="pdc-pop-row" key={x.id}><span className="pdc-pop-date" /><span className="pdc-pop-who">{x.label || '(no label)'}</span><span className="pdc-pop-amt">{sgn(Number(x.amount) || 0)}</span></div>
+                  ))}
+                  {future.length === 0 && <div className="pdc-pop-row"><span className="pdc-pop-date" /><span className="pdc-pop-who">No future payables yet.</span><span /></div>}
                 </div>
-              ))}
-            </div>
-            <div className="pdc-pop-total"><span>Unpaid payables</span><b>{peso(tot)}</b></div>
-            <div className="pdc-pop-total"><span>Less: PDC amount</span><b>− {peso(pdc)}</b></div>
-            <div className="pdc-pop-total"><span>Balance</span><b>{peso(r2(tot - pdc))}</b></div>
+                <div className="pdc-pop-total"><span>Future payables total</span><b>{sgn(futureTotal)}</b></div>
+                {carry !== 0 && <div className="pdc-pop-total"><span>Less: PDC paid in earlier years</span><b>− {peso(carry)}</b></div>}
+                <div className="pdc-pop-total"><span>Beginning balance</span><b>{sgn(begin)}</b></div>
+              </>
+            ) : (
+              <>
+                <div className="pdc-pop-head"><b>{MONTHS[m - 1]} {year}</b><span>{m === 1 ? 'Beginning balance' : `Balance after ${MONTHS[m - 2]}`} less this month's PDC</span></div>
+                <div className="pdc-pop-total"><span>{m === 1 ? 'Beginning balance' : `Balance after ${MONTHS[m - 2]}`}</span><b>{sgn(prevBal(m - 1))}</b></div>
+                <div className="pdc-pop-total"><span>Less: PDC amount {MONTHS[m - 1]}</span><b>− {peso(num(typed[m - 1]))}</b></div>
+                <div className="pdc-pop-total"><span>Balance</span><b>{sgn(bal[m - 1])}</b></div>
+              </>
+            )}
           </div>
         );
       })()}
