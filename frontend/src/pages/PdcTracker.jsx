@@ -77,6 +77,7 @@ export default function PdcTracker() {
   const [rows, setRows] = useState({}); // { itemId: [{ year, month, a (text), d ('YYYY-MM-DD' or '') }] }
   const [setup, setSetup] = useState({}); // { itemId: { amount, date } } the balance box
   const [sel, setSel] = useState('');
+  const [ask, setAsk] = useState(null); // the confirm window: { title, lines, ok, danger, run }
   const [edit, setEdit] = useState(null); // the Edit window: { id, name, amount, date, del (asking to confirm the removal) }
   const [adding, setAdding] = useState(false); // the "+ Add future payable" form
   const [newName, setNewName] = useState('');
@@ -180,10 +181,13 @@ export default function PdcTracker() {
     if (ny > 2100) { setErr('That year is too far ahead.'); return; }
     try { await api.savePdcAmount(ny, nm, 0, it.id, nd); setFirstTxt(''); flash(`Row ${flong(nd)} added`); await load(); } catch (e) { setErr(e.message); }
   }
-  async function removeRow(it, idx) {
+  function removeRow(it, idx) {
     const r = rows[it.id][idx];
-    if (!window.confirm(`Remove the row ${r.d ? flong(r.d) : mon(r.year, r.month)} (${peso(num(r.a))}) from ${it.label}?`)) return;
-    try { await api.savePdcAmount(r.year, r.month, 0, it.id, null); flash('Row removed'); await load(); } catch (e) { setErr(e.message); }
+    setAsk({
+      title: 'Remove this PDC row?', danger: true, ok: 'Yes, remove it',
+      lines: [`${it.label}`, `${r.d ? flong(r.d) : mon(r.year, r.month)} · ${peso(num(r.a))}${r.p ? ' · marked paid' : ''}`, 'The balance and the Cash Position list are updated. This cannot be undone.'],
+      run: async () => { try { await api.savePdcAmount(r.year, r.month, 0, it.id, null); flash('Row removed'); await load(); } catch (e) { setErr(e.message); } },
+    });
   }
 
   // ---- future payables live here now: add, rename, remove (Cash Position shows the next unpaid row of each)
@@ -259,14 +263,22 @@ export default function PdcTracker() {
     }
     if (!entries.length && !start) { setErr('Nothing to paste. Copy the Date issued and Amount columns from Excel.'); return; }
     const a = entries[0]; const z = entries[entries.length - 1];
-    if (!window.confirm(`Paste into ${it.label}?${entries.length ? `\n\n${entries.length} row${entries.length === 1 ? '' : 's'}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)} (replaces what is in those months).` : ''}${start ? `\nBalance ${peso(start.amount)}${start.date ? ` as of ${flong(start.date)}` : ''} (replaces the current balance).` : ''}`)) return;
-    setBusy(true);
-    try {
-      if (start) { const b = setupBody(it); await api.savePdcItem(it.id, { ...b, start_amount: start.amount, start_date: start.date || b.start_date }); }
-      if (entries.length) await api.savePdcBulk(it.id, entries);
-      flash(`Pasted ${entries.length} row${entries.length === 1 ? '' : 's'} into ${it.label}`); await load();
-    } catch (er) { setErr(er.message); }
-    setBusy(false);
+    setAsk({
+      title: `Paste into ${it.label}?`, ok: 'Yes, paste',
+      lines: [
+        ...(entries.length ? [`${entries.length} row${entries.length === 1 ? '' : 's'}: ${mon(a.year, a.month)} to ${mon(z.year, z.month)}`, 'This replaces what is in those months.'] : []),
+        ...(start ? [`Balance ${peso(start.amount)}${start.date ? ` as of ${flong(start.date)}` : ''} (replaces the current balance).`] : []),
+      ],
+      run: async () => {
+        setBusy(true);
+        try {
+          if (start) { const b = setupBody(it); await api.savePdcItem(it.id, { ...b, start_amount: start.amount, start_date: start.date || b.start_date }); }
+          if (entries.length) await api.savePdcBulk(it.id, entries);
+          flash(`Pasted ${entries.length} row${entries.length === 1 ? '' : 's'} into ${it.label}`); await load();
+        } catch (er) { setErr(er.message); }
+        setBusy(false);
+      },
+    });
   }
 
   if (!data && !err) return <div className="loading-state">Loading…</div>;
@@ -277,14 +289,15 @@ export default function PdcTracker() {
   const calc = (it) => {
     const startAmt = it.start_amount === null ? it.amount : it.start_amount; // typed balance, else the Future payables amount
     const sd = it.start_date || '';
-    let run = startAmt; let paid = 0;
+    let run = startAmt; let paid = 0; let done = 0;
     const bal = (rows[it.id] || []).map((r) => {
       const eff = r.d || ymd(r.year, r.month, 1);
       if (sd && eff < sd) return null; // before the "as of" date there is no balance yet
       const a = num(r.a); run = r2(run - a); paid = r2(paid + a);
+      if (r.p) done = r2(done + a); // only the rows with the check mark are really paid
       return run;
     });
-    return { startAmt, bal, paid, end: run };
+    return { startAmt, bal, paid, end: run, done, left: r2(startAmt - done) };
   };
   const calcs = Object.fromEntries(items.map((it) => [it.id, calc(it)]));
   // the next unpaid row of each item: this is what Cash Position shows under Future payables
@@ -315,25 +328,35 @@ export default function PdcTracker() {
 
       {(
         <div className="pdc-cards">
-          {items.length > 0 && <div className="pdc-card pdc-card-all">
-            <span className="pdc-card-name">All future payables</span>
-            <b className="pdc-card-bal">{sgn(sum('end'))}</b>
-            <span className="pdc-card-sub">balance left · started at {sgn(sum('startAmt'))}</span>
-            <span className="pdc-card-sub">PDC paid: {peso(sum('paid'))}</span>
-          </div>}
+          {items.length > 0 && (() => {
+            const nexts = items.map((it) => nextDue(it)).filter(Boolean);
+            const nextTotal = r2(nexts.reduce((t, n) => t + num(n.a), 0));
+            return (
+              <div className="pdc-card pdc-card-all">
+                <span className="pdc-card-name">All future payables</span>
+                <span className="pdc-card-lbl">Next payable · all items</span>
+                <b className="pdc-card-bal">{peso(nextTotal)}</b>
+                <span className="pdc-card-sub">{nexts.length} of {items.length} item{items.length === 1 ? '' : 's'} still to pay (the next one of each)</span>
+                <span className="pdc-card-sub"><b>Total paid:</b> {peso(sum('done'))}</span>
+                <span className="pdc-card-sub"><b>Balance left:</b> {sgn(sum('left'))} of {sgn(sum('startAmt'))}</span>
+              </div>
+            );
+          })()}
           {items.map((it) => {
             const k = calcs[it.id];
-            const share = k.startAmt > 0 ? Math.max(0, Math.min(100, ((k.startAmt - k.end) / k.startAmt) * 100)) : 0;
+            const share = k.startAmt > 0 ? Math.max(0, Math.min(100, (k.done / k.startAmt) * 100)) : 0;
+            const n = nextDue(it);
             const on = cur && cur.id === it.id;
             return (
               <div role="button" tabIndex={0} key={it.id} className={`pdc-card pdc-card-pick ${on ? 'on' : ''}`} onClick={() => setSel(it.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(it.id); } }} aria-pressed={on}>
                 <button type="button" className="pdc-card-edit" onClick={(e) => { e.stopPropagation(); openEdit(it); }} onKeyDown={(e) => e.stopPropagation()} title="Edit the name and the first amount" aria-label={`Edit ${it.label}`}>✎ Edit</button>
                 <span className="pdc-card-name">{it.label}</span>
-                <b className={`pdc-card-bal ${k.end < 0 ? 'neg' : ''}`}>{sgn(k.end)}</b>
-                <span className="pdc-card-sub">balance left · first amount <b className="pdc-card-first" onClick={(e) => { e.stopPropagation(); openEdit(it); }} title="Click to change the first amount">{sgn(k.startAmt)}</b>{it.start_date ? ` (${flong(it.start_date)})` : ''}</span>
+                <span className="pdc-card-lbl">Next payable</span>
+                <b className="pdc-card-bal">{n ? peso(num(n.a)) : '—'}</b>
+                <span className="pdc-card-sub">{n ? <><b>Due:</b> {n.d ? flong(n.d) : mon(n.year, n.month)}</> : 'Nothing left to pay'}</span>
                 <span className="pdc-card-bar"><i style={{ width: `${share}%` }} /></span>
-                <span className="pdc-card-sub">{share.toFixed(0)}% paid · PDC paid: {peso(k.paid)}</span>
-                {(() => { const n = nextDue(it); return <span className="pdc-card-sub"><b>Next to pay:</b> {n ? `${n.d ? flong(n.d) : mon(n.year, n.month)} · ${peso(num(n.a))}` : 'nothing left'}</span>; })()}
+                <span className="pdc-card-sub"><b>Total paid:</b> {peso(k.done)} · {share.toFixed(0)}%</span>
+                <span className="pdc-card-sub"><b>Balance left:</b> <span className={k.left < 0 ? 'pdc-neg' : ''}>{sgn(k.left)}</span> · first amount <b className="pdc-card-first" onClick={(e) => { e.stopPropagation(); openEdit(it); }} title="Click to change the first amount">{sgn(k.startAmt)}</b>{it.start_date ? ` (${flong(it.start_date)})` : ''}</span>
                 <span className="pdc-card-open">{on ? 'Showing below ↓' : 'Click to open'}</span>
               </div>
             );
@@ -460,6 +483,20 @@ export default function PdcTracker() {
         </div>
         {due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date ({peso(due.none.total)}).</span></div>}</>}
       </div>
+      {ask && (
+        <div className="pdc-modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setAsk(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setAsk(null); }}>
+          <div className="pdc-modal pdc-modal-sm" role="alertdialog" aria-modal="true" aria-label={ask.title}>
+            <h3>{ask.title}</h3>
+            <div className={ask.danger ? 'pdc-modal-del' : 'pdc-modal-info'}>
+              {ask.lines.map((l, i) => (i === 0 ? <p key={i}><b>{l}</b></p> : <p key={i}>{l}</p>))}
+            </div>
+            <div className="pdc-modal-actions">
+              <button type="button" className="btn btn-secondary" autoFocus={!ask.danger} onClick={() => setAsk(null)}>Cancel</button>
+              <button type="button" className={ask.danger ? 'btn btn-danger' : 'btn'} autoFocus={ask.danger} onClick={() => { const run = ask.run; setAsk(null); run(); }}>{ask.ok}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {edit && (
         <div className="pdc-modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEdit(null); }}>
           <div className="pdc-modal" role="dialog" aria-modal="true" aria-label="Edit future payable">

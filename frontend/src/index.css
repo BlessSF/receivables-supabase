@@ -2117,3 +2117,7 @@ select.rec-input { min-width: 112px; }
 .pdc-modal-info p { color: #3d4756; }
 .pdc-modal-sm .pdc-modal-del p:last-child, .pdc-modal-info p:last-child { margin-bottom: 0; }
 .pdc-modal-sm .pdc-modal-actions { margin-top: 14px; }
+.pdc-card-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #12756a; margin-top: 2px; }
+.pdc-card-all .pdc-card-lbl { color: #7fe0cf; }
+.pdc-card-all .pdc-card-sub b { color: #fff; }
+.pdc-card-bal { font-size: 24px; }
