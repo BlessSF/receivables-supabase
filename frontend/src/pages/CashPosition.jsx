@@ -15,6 +15,7 @@ export default function CashPosition() {
   const { user } = useAuth();
   const bank = user?.bank_name || 'Security Bank';
   const [d, setD] = useState(null);
+  const [mf, setMf] = useState(null); // the typed "Receivables as of <date>" from the Main page
   const [future, setFuture] = useState([]);
   const [state, setState] = useState('idle');
   const [err, setErr] = useState('');
@@ -26,6 +27,7 @@ export default function CashPosition() {
     api.getCashPosition()
       .then((r) => { setD(r); setFuture(r.future.map(toRow)); })
       .catch((e) => setErr(e.message || 'Could not load.'));
+    api.getMainFund().then((r) => setMf(r.data)).catch(() => {}); // if this fails, the figures from Cash Position are used
   }, []);
 
   latest.current = future;
@@ -52,17 +54,20 @@ export default function CashPosition() {
     const bank = m.passbook + m.deposit + m.aub;
     const due = d.receivables.due;
     const notYet = d.receivables.not_yet;
-    const totalAR = due + notYet;
+    const typedAR = Number(mf?.receivables ?? m.receivables) || 0; // typed on Main: Receivables as of <date>
+    const typedDate = mf?.receivables_date ?? m.receivables_date ?? '';
+    const ledgerAR = due + notYet;
+    const totalAR = ledgerAR + typedAR;
     const released = main.checksTotal;
     const running = d.running_payables;
     const current = released + running;
     const futureTotal = future.reduce((t, x) => t + rowVal(x), 0);
     const allAP = current + futureTotal;
     return {
-      m, bank, due, notYet, totalAR, released, running, current, futureTotal, allAP,
+      m, bank, due, notYet, typedAR, typedDate, ledgerAR, totalAR, released, running, current, futureTotal, allAP,
       net1: bank - current, net2: bank + due - current, net3: bank + totalAR - allAP,
     };
-  }, [d, future]);
+  }, [d, mf, future]);
 
   if (!d || !c) {
     return (
@@ -73,7 +78,7 @@ export default function CashPosition() {
     );
   }
 
-  const dueShare = c.totalAR > 0 ? (c.due / c.totalAR) * 100 : 0;
+  const dueShare = c.ledgerAR > 0 ? (c.due / c.ledgerAR) * 100 : 0;
   const bars = [
     { label: 'Bank balance', value: c.bank, cls: 'cash' },
     { label: 'Due receivables', value: c.due, cls: 'in' },
@@ -140,12 +145,16 @@ export default function CashPosition() {
           <div className="mf-block">Receivables</div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Due receivables <i>auto</i></span><span className="mf-val">{peso(c.due)}</span></div>
           <div className="mf-row mf-auto"><span className="mf-lbl">Not yet due receivables <i>auto</i></span><span className="mf-val">{peso(c.notYet)}</span></div>
+          {c.typedAR !== 0 && (
+            <div className="mf-row mf-auto"><span className="mf-lbl">Receivables as of {c.typedDate ? fdate(c.typedDate) : 'the date on Main'} <i>from Main</i></span><span className="mf-val">{sgn(c.typedAR)}</span></div>
+          )}
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total account receivables</span><span className="mf-val">{peso(c.totalAR)}</span></div>
           <Link className="dash-due-link" to="/">View in Dashboard →</Link>
           <div className="cp-split" title={`${dueShare.toFixed(0)}% of receivables are already due`}>
             <i style={{ width: `${dueShare}%` }} />
           </div>
           <div className="cp-split-key"><span>{dueShare.toFixed(0)}% due ({d.receivables.due_count} entries)</span><span>{d.receivables.not_yet_count} not yet due</span></div>
+          {c.typedAR !== 0 && <p className="at-help cp-note">The "Receivables as of" line is the amount typed on the <Link to="/payables/main" className="pay-link-btn">Main</Link> page{c.typedDate ? `, receivables as of ${fdate(c.typedDate)}` : ''}. Edit it there. The percentage below counts only the ledger entries.</p>}
           <p className="at-help cp-note">Due = past due plus this month, the same as <Link to="/reports-by-month" className="pay-link-btn">Reports by Month</Link> (its own Due Date, else billing month + {d.payment_terms ?? 2} months).{d.receivables.unplaced_count ? ` ${d.receivables.unplaced_count} unpaid ${d.receivables.unplaced_count === 1 ? 'entry has' : 'entries have'} no period or due date and ${d.receivables.unplaced_count === 1 ? 'is' : 'are'} counted as not yet due.` : ''}</p>
         </section>
 
