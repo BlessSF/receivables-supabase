@@ -2079,3 +2079,8 @@ select.rec-input { min-width: 112px; }
 .pdc-check.on { background: #1f9d6b; border-color: #1f9d6b; color: #fff; }
 .data-table tbody tr.pdc-paid td { background: #e7f6ee; }
 .data-table tbody tr.pdc-paid td:first-child { box-shadow: inset 4px 0 0 #1f9d6b; }
+.pdc-datewrap { position: relative; display: block; width: 100%; max-width: 250px; }
+.pdc-datewrap .pdc-in.pdc-date { max-width: none; width: 100%; padding-right: 38px; box-sizing: border-box; }
+.pdc-cal { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #5b6574; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.pdc-cal:hover { background: #eef2f6; color: #12756a; }
+.pdc-cal-native { position: absolute; left: 0; bottom: 0; width: 100%; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }

@@ -27,17 +27,28 @@ function parseDate(t) {
   if (m < 1 || m > 12 || d < 1 || d > lastDay(y, m) || y < 2000 || y > 2100) return null;
   return ymd(y, m, d);
 }
-// Date box shown like January 11, 2026 (type it in any of those forms, or paste it)
-function DateBox({ value, onCommit, ariaLabel, placeholder = 'January 11, 2026' }) {
+// Date box shown like January 11, 2026: type it in any of those forms, paste it, or pick it from the calendar button
+function DateBox({ value, onCommit, ariaLabel, placeholder = 'January 11, 2026', onPaste, pasteBox }) {
   const [t, setT] = useState(flong(value));
+  const pick = useRef(null);
   useEffect(() => { setT(flong(value)); }, [value]);
   const done = () => {
     if (!t.trim()) { if (value) onCommit(''); return; }
     const v = parseDate(t);
     if (v) { setT(flong(v)); if (v !== value) onCommit(v); } else setT(flong(value));
   };
-  return <input className="pdc-in pdc-date" value={t} placeholder={placeholder} aria-label={ariaLabel}
-    onChange={(e) => setT(e.target.value)} onBlur={done} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
+  const openCalendar = () => { const el = pick.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
+  return (
+    <span className="pdc-datewrap">
+      <input className="pdc-in pdc-date" value={t} placeholder={placeholder} aria-label={ariaLabel} data-paste={pasteBox ? '1' : undefined} onPaste={onPaste}
+        onChange={(e) => setT(e.target.value)} onBlur={done} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+      <button type="button" className="pdc-cal" onClick={openCalendar} aria-label="Pick from the calendar" title="Pick from the calendar">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
+      </button>
+      <input ref={pick} type="date" className="pdc-cal-native" tabIndex={-1} aria-hidden="true" value={value || ''} min="2000-01-01" max="2100-12-31"
+        onChange={(e) => { const v = e.target.value; if (v && v !== value) { setT(flong(v)); onCommit(v); } }} />
+    </span>
+  );
 }
 
 // One cell from Excel to a number: "216,388.89", "(0.04)", "₱1,000" ... (blank or text gives null)
@@ -299,7 +310,7 @@ export default function PdcTracker() {
           <div className="pdc-setup">
             <label><span>Balance</span><MoneyInput className="pdc-in" placeholder={peso(cur.amount)} aria-label="Balance" value={su.amount || ''} onChange={(v) => setSu({ amount: v })} onBlur={() => commitSetup(cur)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
             <label><span>as of</span><DateBox value={su.date || ''} ariaLabel="Balance as of" onCommit={(v) => { setSu({ date: v }); commitSetup(cur, { date: v }); }} /></label>
-            {curRows.length === 0 && <label><span>First date</span><input className="pdc-in pdc-date" placeholder="September 25, 2026" aria-label="First date" data-paste="1" onPaste={onPasteRows} value={firstTxt} onChange={(e) => setFirstTxt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addRow(cur); }} /></label>}
+            {curRows.length === 0 && <label><span>First date</span><DateBox value={firstTxt} ariaLabel="First date" placeholder="September 25, 2026" pasteBox onPaste={onPasteRows} onCommit={(v) => setFirstTxt(v)} /></label>}
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>
           </div>
           <p className="pdc-tip">{curRows.length ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like September 25, 2026) and press + Add row. The next rows follow month by month.'} The balance is typed here (blank = the Future payables amount). You can also copy rows from Excel and paste them into the table.</p>
