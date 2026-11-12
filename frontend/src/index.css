@@ -2070,3 +2070,7 @@ select.rec-input { min-width: 112px; }
 .pdc-in.pdc-date { max-width: 140px; text-align: left; }
 .pdc-in.pdc-date { max-width: 210px; }
 .pdc-yearrow td { background: #eef2f6; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #5b6574; padding-top: 7px; padding-bottom: 7px; }
+.pdc-check { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid #c5ccd6; background: #fff; color: transparent; font-size: 15px; font-weight: 800; line-height: 1; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: background .12s, border-color .12s; }
+.pdc-check:hover { border-color: #1f9d6b; }
+.pdc-check.on { background: #1f9d6b; border-color: #1f9d6b; color: #fff; }
+.data-table tbody tr.pdc-paid td { background: #f2faf5; }

@@ -75,6 +75,10 @@ const RULES = {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC balance set to ${o?.start_amount === null || o?.start_amount === undefined ? '(Future payables amount)' : peso(o.start_amount)}${o?.start_date ? ` as of ${o.start_date}` : ''}`,
   },
+  set_pdc_paid: {
+    area: 'PDC Tracker', kind: 'edit',
+    text: (i, o) => `${o?.label ? `${o.label}: ` : ''}${o?.date || `${o?.month}/${o?.year}`} marked ${o?.paid ? 'PAID (check mark)' : 'not paid'}`,
+  },
   save_pdc_bulk: {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC schedule saved for ${o?.count ?? 0} month${o?.count === 1 ? '' : 's'}`,

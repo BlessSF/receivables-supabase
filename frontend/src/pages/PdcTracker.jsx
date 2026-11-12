@@ -94,7 +94,7 @@ export default function PdcTracker() {
         setData(r.data); setYear(r.data.year);
         const rw = {}; const ls = {}; const su = {};
         for (const it of r.data.items || []) {
-          rw[it.id] = (it.rows || []).map((x) => ({ year: x.year, month: x.month, a: x.amount ? String(x.amount) : '', d: x.date || '' }));
+          rw[it.id] = (it.rows || []).map((x) => ({ year: x.year, month: x.month, a: x.amount ? String(x.amount) : '', d: x.date || '', p: !!x.paid }));
           ls[it.id] = Object.fromEntries((it.rows || []).map((x) => [rkey(x.year, x.month), { a: x.amount, d: x.date || '' }]));
           su[it.id] = { amount: it.start_amount === null ? '' : String(it.start_amount), date: it.start_date || '' };
         }
@@ -129,6 +129,13 @@ export default function PdcTracker() {
   }
 
   // a new date typed in a row: the same month just changes the day; another month moves the row there
+  async function togglePaid(it, idx) {
+    const r = rows[it.id][idx]; const nv = !r.p;
+    patchRow(it.id, idx, { p: nv });
+    try { await api.setPdcPaid(it.id, r.year, r.month, nv); flash(`${r.d ? flong(r.d) : mon(r.year, r.month)} ${nv ? 'marked paid ✓' : 'unchecked'}`); }
+    catch (e) { patchRow(it.id, idx, { p: !nv }); setErr(e.message); }
+  }
+
   async function changeDate(it, idx, v) {
     const r = rows[it.id][idx];
     if (!v) { patchRow(it.id, idx, { d: '' }); await commit(it, idx, { d: '' }); return; }
@@ -137,6 +144,7 @@ export default function PdcTracker() {
     if (rows[it.id].some((x) => x.year === ny && x.month === nm)) { setErr(`${MONTHS[nm - 1]} ${ny} already has a row. Change that row instead.`); patchRow(it.id, idx, {}); return; }
     try {
       await api.savePdcAmount(ny, nm, num(r.a), it.id, v);
+      if (r.p) await api.setPdcPaid(it.id, ny, nm, true);
       await api.savePdcAmount(r.year, r.month, 0, it.id, null);
       flash(`${it.label} · moved to ${flong(v)}`); await load();
     } catch (e) { setErr(e.message); }
@@ -302,6 +310,7 @@ export default function PdcTracker() {
                   <th>Date issued</th>
                   <th className="text-right">PDC amount (type here)</th>
                   <th className="text-right">Balance <span className="pdc-hint">hover an amount to see why</span></th>
+                  <th style={{ textAlign: "center" }}>Paid</th>
                   <th />
                 </tr>
               </thead>
@@ -315,13 +324,14 @@ export default function PdcTracker() {
                       onFocus={(e) => openTip(cur.id, -1, e.currentTarget)} onBlur={closeTip}>{sgn(cc.startAmt)}</span>
                   </td>
                   <td />
+                  <td />
                 </tr>
                 {curRows.map((r, idx) => (
                   <Fragment key={rkey(r.year, r.month)}>
                     {(idx === 0 || curRows[idx - 1].year !== r.year) && (
-                      <tr key={`y${r.year}`} className="pdc-yearrow"><td colSpan={2}>{r.year}</td><td className="text-right">PDC {r.year}: {peso(yearPaid(r.year))}</td><td /></tr>
+                      <tr key={`y${r.year}`} className="pdc-yearrow"><td colSpan={2}>{r.year}</td><td className="text-right">PDC {r.year}: {peso(yearPaid(r.year))}</td><td /><td /></tr>
                     )}
-                    <tr data-ym={rkey(r.year, r.month)}>
+                    <tr data-ym={rkey(r.year, r.month)} className={r.p ? 'pdc-paid' : ''}>
                       <td>
                         <DateBox value={r.d} ariaLabel={`Date issued ${cur.label} ${MONTHS[r.month - 1]} ${r.year}`} placeholder={`${MONTHS[r.month - 1]} ${r.year}`} onCommit={(v) => changeDate(cur, idx, v)} />
                       </td>
@@ -337,20 +347,22 @@ export default function PdcTracker() {
                             onFocus={(e) => openTip(cur.id, idx, e.currentTarget)} onBlur={closeTip}>{sgn(cc.bal[idx])}{Math.abs(cc.bal[idx]) < 0.005 && num(r.a) > 0 ? ' · END' : ''}</span>
                         )}
                       </td>
+                      <td style={{ textAlign: "center" }}><button type="button" className={`pdc-check ${r.p ? 'on' : ''}`} aria-pressed={!!r.p} aria-label={r.p ? 'Paid. Click to uncheck' : 'Mark as paid'} title={r.p ? 'Already paid (click to uncheck)' : 'Click when this is already paid'} onClick={() => togglePaid(cur, idx)}>✓</button></td>
                       <td className="text-right"><button type="button" className="at-x" onClick={() => removeRow(cur, idx)} aria-label="Remove row" title="Remove this row">×</button></td>
                     </tr>
                   </Fragment>
                 ))}
-                {curRows.length === 0 && <tr><td colSpan={4} className="pdc-none">No rows yet. Type the first date above and press + Add row.</td></tr>}
+                {curRows.length === 0 && <tr><td colSpan={5} className="pdc-none">No rows yet. Type the first date above and press + Add row.</td></tr>}
                 <tr>
-                  <td colSpan={4}><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>{curRows.length === 0 && <span className="pdc-none"> Type the first date above first.</span>}</td>
+                  <td colSpan={5}><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>{curRows.length === 0 && <span className="pdc-none"> Type the first date above first.</span>}</td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
-                  <td>Total PDC · balance left</td>
+                  <td>Total PDC · balance left <small className="pdc-none">{curRows.filter((r) => r.p).length} of {curRows.length} rows paid ✓</small></td>
                   <td className="text-right">{peso(cc.paid)}</td>
                   <td className="text-right">{sgn(cc.end)}</td>
+                  <td />
                   <td />
                 </tr>
               </tfoot>

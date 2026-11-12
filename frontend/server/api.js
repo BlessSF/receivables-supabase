@@ -117,7 +117,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -128,7 +128,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid',
 ]);
 
 function recalcRow(d) {
@@ -306,6 +306,7 @@ async function ensurePdcTable() {
     PRIMARY KEY (item_id, year, month)
   )`);
   await exec(`ALTER TABLE pdc_item_months ADD COLUMN IF NOT EXISTS pay_date DATE`); // the exact date issued
+  await exec(`ALTER TABLE pdc_item_months ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT FALSE`); // the check mark: this one is already paid
   // The balance of each item is typed (amount + "as of" date), with the monthly PDC and the day of the month used to make the rows
   await exec(`CREATE TABLE IF NOT EXISTS pdc_items (
     item_id TEXT PRIMARY KEY,
@@ -2018,7 +2019,7 @@ const actions = {
     for (const r of rows) { const m = toInt(r.month); if (m >= 1 && m <= 12) months[m - 1] = toFloat(r.amount); }
     // one tracker per Future payable: beginning balance = the item's amount, less what was paid in earlier years
     const future = (await getCashPositionSettings()).future;
-    const itemRows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date FROM pdc_item_months');
+    const itemRows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date, paid FROM pdc_item_months');
     const setups = await all('SELECT item_id, start_amount, start_date::text AS start_date, monthly, pay_day FROM pdc_items');
     // first and last row of each item (a row = a date or an amount), so "Add row" can continue from the last one, also into the next year
     const spans = await all(
@@ -2043,7 +2044,7 @@ const actions = {
       const span = spans.find((x) => x.item_id === f.id);
       // every row of this item, from every year (a row = a date or an amount), oldest first
       const allRows = itemRows.filter((r) => r.item_id === f.id && (r.pay_date || toFloat(r.amount) > 0))
-        .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '' }))
+        .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '', paid: r.paid === true }))
         .sort((a, b) => a.year - b.year || a.month - b.month);
       return { id: f.id, label: f.label || '(no name)', amount: f.amount, first_date: span?.first_date || '', last_date: span?.last_date || '', rows: allRows, start_amount: startAmount, start_date: startDate,
         monthly: su ? toFloat(su.monthly) : 0, pay_day: su ? toInt(su.pay_day) : 0, months: m12, dates: d12, paid_before: Math.round(before * 100) / 100 };
@@ -2075,7 +2076,8 @@ const actions = {
       const payDate = cleanYmd(input.pay_date);
       await exec(
         `INSERT INTO pdc_item_months (item_id, year, month, amount, pay_date, updated_at) VALUES (?, ?, ?, ?, ?::date, NOW())
-         ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date, updated_at = NOW()`, [itemId, year, month, amount, payDate]);
+         ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date,
+           paid = CASE WHEN EXCLUDED.amount = 0 AND EXCLUDED.pay_date IS NULL THEN FALSE ELSE pdc_item_months.paid END, updated_at = NOW()`, [itemId, year, month, amount, payDate]);
       return { ok: true, year, month, amount, item_id: itemId, label: item.label || '(no name)' };
     }
     await exec(
@@ -2101,6 +2103,22 @@ const actions = {
        ON CONFLICT (item_id) DO UPDATE SET start_amount = EXCLUDED.start_amount, start_date = EXCLUDED.start_date, monthly = EXCLUDED.monthly, pay_day = EXCLUDED.pay_day, updated_at = NOW()`,
       [itemId, startAmount, cleanYmd(input.start_date), monthly, payDay >= 1 && payDay <= 31 ? payDay : null]);
     return { ok: true, item_id: itemId, label: item.label || '(no name)', start_amount: startAmount, start_date: cleanYmd(input.start_date) };
+  },
+
+  // The check mark of one row: it is already paid
+  async set_pdc_paid(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    const itemId = trim(input.item_id ?? '').slice(0, 40);
+    const item = (await getCashPositionSettings()).future.find((f) => f.id === itemId);
+    if (!item) jsonExit({ ok: false, error: 'This future payable is not in Cash Position any more.' }, 400);
+    const year = toInt(input.year); const month = toInt(input.month);
+    if (year < 2000 || year > 2100 || month < 1 || month > 12) jsonExit({ ok: false, error: 'Choose a valid row.' }, 400);
+    const paid = input.paid === true || input.paid === 'true' || input.paid === 1 || input.paid === '1';
+    const [row] = await all('SELECT pay_date::text AS pay_date FROM pdc_item_months WHERE item_id = ? AND year = ? AND month = ?', [itemId, year, month]);
+    if (!row) jsonExit({ ok: false, error: 'This row is not saved yet.' }, 400);
+    await exec('UPDATE pdc_item_months SET paid = ?, updated_at = NOW() WHERE item_id = ? AND year = ? AND month = ?', [paid, itemId, year, month]);
+    return { ok: true, item_id: itemId, label: item.label || '(no name)', year, month, date: row.pay_date || '', paid };
   },
 
   // Many months of one future payable at once (generated rows, or rows pasted from Excel)
