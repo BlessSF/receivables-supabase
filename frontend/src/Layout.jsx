@@ -51,6 +51,7 @@ const PAYABLES_NAV_GROUPS = [
     label: 'Payables',
     items: [
       { to: '/payables/running', label: 'Running Payables', Icon: IconChecklist },
+      { to: '/payables/pdc', label: 'PDC Tracker', Icon: IconCalendar },
       { to: '/payables/record', label: 'Payment Record', Icon: IconPenPlus },
     ],
   },
@@ -154,7 +155,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const inPayables = location.pathname.startsWith('/payables');
   // Admin always has both modules; other roles get the Payables tab only when Sidebar access gives them a Payables page
-  const payablesPages = ['/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles'].filter((p) => navAllowed(user, p));
+  const payablesPages = ['/payables/cash-position', '/payables/main', '/payables/running', '/payables/pdc', '/payables/record', '/payables/titles'].filter((p) => navAllowed(user, p));
   const showModuleToggle = user?.role === 'admin' || payablesPages.length > 0;
   function switchModule(mod) {
     if (mod === 'payables') {

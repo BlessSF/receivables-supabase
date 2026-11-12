@@ -11,14 +11,14 @@ const PAGE_LABEL = {
   '/': 'Dashboard', '/summary': 'Summary', '/reports-by-month': 'Reports by Month', '/companies': 'Companies', '/hmos': 'HMOs',
   '/company-charges': 'Company Charges', '/billing': 'Billing', '/ledger': 'Ledger', '/aging': 'Aging Report',
   '/past-due': 'Past Due', '/soa-tracker': 'SOA Tracker', '/monitoring': 'Monitoring', '/combined': 'HMO · Both Branches',
-  '/payables/cash-position': 'Cash Position', '/payables/main': 'Main', '/payables/running': 'Running Payables',
+  '/payables/cash-position': 'Cash Position', '/payables/main': 'Main', '/payables/running': 'Running Payables', '/payables/pdc': 'PDC Tracker',
   '/payables/record': 'Payment Record', '/payables/titles': 'Account Titles',
 };
 const PAGE_ICON = {
   '/': IconDashboard, '/summary': IconList, '/reports-by-month': IconCalendar, '/companies': IconBuilding, '/hmos': IconHeart,
   '/company-charges': IconCoins, '/billing': IconReceipt, '/ledger': IconTable, '/aging': IconClock, '/past-due': IconAlert,
   '/soa-tracker': IconHash, '/monitoring': IconActivity, '/combined': IconBranches, '/payables/cash-position': IconWallet, '/payables/main': IconBook,
-  '/payables/running': IconChecklist, '/payables/record': IconPenPlus, '/payables/titles': IconList,
+  '/payables/running': IconChecklist, '/payables/pdc': IconCalendar, '/payables/record': IconPenPlus, '/payables/titles': IconList,
 };
 const PAGE_DESC = {
   '/': 'Totals, due and past due', '/summary': 'Past due summary', '/reports-by-month': 'Billed and collected by month',
@@ -26,7 +26,7 @@ const PAGE_DESC = {
   '/ledger': 'Entries, payments, balances', '/aging': 'Aging by bucket', '/past-due': 'Past due by company',
   '/soa-tracker': 'SOA numbers', '/monitoring': 'Follow-ups', '/combined': 'One HMO across both branches',
   '/payables/cash-position': 'Bank, receivables and payables', '/payables/main': 'Cash fund and released checks',
-  '/payables/running': 'Checks and release status', '/payables/record': 'Enter new payments', '/payables/titles': 'Titles and names',
+  '/payables/running': 'Checks and release status', '/payables/pdc': 'Monthly PDC vs payables', '/payables/record': 'Enter new payments', '/payables/titles': 'Titles and names',
 };
 const ACCESS_GROUPS = [
   { module: 'Receivables', groups: [
@@ -36,7 +36,7 @@ const ACCESS_GROUPS = [
   ] },
   { module: 'Payables', groups: [
     { label: 'Cash', pages: ['/payables/cash-position', '/payables/main'] },
-    { label: 'Payables', pages: ['/payables/running', '/payables/record'] },
+    { label: 'Payables', pages: ['/payables/running', '/payables/pdc', '/payables/record'] },
     { label: 'Setup', pages: ['/payables/titles'] },
   ] },
 ];

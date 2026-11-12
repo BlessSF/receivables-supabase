@@ -33,7 +33,7 @@ const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 // Sidebar pages a role may be given (Settings > Users > Sidebar access). Admin always sees everything.
 // A role can only be switched on/off inside its own list; pages outside it stay closed for that role.
 const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring',
-  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles', '/combined'];
+  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/pdc', '/payables/record', '/payables/titles', '/combined'];
 // '/combined' (HMO across both branches) is only for Admin and Accounting.
 const NAV_NO_COMBINED = NAV_PAGES.filter((p) => p !== '/combined');
 // Payables pages start switched OFF for every role except Admin until Admin / Executive ticks them.
@@ -117,7 +117,7 @@ const STAFF_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', // Payables: each action still checks Sidebar access
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', // Payables: each action still checks Sidebar access
 ]);
 const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 
@@ -128,7 +128,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
-  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount',
 ]);
 
 function recalcRow(d) {
@@ -284,6 +284,19 @@ async function ensurePayablesTable() {
   await exec("ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS release_status TEXT NOT NULL DEFAULT 'Pending Release'");
   await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ NULL');
   payablesReady = true;
+}
+// PDC Tracker: a typed amount per month (Jan-Dec). The table creates itself the first time it is used.
+let pdcReady = false;
+async function ensurePdcTable() {
+  if (pdcReady) return;
+  await exec(`CREATE TABLE IF NOT EXISTS pdc_months (
+    year INT NOT NULL,
+    month INT NOT NULL,
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (year, month)
+  )`);
+  pdcReady = true;
 }
 // Account titles (the category list) are editable by the admin and stored as JSON in app_settings.
 async function getAccountTitles() {
@@ -1966,6 +1979,42 @@ const actions = {
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
     return { ok: true, data, categories: await getAccountTitles(), title_names: await getTitleNames() };
+  },
+
+  // ---- PDC Tracker: typed monthly amounts + the unpaid running payables to compare them with
+  async get_pdc_tracker(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    await ensurePayablesTable();
+    const nowYear = toInt(todayYmd().slice(0, 4));
+    const year = toInt(input.year) >= 2000 && toInt(input.year) <= 2100 ? toInt(input.year) : nowYear;
+    const rows = await all('SELECT month, amount FROM pdc_months WHERE year = ?', [year]);
+    const months = Array.from({ length: 12 }, () => 0);
+    for (const r of rows) { const m = toInt(r.month); if (m >= 1 && m <= 12) months[m - 1] = toFloat(r.amount); }
+    const payables = await all(
+      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, release_status
+       FROM running_payables
+       WHERE status = 'Unpaid' AND (check_date IS NULL OR EXTRACT(YEAR FROM check_date) = ?)
+       ORDER BY check_date NULLS LAST, id`, [year]);
+    const [other] = await all(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS total FROM running_payables
+       WHERE status = 'Unpaid' AND check_date IS NOT NULL AND EXTRACT(YEAR FROM check_date) <> ?`, [year]);
+    return { ok: true, data: { year, this_year: nowYear, months, payables: payables.map((p) => ({ ...p, amount: toFloat(p.amount) })),
+      other_years: { count: toInt(other?.n), total: toFloat(other?.total) } } };
+  },
+
+  async save_pdc_amount(input, auth) {
+    await requirePayablesAdmin(auth, '/payables/pdc');
+    await ensurePdcTable();
+    const year = toInt(input.year);
+    const month = toInt(input.month);
+    if (year < 2000 || year > 2100 || month < 1 || month > 12) jsonExit({ ok: false, error: 'Choose a valid month.' }, 400);
+    const amount = Math.round(toFloat(input.amount) * 100) / 100;
+    if (!(amount >= 0) || amount > 99999999999) jsonExit({ ok: false, error: 'Enter an amount of 0 or more.' }, 400);
+    await exec(
+      `INSERT INTO pdc_months (year, month, amount, updated_at) VALUES (?, ?, ?, NOW())
+       ON CONFLICT (year, month) DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()`, [year, month, amount]);
+    return { ok: true, year, month, amount };
   },
 
   async save_payable(input, auth) {

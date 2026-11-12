@@ -121,7 +121,7 @@ export function isAccounting(user) {
 }
 // Sidebar pages that can be switched on / off per role (Users > Sidebar access).
 export const NAV_PAGE_PATHS = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring',
-  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/record', '/payables/titles', '/combined'];
+  '/payables/cash-position', '/payables/main', '/payables/running', '/payables/pdc', '/payables/record', '/payables/titles', '/combined'];
 /** May this person open this sidebar page? (Admin and anything not switchable is always yes.) */
 export function navAllowed(user, path) {
   if (!user?.nav_access || !NAV_PAGE_PATHS.includes(path)) return true;

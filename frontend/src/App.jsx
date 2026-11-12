@@ -12,6 +12,7 @@ import CompanyCharges from './pages/CompanyCharges';
 import Aging from './pages/Aging';
 import PastDue from './pages/PastDue';
 import Combined from './pages/Combined';
+import PdcTracker from './pages/PdcTracker';
 import SoaTracker from './pages/SoaTracker';
 import Monitoring from './pages/Monitoring';
 import ExecDashboard from './pages/ExecDashboard';
@@ -59,6 +60,7 @@ function Gate() {
     <Route key="p1" path="/payables/cash-position" element={g('/payables/cash-position', <CashPosition />)} />,
     <Route key="p2" path="/payables/main" element={g('/payables/main', <MainFund />)} />,
     <Route key="p3" path="/payables/running" element={g('/payables/running', <RunningPayables />)} />,
+    <Route key="p3b" path="/payables/pdc" element={g('/payables/pdc', <PdcTracker />)} />,
     <Route key="p4" path="/payables/record" element={g('/payables/record', <PaymentRecord />)} />,
     <Route key="p5" path="/payables/titles" element={g('/payables/titles', <AccountTitles />)} />,
   ];
@@ -133,6 +135,7 @@ function Gate() {
         <Route path="/payables/main" element={g("/payables/main", <MainFund />)} />
         <Route path="/payables/running" element={g("/payables/running", <RunningPayables />)} />
         <Route path="/payables/record" element={g("/payables/record", <PaymentRecord />)} />
+        <Route path="/payables/pdc" element={g("/payables/pdc", <PdcTracker />)} />
         <Route path="/payables/titles" element={g("/payables/titles", <AccountTitles />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

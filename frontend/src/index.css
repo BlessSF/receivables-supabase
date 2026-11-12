@@ -2012,3 +2012,22 @@ select.rec-input { min-width: 112px; }
 .cb-grand td { font-weight: 800; background: #14213d; color: #fff; }
 .cb-none { color: #8a93a0; font-style: italic; }
 .cb-note { margin: 10px 4px 2px; font-size: 12px; color: #8a93a0; }
+
+/* PDC Tracker */
+.pdc-year { display: flex; align-items: center; gap: 10px; font-size: 18px; }
+.pdc-table td, .pdc-table th { padding-top: 8px; padding-bottom: 8px; }
+.pdc-in { width: 100%; max-width: 220px; text-align: right; }
+.pdc-month { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
+.pdc-month:hover { text-decoration: underline; }
+.pdc-picked td { background: #eef7f6; }
+.pdc-due { color: #5b6574; }
+.pdc-n { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: #eef1f6; font-size: 11px; color: #5b6574; }
+.pdc-bal { font-weight: 700; }
+.pdc-bal.neg, .pdc-neg { color: #b42318; }
+.pdc-total td { font-weight: 800; background: #f7f8fb; border-top: 2px solid #dde2ea; }
+.pdc-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; font-size: 12px; color: #8a93a0; }
+.pdc-list-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 0; }
+.pdc-list-head h2 { margin: 0; }
+.pdc-none { color: #8a93a0; font-style: italic; }
+.pdc-in { padding: 7px 10px; border: 1px solid #d5dae3; border-radius: 8px; background: #fff; font: inherit; }
+.pdc-in:focus { outline: 2px solid var(--teal); outline-offset: 0; border-color: transparent; }
