@@ -16,6 +16,17 @@ export default function PdcTracker() {
   const [saved, setSaved] = useState(''); // "Saved" note after a change
   const [pick, setPick] = useState(0); // month (1-12) the list below is filtered to, 0 = all
   const lastSaved = useRef([]);
+  const [tip, setTip] = useState(null); // hover card: { m (1-12), left, top | bottom }
+  const tipTimer = useRef(null);
+  function openTip(m, el) {
+    clearTimeout(tipTimer.current);
+    const r = el.getBoundingClientRect();
+    const w = Math.min(420, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    const down = r.top < window.innerHeight / 2;
+    setTip({ m, left, w, ...(down ? { top: r.bottom + 6 } : { bottom: window.innerHeight - r.top + 6 }) });
+  }
+  const closeTip = () => { clearTimeout(tipTimer.current); tipTimer.current = setTimeout(() => setTip(null), 160); };
 
   function load(y) {
     setErr('');
@@ -84,7 +95,7 @@ export default function PdcTracker() {
               <tr>
                 <th>Month</th>
                 <th className="text-right">PDC amount (type here)</th>
-                <th className="text-right">Balance (unpaid running payables)</th>
+                <th className="text-right">Balance (unpaid running payables) <span className="pdc-hint">hover an amount to see why</span></th>
               </tr>
             </thead>
             <tbody>
@@ -97,7 +108,15 @@ export default function PdcTracker() {
                         onChange={(v) => setTyped((t) => t.map((x, k) => (k === i ? v : x)))}
                         onBlur={() => commit(i)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
                     </td>
-                    <td className="text-right pdc-bal">{due.m[i].count ? <>{peso(due.m[i].total)} <span className="pdc-n">{due.m[i].count}</span></> : '—'}</td>
+                    <td className="text-right pdc-bal">
+                      {due.m[i].count ? (
+                        <span className="pdc-why" tabIndex={0} aria-label={`Why ${name} is ${peso(due.m[i].total)}`}
+                          onMouseEnter={(e) => openTip(i + 1, e.currentTarget)} onMouseLeave={closeTip}
+                          onFocus={(e) => openTip(i + 1, e.currentTarget)} onBlur={closeTip}>
+                          {peso(due.m[i].total)} <span className="pdc-n">{due.m[i].count}</span>
+                        </span>
+                      ) : '—'}
+                    </td>
                   </tr>
                 );
               })}
@@ -142,6 +161,29 @@ export default function PdcTracker() {
         </div>
         {!pick && due.none.count > 0 && <div className="pdc-foot"><span>{due.none.count} of these have no check date, so they are not counted in any month above ({peso(due.none.total)}).</span></div>}
       </div>
+      {tip && (() => {
+        const list = (data.payables || []).filter((p) => p.check_date && Number(p.check_date.slice(5, 7)) === tip.m);
+        const tot = r2(list.reduce((t, p) => t + p.amount, 0));
+        return (
+          <div className="pdc-pop" role="tooltip" style={{ left: tip.left, width: tip.w, top: tip.top, bottom: tip.bottom }}
+            onMouseEnter={() => clearTimeout(tipTimer.current)} onMouseLeave={closeTip}>
+            <div className="pdc-pop-head">
+              <b>{MONTHS[tip.m - 1]} {year}</b>
+              <span>{list.length} unpaid payable{list.length === 1 ? '' : 's'} with a check date this month</span>
+            </div>
+            <div className="pdc-pop-body">
+              {list.map((p) => (
+                <div className="pdc-pop-row" key={p.id}>
+                  <span className="pdc-pop-date">{fdate(p.check_date)}</span>
+                  <span className="pdc-pop-who">{p.payee}<small>{p.category}{p.title_name ? ` · ${p.title_name}` : ''}</small></span>
+                  <span className="pdc-pop-amt">{peso(p.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="pdc-pop-total"><span>Balance</span><b>{peso(tot)}</b></div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
