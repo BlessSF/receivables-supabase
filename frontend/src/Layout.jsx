@@ -280,7 +280,7 @@ export default function Layout() {
           </div>
         )}
         <Outlet />
-        <footer className="app-credit">© 2026 Bless Florentino. All rights reserved. Receivables Management System, designed and developed by Bless Florentino.</footer>
+        <footer className="app-credit">Receivables Management System · Designed and developed by Bless Florentino</footer>
       </main>
     </div>
   );
