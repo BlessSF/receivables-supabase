@@ -9,7 +9,7 @@ import { backupInfo } from './backup.js';
 import { isRecyclable, captureDelete, saveDeleted, listDeleted, loadItem, restoreItem } from './recycle.js';
 import { isAudited, auditBefore, auditWrite, auditLogin, readAudit } from './audit.js';
 import { computeMain } from './mainCalc.js';
-import { combinedAllowed, combinedNames, combinedReport } from './combined.js';
+import { combinedAllowed, combinedNames, combinedReport, isExcludedHmo, saveExcludedHmos } from './combined.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -1728,12 +1728,18 @@ const actions = {
   // ---- HMO across both branches (read only): this system plus the other branch's database
   async get_combined_names(input, auth) {
     if (!combinedAllowed(auth)) jsonExit({ ok: false, error: 'Only Admin and Accounting can open this page.' }, 403);
-    return { ok: true, data: await combinedNames() };
+    return { ok: true, data: await combinedNames(auth.isAdmin()) };
+  },
+  async save_combined_excluded(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can choose which HMOs are hidden.' }, 403);
+    const list = await saveExcludedHmos(input.names);
+    return { ok: true, count: list.length, names: list };
   },
   async get_combined_hmo(input, auth) {
     if (!combinedAllowed(auth)) jsonExit({ ok: false, error: 'Only Admin and Accounting can open this page.' }, 403);
     const name = trim(input.name ?? '');
     if (!name) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
+    if (await isExcludedHmo(name)) jsonExit({ ok: false, error: 'This HMO is hidden from this page.' }, 400);
     return { ok: true, data: await combinedReport(name, trim(input.from ?? ''), trim(input.to ?? '')) };
   },
 

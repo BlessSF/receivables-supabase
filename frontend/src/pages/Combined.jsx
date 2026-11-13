@@ -3,7 +3,7 @@ import { api } from '../api';
 import { peso, fdate } from '../utils';
 import LongDateInput from '../LongDateInput';
 
-// One HMO, both branches: this system's billings and the other branch's, side by side, with a combined total. View only.
+// One HMO, both branches: this system's billings and the other branch's, side by side, each branch with its own total. View only.
 export default function Combined() {
   const [meta, setMeta] = useState(null); // { self_name, peer_name, peer_connected, names }
   const [name, setName] = useState('');
@@ -12,6 +12,10 @@ export default function Combined() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showSet, setShowSet] = useState(false); // admin: "Hidden HMOs" settings panel
+  const [hidden, setHidden] = useState([]); // names ticked as hidden
+  const [filter, setFilter] = useState('');
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     api.getCombinedNames().then((r) => setMeta(r.data)).catch((e) => setErr(e.message));
@@ -35,9 +39,24 @@ export default function Combined() {
     return `/export_xlsx.php?${q.toString()}`;
   }, [name, from, to]);
 
+  function openSettings() {
+    setHidden(meta.names.filter((n) => n.excluded).map((n) => n.name)); setFilter(''); setNote(''); setShowSet(true);
+  }
+  async function saveHidden() {
+    setErr(''); setNote('');
+    try {
+      await api.saveCombinedExcluded(hidden);
+      const r = await api.getCombinedNames(); setMeta(r.data);
+      if (hidden.some((h) => h.toUpperCase().replace(/\s+/g, ' ').trim() === name.toUpperCase().replace(/\s+/g, ' ').trim())) setName('');
+      setNote('Saved.'); setTimeout(() => setNote(''), 2200);
+    } catch (e) { setErr(e.message); }
+  }
+
   if (!meta && !err) return <div className="loading-state">Loading…</div>;
   if (!meta) return <div className="flash flash-error">{err}</div>;
 
+  const visible = meta.names.filter((n) => !n.excluded);
+  const hiddenCount = meta.names.filter((n) => n.excluded).length;
   const where = (n) => (n.self && n.peer ? '' : n.self ? ` (${meta.self_name} only)` : ` (${meta.peer_name} only)`);
 
   return (
@@ -45,9 +64,12 @@ export default function Combined() {
       <div className="page-header">
         <div>
           <h1>HMO · Both Branches</h1>
-          <div className="subtitle">{meta.self_name} and {meta.peer_name} billings for one HMO, with a combined total. View only: to change an entry, use that branch's own Ledger.</div>
+          <div className="subtitle">{meta.self_name} and {meta.peer_name} billings for one HMO, shown separately (the two are not added together). View only: to change an entry, use that branch's own Ledger.</div>
         </div>
-        {name && <a className="btn btn-secondary" href={exportHref}>Export XLSX</a>}
+        <div className="cb-actions">
+          {meta.can_edit && <button type="button" className="btn btn-secondary" onClick={() => (showSet ? setShowSet(false) : openSettings())}>Hidden HMOs{hiddenCount ? ` (${hiddenCount})` : ''}</button>}
+          {name && <a className="btn btn-secondary" href={exportHref}>Export XLSX</a>}
+        </div>
       </div>
 
       {!meta.peer_connected && (
@@ -58,13 +80,35 @@ export default function Combined() {
       {meta.peer_error && <div className="flash flash-warning" role="status">{meta.peer_error} Only {meta.self_name} is shown for now.</div>}
       {err && <div className="flash flash-error">{err}</div>}
 
+      {meta.can_edit && showSet && (
+        <div className="panel cb-excl">
+          <h2>Hidden HMOs</h2>
+          <div className="cb-note">Tick the HMOs to hide from this page. Hidden HMOs do not appear in the list or the Excel export. Only admins see this setting; nothing else in the system changes.</div>
+          <input className="cb-excl-search" type="search" placeholder="Search HMO…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search HMO" />
+          <div className="cb-excl-list">
+            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).map((n) => (
+              <label key={n.name} className="cb-excl-item">
+                <input type="checkbox" checked={hidden.includes(n.name)}
+                  onChange={(e) => setHidden((h) => (e.target.checked ? [...h, n.name] : h.filter((x) => x !== n.name)))} />
+                <span>{n.name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="cb-excl-foot">
+            <button type="button" className="btn btn-primary" onClick={saveHidden}>Save</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowSet(false)}>Close</button>
+            <span>{note || `${hidden.length} hidden`}</span>
+          </div>
+        </div>
+      )}
+
       <div className="panel">
         <div className="range-filter">
           <div className="form-group">
             <label htmlFor="cb-hmo">HMO</label>
             <select id="cb-hmo" value={name} onChange={(e) => setName(e.target.value)}>
               <option value="">Choose an HMO…</option>
-              {meta.names.map((n) => <option key={n.name} value={n.name}>{n.name}{where(n)}</option>)}
+              {visible.map((n) => <option key={n.name} value={n.name}>{n.name}{where(n)}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -85,9 +129,13 @@ export default function Combined() {
       {name && data && (
         <>
           <div className="kpi-grid">
-            <div className="kpi-card"><div className="kpi-label">Combined billed</div><div className="kpi-value">{peso(data.combined.amount)}</div><div className="kpi-sub">{data.combined.count} billing{data.combined.count === 1 ? '' : 's'}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Combined paid</div><div className="kpi-value">{peso(data.combined.paid)}</div><div className="kpi-sub">Receivable {peso(data.combined.receivable)}</div></div>
-            <div className="kpi-card accent-red"><div className="kpi-label">Combined balance</div><div className="kpi-value">{peso(data.combined.balance)}</div><div className="kpi-sub">still unpaid</div></div>
+            {data.branches.map((b, bi) => (
+              <div key={bi} className="kpi-card accent-red">
+                <div className="kpi-label">{b.label} · balance</div>
+                <div className="kpi-value">{peso(b.total.balance)}</div>
+                <div className="kpi-sub">Billed {peso(b.total.amount)} · Paid {peso(b.total.paid)} · {b.total.count} billing{b.total.count === 1 ? '' : 's'}</div>
+              </div>
+            ))}
           </div>
 
           <div className="panel" style={{ opacity: busy ? 0.6 : 1 }}>
@@ -103,13 +151,6 @@ export default function Combined() {
                   {data.branches.map((b, bi) => (
                     <BranchRows key={bi} b={b} offline={bi === 1 && !data.peer_connected} />
                   ))}
-                  <tr className="cb-grand">
-                    <td colSpan={3}>{data.name} · both branches ({data.combined.count} billing{data.combined.count === 1 ? '' : 's'})</td>
-                    <td className="text-right">{peso(data.combined.amount)}</td>
-                    <td className="text-right">{peso(data.combined.receivable)}</td>
-                    <td className="text-right">{peso(data.combined.paid)}</td>
-                    <td className="text-right">{peso(data.combined.balance)}</td>
-                  </tr>
                 </tbody>
               </table>
             </div>

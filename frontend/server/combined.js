@@ -3,6 +3,7 @@ import { all } from './db.js';
 import { peerConfigured, peerRead } from './db.js';
 import { toFloat } from './php.js';
 import { coveredLabel } from './dates.js';
+import { getSetting, setSetting } from './lib.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const ymdOf = (v) => { const m = String(v ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };
@@ -49,8 +50,19 @@ const totalOf = (rows) => ({
   balance: r2(rows.reduce((t, r) => t + r.balance, 0)),
 });
 
-/** HMO names found in either database (for the picker). */
-export async function combinedNames() {
+/** HMOs an admin hid from this page (saved as upper-case names; the picker and the report skip them). */
+export async function excludedHmos() {
+  try { const a = JSON.parse(await getSetting('combined_excluded', '[]')); return Array.isArray(a) ? a.map(norm).filter(Boolean) : []; } catch { return []; }
+}
+export async function isExcludedHmo(name) { return (await excludedHmos()).includes(norm(name)); }
+export async function saveExcludedHmos(names) {
+  const list = [...new Set((Array.isArray(names) ? names : []).map((n) => norm(String(n).slice(0, 200))).filter(Boolean))].slice(0, 500);
+  await setSetting('combined_excluded', JSON.stringify(list));
+  return list;
+}
+
+/** HMO names found in either database (for the picker). Admin also gets the hidden ones (flagged) so they can be un-hidden. */
+export async function combinedNames(isAdmin = false) {
   const own = (await namesFrom((sql, p) => all(sql, p))).map((r) => r.name);
   let other = [];
   let peerError = '';
@@ -60,8 +72,11 @@ export async function combinedNames() {
   const map = new Map();
   for (const n of own) { const k = norm(n); map.set(k, { name: n, self: true, peer: false }); }
   for (const n of other) { const k = norm(n); const cur = map.get(k); if (cur) cur.peer = true; else map.set(k, { name: n, self: false, peer: true }); }
-  const names = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  return { self_name: selfName(), peer_name: peerName(), peer_connected: peerConfigured(), peer_error: peerError, names };
+  const hidden = new Set(await excludedHmos());
+  let names = [...map.entries()].map(([k, v]) => ({ ...v, excluded: hidden.has(k) }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  if (!isAdmin) names = names.filter((n) => !n.excluded);
+  return { self_name: selfName(), peer_name: peerName(), peer_connected: peerConfigured(), peer_error: peerError, names, can_edit: !!isAdmin };
 }
 
 /** One HMO, both branches. from / to = billing date range (YYYY-MM-DD, optional). */
@@ -75,7 +90,7 @@ export async function combinedReport(name, from, to) {
     try { theirs = await peerRead((q) => rowsFrom(q, name, f, t)); } catch (e) { peerError = 'Could not read the other branch database right now.'; console.error('peer report', e?.message); }
   }
   const a = totalOf(mine), b = totalOf(theirs);
-  const sum = (k) => r2(a[k] + b[k]);
+  // each branch has its own total; the two are not added together
   return {
     name, from: f, to: t,
     peer_connected: peerConfigured(), peer_error: peerError,
@@ -83,6 +98,5 @@ export async function combinedReport(name, from, to) {
       { label: selfName(), rows: mine, total: a },
       { label: peerName(), rows: theirs, total: b },
     ],
-    combined: { count: a.count + b.count, amount: sum('amount'), receivable: sum('receivable'), paid: sum('paid'), balance: sum('balance') },
   };
 }

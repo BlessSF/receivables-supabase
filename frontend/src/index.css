@@ -2121,3 +2121,13 @@ select.rec-input { min-width: 112px; }
 .pdc-card-all .pdc-card-lbl { color: #7fe0cf; }
 .pdc-card-all .pdc-card-sub b { color: #fff; }
 .pdc-card-bal { font-size: 24px; }
+
+/* HMO · Both Branches: hidden-HMO settings */
+.cb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cb-excl h2 { margin: 0 0 6px; font-size: 16px; }
+.cb-excl-search { width: 100%; max-width: 320px; margin: 10px 0; }
+.cb-excl-list { max-height: 260px; overflow: auto; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 6px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 14px; }
+.cb-excl-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; font-size: 14px; }
+.cb-excl-item input { width: auto; margin: 0; }
+.cb-excl-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.cb-excl-foot span { color: #6b7280; font-size: 13px; }

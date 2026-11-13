@@ -71,6 +71,10 @@ const RULES = {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC amount ${['January','February','March','April','May','June','July','August','September','October','November','December'][(num(i.month) || 1) - 1]} ${num(i.year)}: ${peso(i.amount)}`,
   },
+  save_combined_excluded: {
+    area: 'HMO · Both Branches', kind: 'setting',
+    text: (i, o) => `Hidden HMOs updated: ${o?.count ? `${o.count} hidden (${(o.names || []).slice(0, 8).join(', ')}${(o.names || []).length > 8 ? '…' : ''})` : 'none hidden'}`,
+  },
   save_pdc_item: {
     area: 'PDC Tracker', kind: 'edit',
     text: (i, o) => `${o?.label ? `${o.label}: ` : ''}PDC balance set to ${o?.start_amount === null || o?.start_amount === undefined ? '(Future payables amount)' : peso(o.start_amount)}${o?.start_date ? ` as of ${o.start_date}` : ''}`,
