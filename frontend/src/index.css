@@ -2131,3 +2131,7 @@ select.rec-input { min-width: 112px; }
 .cb-excl-item input { width: auto; margin: 0; }
 .cb-excl-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .cb-excl-foot span { color: #6b7280; font-size: 13px; }
+
+/* Author credit */
+.app-credit { margin: 28px 0 8px; padding-top: 12px; border-top: 1px solid var(--border, #e5e7eb); text-align: center; font-size: 12px; color: #6b7280; }
+@media print { .app-credit { display: none; } }
