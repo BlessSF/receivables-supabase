@@ -73,7 +73,11 @@ const RULES = {
   },
   save_combined_excluded: {
     area: 'HMO · Both Branches', kind: 'setting',
-    text: (i, o) => `Hidden HMOs updated: ${o?.count ? `${o.count} hidden (${(o.names || []).slice(0, 8).join(', ')}${(o.names || []).length > 8 ? '…' : ''})` : 'none hidden'}`,
+    text: (i, o) => {
+      const part = (label, a) => (a?.length ? `${label}: ${a.slice(0, 6).join(', ')}${a.length > 6 ? '…' : ''}` : '');
+      const t = [part('hidden', o?.hidden), part('this branch only', o?.self_only), part('other branch only', o?.peer_only)].filter(Boolean).join(' · ');
+      return `HMO page visibility updated${t ? ` — ${t}` : ' — all HMOs show both branches'}`;
+    },
   },
   save_pdc_item: {
     area: 'PDC Tracker', kind: 'edit',

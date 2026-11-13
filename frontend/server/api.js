@@ -9,7 +9,7 @@ import { backupInfo } from './backup.js';
 import { isRecyclable, captureDelete, saveDeleted, listDeleted, loadItem, restoreItem } from './recycle.js';
 import { isAudited, auditBefore, auditWrite, auditLogin, readAudit } from './audit.js';
 import { computeMain } from './mainCalc.js';
-import { combinedAllowed, combinedNames, combinedReport, isExcludedHmo, saveExcludedHmos } from './combined.js';
+import { combinedAllowed, combinedNames, combinedReport, isExcludedHmo, saveHmoScopes } from './combined.js';
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
@@ -1731,9 +1731,10 @@ const actions = {
     return { ok: true, data: await combinedNames(auth.isAdmin()) };
   },
   async save_combined_excluded(input, auth) {
-    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can choose which HMOs are hidden.' }, 403);
-    const list = await saveExcludedHmos(input.names);
-    return { ok: true, count: list.length, names: list };
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change which HMOs show on this page.' }, 403);
+    const scopes = await saveHmoScopes(input.scopes);
+    const rows = Object.entries(scopes);
+    return { ok: true, count: rows.length, hidden: rows.filter(([, m]) => m === 'none').map(([k]) => k), self_only: rows.filter(([, m]) => m === 'self').map(([k]) => k), peer_only: rows.filter(([, m]) => m === 'peer').map(([k]) => k) };
   },
   async get_combined_hmo(input, auth) {
     if (!combinedAllowed(auth)) jsonExit({ ok: false, error: 'Only Admin and Accounting can open this page.' }, 403);

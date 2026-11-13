@@ -13,9 +13,10 @@ export default function Combined() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSet, setShowSet] = useState(false); // admin: "Hidden HMOs" settings panel
-  const [hidden, setHidden] = useState([]); // names ticked as hidden
+  const [scopes, setScopes] = useState({}); // { HMO name: 'self' | 'peer' | 'none' }; missing = both branches
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
+  const [bump, setBump] = useState(0); // reload the open HMO after the setting changes
 
   useEffect(() => {
     api.getCombinedNames().then((r) => setMeta(r.data)).catch((e) => setErr(e.message));
@@ -30,7 +31,7 @@ export default function Combined() {
       .catch((e) => { if (live) setErr(e.message); })
       .finally(() => { if (live) setBusy(false); });
     return () => { live = false; };
-  }, [name, from, to]);
+  }, [name, from, to, bump]);
 
   const exportHref = useMemo(() => {
     const q = new URLSearchParams({ type: 'combined', name });
@@ -40,14 +41,17 @@ export default function Combined() {
   }, [name, from, to]);
 
   function openSettings() {
-    setHidden(meta.names.filter((n) => n.excluded).map((n) => n.name)); setFilter(''); setNote(''); setShowSet(true);
+    const o = {}; for (const n of meta.names) if (n.scope && n.scope !== 'both') o[n.name] = n.scope;
+    setScopes(o); setFilter(''); setNote(''); setShowSet(true);
   }
   async function saveHidden() {
     setErr(''); setNote('');
     try {
-      await api.saveCombinedExcluded(hidden);
+      await api.saveCombinedExcluded(scopes);
       const r = await api.getCombinedNames(); setMeta(r.data);
-      if (hidden.some((h) => h.toUpperCase().replace(/\s+/g, ' ').trim() === name.toUpperCase().replace(/\s+/g, ' ').trim())) setName('');
+      const key = (x) => x.toUpperCase().replace(/\s+/g, ' ').trim();
+      const cur = r.data.names.find((n) => key(n.name) === key(name));
+      if (name && (!cur || cur.excluded)) setName(''); else if (name) { setBump((x) => x + 1); }
       setNote('Saved.'); setTimeout(() => setNote(''), 2200);
     } catch (e) { setErr(e.message); }
   }
@@ -56,18 +60,18 @@ export default function Combined() {
   if (!meta) return <div className="flash flash-error">{err}</div>;
 
   const visible = meta.names.filter((n) => !n.excluded);
-  const hiddenCount = meta.names.filter((n) => n.excluded).length;
-  const where = (n) => (n.self && n.peer ? '' : n.self ? ` (${meta.self_name} only)` : ` (${meta.peer_name} only)`);
+  const changedCount = meta.names.filter((n) => n.scope && n.scope !== 'both').length;
+  const where = (n) => (n.scope === 'self' ? ` (${meta.self_name} only)` : n.scope === 'peer' ? ` (${meta.peer_name} only)` : n.self && n.peer ? '' : n.self ? ` (${meta.self_name} only)` : ` (${meta.peer_name} only)`);
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>HMO · Both Branches</h1>
-          <div className="subtitle">{meta.self_name} and {meta.peer_name} billings for one HMO, shown separately (the two are not added together). View only: to change an entry, use that branch's own Ledger.</div>
+          <div className="subtitle">{meta.self_name} and {meta.peer_name} billings for one HMO, shown separately (the two are not added together). An admin can limit an HMO to one branch. View only: to change an entry, use that branch's own Ledger.</div>
         </div>
         <div className="cb-actions">
-          {meta.can_edit && <button type="button" className="btn btn-secondary" onClick={() => (showSet ? setShowSet(false) : openSettings())}>Hidden HMOs{hiddenCount ? ` (${hiddenCount})` : ''}</button>}
+          {meta.can_edit && <button type="button" className="btn btn-secondary" onClick={() => (showSet ? setShowSet(false) : openSettings())}>HMO visibility{changedCount ? ` (${changedCount})` : ''}</button>}
           {name && <a className="btn btn-secondary" href={exportHref}>Export XLSX</a>}
         </div>
       </div>
@@ -80,43 +84,52 @@ export default function Combined() {
       {meta.peer_error && <div className="flash flash-warning" role="status">{meta.peer_error} Only {meta.self_name} is shown for now.</div>}
       {err && <div className="flash flash-error">{err}</div>}
 
-      {meta.can_edit && showSet && (
-        <div className="panel cb-excl">
-          <div className="cb-excl-head">
-            <div>
-              <h2>Hidden HMOs</h2>
-              <p>Choose the HMOs you do not want on this page. They disappear from the list and the Excel export. Only admins can change this; nothing else in the system is affected.</p>
+      {meta.can_edit && showSet && (() => {
+        const modeOf = (n) => scopes[n.name] || 'both';
+        const list = meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase()));
+        const changed = Object.keys(scopes).length;
+        const opts = [['both', 'Both'], ['self', `${meta.self_name} only`], ['peer', `${meta.peer_name} only`], ['none', 'Hidden']];
+        return (
+          <div className="panel cb-excl">
+            <div className="cb-excl-head">
+              <div>
+                <h2>HMO visibility</h2>
+                <p>For each HMO choose what this page shows: both branches, only {meta.self_name}, only {meta.peer_name}, or hide it. It applies to the list, the page and the Excel export. Only admins can change this; nothing else in the system is affected.</p>
+              </div>
+              <span className={`cb-excl-count${changed ? ' on' : ''}`}>{changed} changed</span>
             </div>
-            <span className={`cb-excl-count${hidden.length ? ' on' : ''}`}>{hidden.length} hidden</span>
-          </div>
-          <div className="cb-excl-tools">
-            <div className="cb-excl-find">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-              <input type="text" placeholder="Search HMO…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search HMO" />
+            <div className="cb-excl-tools">
+              <div className="cb-excl-find">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+                <input type="text" placeholder="Search HMO…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search HMO" />
+              </div>
+              {changed > 0 && <button type="button" className="cb-excl-link" onClick={() => setScopes({})}>Reset all to both branches</button>}
             </div>
-            {hidden.length > 0 && <button type="button" className="cb-excl-link" onClick={() => setHidden([])}>Show all again</button>}
+            <div className="cb-excl-list">
+              {list.map((n) => {
+                const m = modeOf(n);
+                return (
+                  <div key={n.name} className={`cb-excl-item${m !== 'both' ? ` on m-${m}` : ''}`}>
+                    <span className="cb-excl-name" title={n.name}>{n.name}</span>
+                    <div className="cb-seg" role="group" aria-label={`Show ${n.name}`}>
+                      {opts.map(([v, label]) => (
+                        <button key={v} type="button" className={m === v ? `on v-${v}` : ''} aria-pressed={m === v}
+                          onClick={() => setScopes((o) => { const c = { ...o }; if (v === 'both') delete c[n.name]; else c[n.name] = v; return c; })}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {list.length === 0 && <div className="cb-excl-empty">No HMO matches “{filter}”.</div>}
+            </div>
+            <div className="cb-excl-foot">
+              <button type="button" className="btn btn-primary" onClick={saveHidden}>Save changes</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowSet(false)}>Close</button>
+              <span className="cb-excl-note">{note}</span>
+            </div>
           </div>
-          <div className="cb-excl-list">
-            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).map((n) => {
-              const on = hidden.includes(n.name);
-              return (
-                <label key={n.name} className={`cb-excl-item${on ? ' on' : ''}`}>
-                  <input type="checkbox" checked={on}
-                    onChange={(e) => setHidden((h) => (e.target.checked ? [...h, n.name] : h.filter((x) => x !== n.name)))} />
-                  <span className="cb-excl-name">{n.name}</span>
-                  <span className="cb-excl-tag">{on ? 'Hidden' : 'Shown'}</span>
-                </label>
-              );
-            })}
-            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).length === 0 && <div className="cb-excl-empty">No HMO matches “{filter}”.</div>}
-          </div>
-          <div className="cb-excl-foot">
-            <button type="button" className="btn btn-primary" onClick={saveHidden}>Save changes</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowSet(false)}>Close</button>
-            <span className="cb-excl-note">{note}</span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="panel">
         <div className="range-filter">
@@ -165,7 +178,7 @@ export default function Combined() {
                 </thead>
                 <tbody>
                   {data.branches.map((b, bi) => (
-                    <BranchRows key={bi} b={b} offline={bi === 1 && !data.peer_connected} />
+                    <BranchRows key={bi} b={b} offline={b.peer && !data.peer_connected} />
                   ))}
                 </tbody>
               </table>
@@ -203,4 +216,4 @@ function BranchRows({ b, offline }) {
       </tr>
     </>
   );
-}
+} 

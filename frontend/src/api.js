@@ -108,7 +108,7 @@ export const api = {
   setPdcPaid: (item_id, year, month, paid) => call('set_pdc_paid', { method: 'POST', body: { item_id, year, month, paid } }),
   savePdcBulk: (item_id, entries) => call('save_pdc_bulk', { method: 'POST', body: { item_id, entries } }),
   getCombinedNames: () => call('get_combined_names'),
-  saveCombinedExcluded: (names) => call('save_combined_excluded', { method: 'POST', body: { names } }),
+  saveCombinedExcluded: (scopes) => call('save_combined_excluded', { method: 'POST', body: { scopes } }),
   getCombinedHmo: (name, from, to) => call('get_combined_hmo', { params: { name, from: from || '', to: to || '' } }),
   getMonthlyReport: (params) => call('get_monthly_report', { params }),
 

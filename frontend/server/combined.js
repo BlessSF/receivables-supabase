@@ -50,18 +50,37 @@ const totalOf = (rows) => ({
   balance: r2(rows.reduce((t, r) => t + r.balance, 0)),
 });
 
-/** HMOs an admin hid from this page (saved as upper-case names; the picker and the report skip them). */
-export async function excludedHmos() {
-  try { const a = JSON.parse(await getSetting('combined_excluded', '[]')); return Array.isArray(a) ? a.map(norm).filter(Boolean) : []; } catch { return []; }
+/**
+ * What each HMO shows on this page (set by an admin). Saved as { "HMO NAME": "self" | "peer" | "none" }:
+ * self = only this branch, peer = only the other branch, none = hidden. An HMO not listed shows both branches.
+ * (An older saved list of hidden names is read as "none".)
+ */
+const SCOPES = ['self', 'peer', 'none'];
+export async function hmoScopes() {
+  const out = {};
+  try {
+    const v = JSON.parse(await getSetting('combined_scope', 'null'));
+    if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k, m] of Object.entries(v)) if (SCOPES.includes(m)) out[norm(k)] = m;
+  } catch { /* none saved */ }
+  try {
+    const old = JSON.parse(await getSetting('combined_excluded', '[]'));
+    if (Array.isArray(old)) for (const k of old) if (norm(k) && !out[norm(k)]) out[norm(k)] = 'none';
+  } catch { /* ignore */ }
+  return out;
 }
-export async function isExcludedHmo(name) { return (await excludedHmos()).includes(norm(name)); }
-export async function saveExcludedHmos(names) {
-  const list = [...new Set((Array.isArray(names) ? names : []).map((n) => norm(String(n).slice(0, 200))).filter(Boolean))].slice(0, 500);
-  await setSetting('combined_excluded', JSON.stringify(list));
-  return list;
+export async function hmoScope(name) { return (await hmoScopes())[norm(name)] || 'both'; }
+export async function isExcludedHmo(name) { return (await hmoScope(name)) === 'none'; }
+export async function saveHmoScopes(scopes) {
+  const out = {};
+  if (scopes && typeof scopes === 'object' && !Array.isArray(scopes)) {
+    for (const [k, m] of Object.entries(scopes).slice(0, 1000)) { const key = norm(String(k).slice(0, 200)); if (key && SCOPES.includes(m)) out[key] = m; }
+  }
+  await setSetting('combined_scope', JSON.stringify(out));
+  await setSetting('combined_excluded', '[]'); // the old list is now part of the scopes above
+  return out;
 }
 
-/** HMO names found in either database (for the picker). Admin also gets the hidden ones (flagged) so they can be un-hidden. */
+/** HMO names found in either database (for the picker). Admin gets every HMO with its scope so it can be changed; others only get what is shown. */
 export async function combinedNames(isAdmin = false) {
   const own = (await namesFrom((sql, p) => all(sql, p))).map((r) => r.name);
   let other = [];
@@ -72,10 +91,10 @@ export async function combinedNames(isAdmin = false) {
   const map = new Map();
   for (const n of own) { const k = norm(n); map.set(k, { name: n, self: true, peer: false }); }
   for (const n of other) { const k = norm(n); const cur = map.get(k); if (cur) cur.peer = true; else map.set(k, { name: n, self: false, peer: true }); }
-  const hidden = new Set(await excludedHmos());
-  let names = [...map.entries()].map(([k, v]) => ({ ...v, excluded: hidden.has(k) }))
+  const scopes = await hmoScopes();
+  let names = [...map.entries()].map(([k, v]) => ({ ...v, scope: scopes[k] || 'both', excluded: scopes[k] === 'none' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  if (!isAdmin) names = names.filter((n) => !n.excluded);
+  if (!isAdmin) names = names.filter((n) => n.scope !== 'none' && !(n.scope === 'self' && !n.self) && !(n.scope === 'peer' && !n.peer));
   return { self_name: selfName(), peer_name: peerName(), peer_connected: peerConfigured(), peer_error: peerError, names, can_edit: !!isAdmin };
 }
 
@@ -83,20 +102,21 @@ export async function combinedNames(isAdmin = false) {
 export async function combinedReport(name, from, to) {
   const f = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : '';
   const t = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : '';
-  const mine = await rowsFrom((sql, p) => all(sql, p), name, f, t);
+  const scope = await hmoScope(name);
+  const mine = scope === 'peer' ? [] : await rowsFrom((sql, p) => all(sql, p), name, f, t);
   let theirs = [];
   let peerError = '';
-  if (peerConfigured()) {
+  if (peerConfigured() && scope !== 'self') {
     try { theirs = await peerRead((q) => rowsFrom(q, name, f, t)); } catch (e) { peerError = 'Could not read the other branch database right now.'; console.error('peer report', e?.message); }
   }
   const a = totalOf(mine), b = totalOf(theirs);
   // each branch has its own total; the two are not added together
   return {
-    name, from: f, to: t,
+    name, from: f, to: t, scope,
     peer_connected: peerConfigured(), peer_error: peerError,
     branches: [
-      { label: selfName(), rows: mine, total: a },
-      { label: peerName(), rows: theirs, total: b },
-    ],
+      { label: selfName(), peer: false, rows: mine, total: a },
+      { label: peerName(), peer: true, rows: theirs, total: b },
+    ].filter((br) => (scope === 'self' ? !br.peer : scope === 'peer' ? br.peer : true)),
   };
 }
