@@ -82,22 +82,38 @@ export default function Combined() {
 
       {meta.can_edit && showSet && (
         <div className="panel cb-excl">
-          <h2>Hidden HMOs</h2>
-          <div className="cb-note">Tick the HMOs to hide from this page. Hidden HMOs do not appear in the list or the Excel export. Only admins see this setting; nothing else in the system changes.</div>
-          <input className="cb-excl-search" type="search" placeholder="Search HMO…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search HMO" />
+          <div className="cb-excl-head">
+            <div>
+              <h2>Hidden HMOs</h2>
+              <p>Choose the HMOs you do not want on this page. They disappear from the list and the Excel export. Only admins can change this; nothing else in the system is affected.</p>
+            </div>
+            <span className={`cb-excl-count${hidden.length ? ' on' : ''}`}>{hidden.length} hidden</span>
+          </div>
+          <div className="cb-excl-tools">
+            <div className="cb-excl-find">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              <input type="text" placeholder="Search HMO…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search HMO" />
+            </div>
+            {hidden.length > 0 && <button type="button" className="cb-excl-link" onClick={() => setHidden([])}>Show all again</button>}
+          </div>
           <div className="cb-excl-list">
-            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).map((n) => (
-              <label key={n.name} className="cb-excl-item">
-                <input type="checkbox" checked={hidden.includes(n.name)}
-                  onChange={(e) => setHidden((h) => (e.target.checked ? [...h, n.name] : h.filter((x) => x !== n.name)))} />
-                <span>{n.name}</span>
-              </label>
-            ))}
+            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).map((n) => {
+              const on = hidden.includes(n.name);
+              return (
+                <label key={n.name} className={`cb-excl-item${on ? ' on' : ''}`}>
+                  <input type="checkbox" checked={on}
+                    onChange={(e) => setHidden((h) => (e.target.checked ? [...h, n.name] : h.filter((x) => x !== n.name)))} />
+                  <span className="cb-excl-name">{n.name}</span>
+                  <span className="cb-excl-tag">{on ? 'Hidden' : 'Shown'}</span>
+                </label>
+              );
+            })}
+            {meta.names.filter((n) => !filter || n.name.toLowerCase().includes(filter.toLowerCase())).length === 0 && <div className="cb-excl-empty">No HMO matches “{filter}”.</div>}
           </div>
           <div className="cb-excl-foot">
-            <button type="button" className="btn btn-primary" onClick={saveHidden}>Save</button>
+            <button type="button" className="btn btn-primary" onClick={saveHidden}>Save changes</button>
             <button type="button" className="btn btn-secondary" onClick={() => setShowSet(false)}>Close</button>
-            <span>{note || `${hidden.length} hidden`}</span>
+            <span className="cb-excl-note">{note}</span>
           </div>
         </div>
       )}
