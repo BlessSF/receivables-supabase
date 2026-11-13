@@ -92,10 +92,38 @@ async function getBankName() {
   try { return String(await getSetting('bank_name', '')).trim().slice(0, 30) || null; } catch { return null; }
 }
 
+// Per-person Receivables / Payables switches for Accounting users (Users page; only Admin and Executive can change them).
+// Saved as { "<user id>": { receivables: true|false, payables: true|false } }; a missing value follows the role's Sidebar access.
+const PAY_PAGES = NAV_PAGES.filter((p) => p.startsWith('/payables'));
+async function getUserModules() {
+  try { const v = JSON.parse(await getSetting('user_modules', '{}')); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; }
+}
+/** The pages one person may open: their role's pages, adjusted by their own Receivables / Payables switches. */
+function applyModules(role, rolePages, mod) {
+  if (role !== 'accounting' || !mod || !Array.isArray(rolePages)) return rolePages;
+  let pages = rolePages.slice();
+  if (mod.receivables === false) pages = pages.filter((p) => p === '/' || p.startsWith('/payables'));
+  if (mod.payables === false) pages = pages.filter((p) => !p.startsWith('/payables'));
+  else if (mod.payables === true && !pages.some((p) => p.startsWith('/payables'))) pages = [...pages, ...PAY_PAGES];
+  return pages;
+}
+async function navPagesFor(user) {
+  const role = user?.role;
+  const rolePages = (await getNavAccess())[role] || [];
+  if (role !== 'accounting') return rolePages;
+  return applyModules(role, rolePages, (await getUserModules())[String(user.id)]);
+}
+const modulesOf = (pages) => ({ receivables: pages.some((p) => !p.startsWith('/payables') && p !== '/'), payables: pages.some((p) => p.startsWith('/payables')) });
+// With Receivables switched off an Accounting user may still call the Payables screens and the dashboard.
+const PAYABLES_ONLY_OK = new Set([
+  'get_dashboard', 'get_exec_dashboard', 'get_settings',
+  'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item',
+]);
+
 async function userPayload(u) {
   if (!u) return null;
-  const [navAll, brand, bankName] = await Promise.all([u.role === 'admin' ? null : getNavAccess(), getBrand(), getBankName()]);
-  const access = navAll ? navAll[u.role] || null : null;
+  const [pagesFor, brand, bankName] = await Promise.all([u.role === 'admin' ? null : navPagesFor(u), getBrand(), getBankName()]);
+  const access = pagesFor || null;
   return {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     nav_access: access,
@@ -127,7 +155,7 @@ const EXECUTIVE_ACTIONS = new Set([
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'set_tax_off', 'delete_ledger',
   'get_payments', 'add_payment', 'update_payment', 'delete_payment',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
-  'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role',
+  'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role', 'save_user_modules',
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item',
 ]);
 
@@ -348,7 +376,7 @@ const cleanTitle = (v) => trim(v ?? '').replace(/\s+/g, ' ').slice(0, 60);
 // Admin always; any other role only when Sidebar access gives it at least one of these Payables pages.
 async function requirePayablesAdmin(auth, ...pages) {
   if (auth.isAdmin()) return;
-  const allowed = (await getNavAccess())[auth.user?.role] || [];
+  const allowed = await navPagesFor(auth.user);
   if (!pages.some((pg) => allowed.includes(pg))) jsonExit({ ok: false, error: 'You do not have access to this Payables page.' }, 403);
 }
 
@@ -1866,6 +1894,7 @@ const actions = {
   async get_users(input, auth) {
     if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can manage users.' }, 403);
     const data = await all('SELECT id, username, full_name, role, created_at FROM users ORDER BY (role = \'staff\') DESC, UPPER(username) COLLATE "C" ASC');
+    for (const u of data) if (u.role === 'accounting') u.modules = modulesOf(await navPagesFor(u));
     return { ok: true, data };
   },
 
@@ -1930,6 +1959,21 @@ const actions = {
     await exec('UPDATE users SET role = ? WHERE id = ?', [role, id]);
     const label = { staff: 'Staff', accounting: 'Accounting', admin: 'Admin' }[role];
     return { ok: true, message: `"${row.username}" is now ${label}. They are signed out and use the new role the next time they log in.` };
+  },
+
+  // One Accounting person: may they open Receivables and / or Payables? Only Admin and Executive can change it.
+  async save_user_modules(input, auth) {
+    if (!auth.isAdmin() && !auth.isExecutive()) jsonExit({ ok: false, error: 'Only an admin or executive can change this.' }, 403);
+    const id = toInt(input.id);
+    const row = await one('SELECT id, username, role FROM users WHERE id = ?', [id]);
+    if (!row) jsonExit({ ok: false, error: 'User not found.' }, 404);
+    if (row.role !== 'accounting') jsonExit({ ok: false, error: 'This setting is for Accounting users.' }, 400);
+    const receivables = input.receivables === true || input.receivables === 'true';
+    const payables = input.payables === true || input.payables === 'true';
+    const mods = await getUserModules();
+    mods[String(id)] = { receivables, payables };
+    await setSetting('user_modules', JSON.stringify(mods));
+    return { ok: true, username: row.username, receivables, payables, message: `${row.username}: Receivables ${receivables ? 'on' : 'off'}, Payables ${payables ? 'on' : 'off'}. It applies the next time they open or refresh the page.` };
   },
 
   // Which sidebar pages each role may open. Only Admin and Executive can read / change it.
@@ -2546,6 +2590,11 @@ export default async function handleApi(req, res) {
       if (!current || current.role !== user.role) {
         return sendJson(res, 401, { ok: false, error: 'Not logged in.' }, { 'Set-Cookie': clearCookie(req) });
       }
+    }
+    // Accounting with Receivables switched off (Users page) may only use Payables and the dashboard.
+    if (user.role === 'accounting' && !PAYABLES_ONLY_OK.has(action) && (await getUserModules())[String(user.id)]?.receivables === false
+        && !['me', 'logout'].includes(action)) {
+      return sendJson(res, 403, { ok: false, error: 'Receivables is switched off for your account.' });
     }
     // The executive dashboard is for owner / accounting accounts only.
     if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin' && user.role !== 'accounting') {

@@ -257,6 +257,7 @@ const RULES = {
   create_user: { area: 'Users', kind: 'user', text: (i) => `Created user ${q(i.username)} (${i.role || 'staff'})` },
   update_user: { area: 'Users', kind: 'user', before: async (i) => userRow(num(i.id)), text: (i, o, b) => `Edited user ${q(b?.username || `#${i.id}`)}${i.password ? ' · password changed' : ''}` },
   delete_user: { area: 'Users', kind: 'user', before: async (i) => userRow(num(i.id)), text: (i, o, b) => `Deleted user ${q(b?.username || `#${i.id}`)} (${b?.role || ''})` },
+  save_user_modules: { area: 'Users', kind: 'user', text: (i, o) => `Access for ${q(o?.username || `#${i.id}`)}: Receivables ${o?.receivables ? 'on' : 'off'}, Payables ${o?.payables ? 'on' : 'off'}` },
   change_user_role: { area: 'Users', kind: 'user', before: async (i) => userRow(num(i.id)), text: (i, o, b) => `Changed role of ${q(b?.username || `#${i.id}`)}: ${b?.role || '?'} → ${i.role}` },
 };
 

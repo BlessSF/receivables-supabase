@@ -121,6 +121,7 @@ export const api = {
 
   // users (admin only)
   getUsers: () => call('get_users'),
+  saveUserModules: (id, receivables, payables) => call('save_user_modules', { method: 'POST', body: { id, receivables, payables } }),
   createUser: (body) => call('create_user', { method: 'POST', body }),
   updateUser: (body) => call('update_user', { method: 'POST', body }),
   deleteUser: (id) => call('delete_user', { method: 'POST', body: { id } }),

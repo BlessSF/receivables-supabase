@@ -285,6 +285,20 @@ export default function Users() {
     }
   }
 
+  async function setModules(u, key, on) {
+    const cur = u.modules || { receivables: true, payables: false };
+    const next = { ...cur, [key]: on };
+    setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, modules: next } : x))); // show the change at once
+    setFlash(null);
+    try {
+      const r = await api.saveUserModules(u.id, next.receivables, next.payables);
+      setFlash({ type: 'success', msg: r.message });
+    } catch (ex) {
+      setFlash({ type: 'error', msg: ex.message });
+      load();
+    }
+  }
+
   async function remove(u) {
     if (!window.confirm(`Delete the account "${u.username}"? They will be logged out and can no longer sign in.`)) return;
     setFlash(null);
@@ -309,7 +323,7 @@ export default function Users() {
       <div className="page-header">
         <div>
           <h1>Users</h1>
-          <div className="subtitle">Create Admin, Accounting or Staff accounts. Accounting can use everything in Receivables except Users, Branches, Settings and Payables. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
+          <div className="subtitle">Create Admin, Accounting or Staff accounts. For each Accounting user, use the Module access switches to allow or block Receivables and Payables (only Admin and Executive can change them). Accounting cannot open Users, Branches or Settings. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
         </div>
       </div>
 
@@ -370,10 +384,10 @@ export default function Users() {
         <div className="table-wrap">
           <table className="data-table ul-table">
             <thead>
-              <tr><th>User</th><th>Role</th><th className="text-right">Actions</th></tr>
+              <tr><th>User</th><th>Role</th><th>Module access</th><th className="text-right">Actions</th></tr>
             </thead>
             <tbody>
-              {shown.length === 0 && <tr><td colSpan={3} className="ul-empty">No users match.</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={4} className="ul-empty">No users match.</td></tr>}
               {shown.map((u) => {
                 const isStaffRow = MANAGED.includes(u.role);
                 const editing = editId === u.id;
@@ -402,6 +416,21 @@ export default function Users() {
                           </select>
                         )
                         : <span className={`ul-role r-${u.role}`}>{ROLE_LABEL[u.role] || u.role}</span>}
+                    </td>
+                    <td>
+                      {u.role === 'accounting' && u.modules ? (
+                        <div className="ul-mods">
+                          {[['receivables', 'Receivables'], ['payables', 'Payables']].map(([k, label]) => (
+                            <label key={k} className={`ul-mod ${k}${u.modules[k] ? ' on' : ''}`}>
+                              <span className="sa-switch">
+                                <input type="checkbox" checked={!!u.modules[k]} onChange={(e) => setModules(u, k, e.target.checked)} aria-label={`${label} for ${u.username}`} />
+                                <span className="sa-track"><span className="sa-thumb" /></span>
+                              </span>
+                              <span>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : <span className="ul-note">{u.role === 'admin' ? 'Everything' : '—'}</span>}
                     </td>
                     <td className="text-right">
                       {!isStaffRow && <span className="ul-note">{me ? 'This is you' : u.role === 'executive' || u.role === 'branch' ? 'Managed outside this page' : canPick ? 'Role can be changed' : 'Only an admin can change this'}</span>}

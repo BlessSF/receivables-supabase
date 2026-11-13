@@ -2160,3 +2160,9 @@ select.rec-input { min-width: 112px; }
 /* Author credit */
 .app-credit { margin: 28px 0 8px; padding-top: 12px; border-top: 1px solid var(--border, #e5e7eb); text-align: center; font-size: 12px; color: #6b7280; }
 @media print { .app-credit { display: none; } }
+
+/* Users: per-person Receivables / Payables switches */
+.ul-mods { display: flex; gap: 8px; flex-wrap: wrap; }
+.ul-mod { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 8px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; }
+.ul-mod.on.receivables { border-color: #99d5cf; background: #f0fbf9; color: #0f766e; }
+.ul-mod.on.payables { border-color: #c4b5fd; background: #f5f3ff; color: #6d28d9; }
