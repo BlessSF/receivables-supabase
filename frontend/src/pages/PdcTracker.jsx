@@ -317,7 +317,7 @@ export default function PdcTracker() {
       <div className="page-header">
         <div>
           <h1>PDC Tracker</h1>
-          <div className="subtitle">Add each future payable here. Click a card, type its balance and the date of that balance, then press + Add row for every PDC. Cash Position shows the next unpaid row of each one.</div>
+          <div className="subtitle">Add each future payable here. Click a card, type its balance and the date of that balance, then press + Add row for every PDC. The next unpaid row of each one also goes to Running Payables, and Cash Position shows the balance still left after it.</div>
         </div>
       </div>
       {err && <div className="flash flash-error" role="alert">{err}</div>}
@@ -383,7 +383,7 @@ export default function PdcTracker() {
             {curRows.length === 0 && <label><span>First date</span><DateBox value={firstTxt} ariaLabel="First date" placeholder="September 25, 2026" pasteBox onPaste={onPasteRows} onCommit={(v) => setFirstTxt(v)} /></label>}
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => addRow(cur)}>+ Add row</button>
           </div>
-          <p className="pdc-tip">{curRows.length ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like September 25, 2026) and press + Add row. The next rows follow month by month.'} The next row that is not checked paid shows in Cash Position under Future payables; check it paid and the next month shows there. The balance is typed here (blank = the amount typed when the item was added). You can also copy rows from Excel and paste them into the table.</p>
+          <p className="pdc-tip">{curRows.length ? 'Each new row is the next month on the same day, and it goes on into the next year.' : 'Type the first date (like September 25, 2026) and press + Add row. The next rows follow month by month.'} The next row that is not checked paid goes to Running Payables, and Cash Position shows the balance left after it under Future payables; check it paid and the next month takes its place. The balance is typed here (blank = the amount typed when the item was added). You can also copy rows from Excel and paste them into the table.</p>
           <div className="table-wrap" onPaste={onPasteRows}>
             <table className="data-table pdc-table">
               <thead>

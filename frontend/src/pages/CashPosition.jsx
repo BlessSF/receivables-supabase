@@ -37,7 +37,7 @@ export default function CashPosition() {
     const running = d.running_payables;
     const current = released + running;
     const future = d.future || []; // read-only: the next unpaid PDC of each item (from the PDC Tracker)
-    const futureTotal = future.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+    const futureTotal = future.reduce((t, x) => t + (Number(x.balance ?? x.amount) || 0), 0); // the outstanding balance left after each item's next PDC
     const allAP = current + futureTotal;
     return {
       m, bank, due, notYet, typedAR, typedDate, ledgerAR, totalAR, released, running, current, future, futureTotal, allAP,
@@ -140,18 +140,18 @@ export default function CashPosition() {
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total current accounts payable</span><span className="mf-val">{peso(c.current)}</span></div>
 
           <div className="mf-block">Future payables <span className="cp-edit">from the PDC Tracker</span></div>
-          <p className="at-help cp-note" style={{ marginTop: 0 }}>Each item shows its next PDC that is not paid yet: the date, the name and the amount to pay. When you check it paid in the <Link to="/payables/pdc" className="pay-link-btn">PDC Tracker</Link>, the next month shows here. Add or change items there.</p>
+          <p className="at-help cp-note" style={{ marginTop: 0 }}>Each item shows its next PDC that is not paid yet (the date and the name) and the outstanding balance still left to pay after it. That next PDC is already in Payables for releasing above. When you check it paid in the <Link to="/payables/pdc" className="pay-link-btn">PDC Tracker</Link>, the next month shows here. Add or change items there.</p>
           <ul className="cp-fro">
             {c.future.map((x) => (
               <li key={x.id}>
                 <span className="cp-fdate">{x.date ? fdate(x.date, LONG) : `${x.month}/${x.year}`}</span>
-                <span className="cp-fname">{x.label}</span>
-                <b>{peso(x.amount)}</b>
+                <span className="cp-fname">{x.label}<small className="cp-fsub">Next PDC {peso(x.amount)} · in Payables for releasing</small></span>
+                <b>{sgn(x.balance ?? x.amount)}</b>
               </li>
             ))}
             {c.future.length === 0 && <li className="at-empty">Nothing to pay yet. Add a future payable in the PDC Tracker.</li>}
           </ul>
-          <div className="mf-row mf-sub" style={{ marginTop: 12 }}><span className="mf-lbl">Future payables total</span><span className="mf-val">{sgn(c.futureTotal)}</span></div>
+          <div className="mf-row mf-sub" style={{ marginTop: 12 }}><span className="mf-lbl">Outstanding balance total</span><span className="mf-val">{sgn(c.futureTotal)}</span></div>
           <div className="mf-row mf-sub mf-key"><span className="mf-lbl">Total payables incl. future</span><span className="mf-val">{peso(c.allAP)}</span></div>
         </section>
       </div>

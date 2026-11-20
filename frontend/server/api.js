@@ -322,6 +322,11 @@ async function ensurePayablesTable() {
   // check release tracking (separate from Paid / Unpaid): Pending Release | Released; cleared_at hides it from Main once the bank clears it
   await exec("ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS release_status TEXT NOT NULL DEFAULT 'Pending Release'");
   await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ NULL');
+  // a payable made from a PDC Tracker row (the next unpaid row of a future payable): which item / month it comes from
+  await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS pdc_item_id TEXT NULL');
+  await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS pdc_year INT NULL');
+  await exec('ALTER TABLE running_payables ADD COLUMN IF NOT EXISTS pdc_month INT NULL');
+  await exec('CREATE UNIQUE INDEX IF NOT EXISTS running_payables_pdc_uq ON running_payables (pdc_item_id, pdc_year, pdc_month) WHERE pdc_item_id IS NOT NULL');
   payablesReady = true;
 }
 // PDC Tracker: a typed amount per month (Jan-Dec). The table creates itself the first time it is used.
@@ -518,23 +523,91 @@ async function getCashPositionSettings() {
 
 // Cash Position -> Future payables are not typed any more: each PDC Tracker item shows its next unpaid row (date, name, PDC amount).
 // When that row is checked paid, the next month's row takes its place. Rows dated before the item's "as of" date are not counted.
-async function pdcNextDue() {
+// The same balance chain as the PDC Tracker page: the typed balance (else the item's amount), less every row dated on / after the "as of" date, in order.
+// Each item: its rows (with the balance after each one) and its next unpaid row (the "target").
+async function pdcState() {
   await ensurePdcTable();
   const future = (await getCashPositionSettings()).future;
   const rows = await all('SELECT item_id, year, month, amount, pay_date::text AS pay_date, paid FROM pdc_item_months WHERE pay_date IS NOT NULL OR amount > 0');
-  const setups = await all('SELECT item_id, start_date::text AS start_date FROM pdc_items');
-  const ym = (r) => r.date || `${r.year}-${String(r.month).padStart(2, '0')}-01`;
-  const out = [];
-  for (const f of future) {
-    const sd = setups.find((x) => x.item_id === f.id)?.start_date || '';
-    const mine = rows.filter((r) => r.item_id === f.id && r.paid !== true && toFloat(r.amount) > 0)
-      .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '' }))
-      .filter((r) => !sd || ym(r) >= sd)
-      .sort((a, b) => (ym(a) < ym(b) ? -1 : ym(a) > ym(b) ? 1 : 0));
-    if (mine[0]) out.push({ id: f.id, label: f.label || '(no name)', amount: mine[0].amount, date: mine[0].date, year: mine[0].year, month: mine[0].month });
-  }
-  return out.sort((a, b) => (ym(a) < ym(b) ? -1 : ym(a) > ym(b) ? 1 : 0));
+  const setups = await all('SELECT item_id, start_amount, start_date::text AS start_date FROM pdc_items');
+  const r2 = (n) => Math.round(n * 100) / 100;
+  return future.map((f) => {
+    const su = setups.find((x) => x.item_id === f.id);
+    const sd = su?.start_date || '';
+    let run = su && su.start_amount !== null && su.start_amount !== undefined ? toFloat(su.start_amount) : f.amount;
+    const mine = rows.filter((r) => r.item_id === f.id)
+      .map((r) => ({ year: toInt(r.year), month: toInt(r.month), amount: toFloat(r.amount), date: r.pay_date || '', paid: r.paid === true }))
+      .sort((a, b) => a.year - b.year || a.month - b.month);
+    for (const r of mine) {
+      r.eff = r.date || `${r.year}-${String(r.month).padStart(2, '0')}-01`;
+      r.counted = !sd || r.eff >= sd;
+      if (r.counted) { run = r2(run - r.amount); r.balance = run; } else r.balance = null;
+    }
+    const target = mine.filter((r) => !r.paid && r.amount > 0 && r.counted).sort((a, b) => (a.eff < b.eff ? -1 : a.eff > b.eff ? 1 : 0))[0] || null;
+    return { id: f.id, label: f.label || '(no name)', rows: mine, target };
+  });
 }
+// Cash Position -> Future payables: for each item, its next unpaid PDC (date, name) and the OUTSTANDING BALANCE left after it.
+// The next PDC itself is already in Running Payables, so the two together are the whole balance still to pay.
+async function pdcNextDue() {
+  const out = (await pdcState()).filter((it) => it.target).map((it) => ({
+    id: it.id, label: it.label, amount: it.target.amount, balance: it.target.balance, date: it.target.date, year: it.target.year, month: it.target.month, eff: it.target.eff }));
+  return out.sort((a, b) => (a.eff < b.eff ? -1 : a.eff > b.eff ? 1 : 0)).map(({ eff, ...x }) => x);
+}
+
+// Running Payables <- PDC Tracker: the next unpaid row of every future payable is also an (Unpaid) payable. When it is checked paid
+// in the PDC Tracker it turns Paid and the next month's row takes its place. These rows are only changed from the PDC Tracker.
+const PDC_NOTE = 'Future payable · from the PDC Tracker';
+let pdcSyncAt = 0;
+async function syncPdcToRunning(force = true) {
+  if (!force && Date.now() - pdcSyncAt < 60000) return;
+  await ensurePayablesTable();
+  const items = await pdcState();
+  const linked = await all('SELECT id, pdc_item_id, pdc_year, pdc_month, status FROM running_payables WHERE pdc_item_id IS NOT NULL');
+  const seen = new Set();
+  await transaction(async (client) => {
+    for (const L of linked) {
+      const it = items.find((x) => x.id === L.pdc_item_id);
+      const r = it?.rows.find((x) => x.year === toInt(L.pdc_year) && x.month === toInt(L.pdc_month));
+      if (!it || !r || !(r.amount > 0)) { // its source is gone: keep a paid record as a normal payable, drop the rest
+        if (L.status === 'Paid') await exec('UPDATE running_payables SET pdc_item_id = NULL, pdc_year = NULL, pdc_month = NULL, updated_at = NOW() WHERE id = ?', [L.id], client);
+        else await exec('DELETE FROM running_payables WHERE id = ?', [L.id], client);
+        continue;
+      }
+      const date = r.date || r.eff;
+      const isTarget = it.target && it.target.year === r.year && it.target.month === r.month;
+      if (r.paid) {
+        seen.add(`${L.pdc_item_id}|${r.year}|${r.month}`);
+        await exec("UPDATE running_payables SET check_date = ?::date, payee = ?, amount = ?, status = 'Paid', note = ?, updated_at = NOW() WHERE id = ?", [date, it.label, r.amount, PDC_NOTE, L.id], client);
+      } else if (isTarget) {
+        seen.add(`${L.pdc_item_id}|${r.year}|${r.month}`);
+        await exec(
+          `UPDATE running_payables SET check_date = ?::date, payee = ?, amount = ?, note = ?,
+             release_status = CASE WHEN status = 'Paid' THEN 'Pending Release' ELSE release_status END,
+             cleared_at = CASE WHEN status = 'Paid' THEN NULL ELSE cleared_at END,
+             status = 'Unpaid', updated_at = NOW() WHERE id = ?`, [date, it.label, r.amount, PDC_NOTE, L.id], client);
+      } else {
+        await exec('DELETE FROM running_payables WHERE id = ?', [L.id], client);
+      }
+    }
+    for (const it of items) {
+      const t = it.target;
+      if (!t || seen.has(`${it.id}|${t.year}|${t.month}`)) continue;
+      await exec(
+        `INSERT INTO running_payables (check_date, payee, category, amount, status, note, release_status, pdc_item_id, pdc_year, pdc_month)
+         VALUES (?::date, ?, 'Other', ?, 'Unpaid', ?, 'Pending Release', ?, ?, ?)
+         ON CONFLICT (pdc_item_id, pdc_year, pdc_month) WHERE pdc_item_id IS NOT NULL DO NOTHING`,
+        [t.date || t.eff, it.label, t.amount, PDC_NOTE, it.id, t.year, t.month], client);
+    }
+  });
+  pdcSyncAt = Date.now();
+}
+// A payable that comes from the PDC Tracker is changed there, not on the Running Payables page.
+async function payableFromPdc(id) {
+  const [r] = await all('SELECT pdc_item_id FROM running_payables WHERE id = ?', [toInt(id)]);
+  return !!r?.pdc_item_id;
+}
+const PDC_LOCK = 'This is a Future payable from the PDC Tracker. Change it there (check it paid, or change its date or amount).';
 
 const actions = {
 
@@ -2091,8 +2164,10 @@ const actions = {
   async get_payables(input, auth) {
     await requirePayablesAdmin(auth, '/payables/running', '/payables/record', '/payables/titles');
     await ensurePayablesTable();
+    await syncPdcToRunning(false);
     const data = await all(
-      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, release_status, cleared_at::text AS cleared_at, note
+      `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, status, release_status, cleared_at::text AS cleared_at, note,
+              (pdc_item_id IS NOT NULL) AS from_pdc
        FROM running_payables
        ORDER BY (status = 'Unpaid') DESC, check_date DESC NULLS LAST, id DESC`);
     return { ok: true, data, categories: await getAccountTitles(), title_names: await getTitleNames() };
@@ -2143,11 +2218,11 @@ const actions = {
     const payables = await all(
       `SELECT id, check_date::text AS check_date, payee, category, title_name, amount, release_status
        FROM running_payables
-       WHERE status = 'Unpaid' AND (check_date IS NULL OR EXTRACT(YEAR FROM check_date) = ?)
+       WHERE status = 'Unpaid' AND pdc_item_id IS NULL AND (check_date IS NULL OR EXTRACT(YEAR FROM check_date) = ?)
        ORDER BY check_date NULLS LAST, id`, [year]);
     const [other] = await all(
       `SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS total FROM running_payables
-       WHERE status = 'Unpaid' AND check_date IS NOT NULL AND EXTRACT(YEAR FROM check_date) <> ?`, [year]);
+       WHERE status = 'Unpaid' AND pdc_item_id IS NULL AND check_date IS NOT NULL AND EXTRACT(YEAR FROM check_date) <> ?`, [year]);
     return { ok: true, data: { year, this_year: nowYear, months, items, payables: payables.map((p) => ({ ...p, amount: toFloat(p.amount) })),
       other_years: { count: toInt(other?.n), total: toFloat(other?.total) } } };
   },
@@ -2169,6 +2244,7 @@ const actions = {
         `INSERT INTO pdc_item_months (item_id, year, month, amount, pay_date, updated_at) VALUES (?, ?, ?, ?, ?::date, NOW())
          ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date,
            paid = CASE WHEN EXCLUDED.amount = 0 AND EXCLUDED.pay_date IS NULL THEN FALSE ELSE pdc_item_months.paid END, updated_at = NOW()`, [itemId, year, month, amount, payDate]);
+      await syncPdcToRunning();
       return { ok: true, year, month, amount, item_id: itemId, label: item.label || '(no name)' };
     }
     await exec(
@@ -2193,6 +2269,7 @@ const actions = {
       `INSERT INTO pdc_items (item_id, start_amount, start_date, monthly, pay_day, updated_at) VALUES (?, ?, ?::date, ?, ?, NOW())
        ON CONFLICT (item_id) DO UPDATE SET start_amount = EXCLUDED.start_amount, start_date = EXCLUDED.start_date, monthly = EXCLUDED.monthly, pay_day = EXCLUDED.pay_day, updated_at = NOW()`,
       [itemId, startAmount, cleanYmd(input.start_date), monthly, payDay >= 1 && payDay <= 31 ? payDay : null]);
+    await syncPdcToRunning();
     return { ok: true, item_id: itemId, label: item.label || '(no name)', start_amount: startAmount, start_date: cleanYmd(input.start_date) };
   },
 
@@ -2209,6 +2286,7 @@ const actions = {
     const [row] = await all('SELECT pay_date::text AS pay_date FROM pdc_item_months WHERE item_id = ? AND year = ? AND month = ?', [itemId, year, month]);
     if (!row) jsonExit({ ok: false, error: 'This row is not saved yet.' }, 400);
     await exec('UPDATE pdc_item_months SET paid = ?, updated_at = NOW() WHERE item_id = ? AND year = ? AND month = ?', [paid, itemId, year, month]);
+    await syncPdcToRunning();
     return { ok: true, item_id: itemId, label: item.label || '(no name)', year, month, date: row.pay_date || '', paid };
   },
 
@@ -2233,6 +2311,7 @@ const actions = {
       `INSERT INTO pdc_item_months (item_id, year, month, amount, pay_date, updated_at) VALUES ${rows.map(() => '(?, ?, ?, ?, ?::date, NOW())').join(', ')}
        ON CONFLICT (item_id, year, month) DO UPDATE SET amount = EXCLUDED.amount, pay_date = EXCLUDED.pay_date, updated_at = NOW()`,
       rows.flatMap((r) => [itemId, r.y, r.m, r.a, r.d]));
+    await syncPdcToRunning();
     return { ok: true, item_id: itemId, label: item.label || '(no name)', count: rows.length };
   },
 
@@ -2251,6 +2330,7 @@ const actions = {
     const checkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.check_date ?? '')) ? input.check_date : null;
     const note = elvis(trim(input.note ?? '').slice(0, 300), null);
     const id = toInt(input.id);
+    if (id && await payableFromPdc(id)) jsonExit({ ok: false, error: PDC_LOCK }, 400);
     if (id) {
       const n = await exec(
         `UPDATE running_payables SET check_date=?, payee=?, category=?, title_name=?, amount=?, status=?,
@@ -2356,6 +2436,7 @@ const actions = {
       }
     } else jsonExit({ ok: false, error: 'Unknown action.' }, 400);
     await setSetting('cash_position', JSON.stringify({ future }));
+    await syncPdcToRunning();
     const now = future.find((f) => f.id === itemId);
     return { ok: true, op, item_id: itemId, label: now?.label || label };
   },
@@ -2426,6 +2507,7 @@ const actions = {
     await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
     const status = input.status === 'Paid' ? 'Paid' : 'Unpaid';
+    if (await payableFromPdc(input.id)) jsonExit({ ok: false, error: PDC_LOCK }, 400);
     const n = await exec("UPDATE running_payables SET status=?, release_status = CASE WHEN ? = 'Paid' THEN release_status ELSE 'Pending Release' END, cleared_at = CASE WHEN ? = 'Paid' THEN cleared_at ELSE NULL END, updated_at=NOW() WHERE id=?", [status, status, status, toInt(input.id)]);
     if (!n) jsonExit({ ok: false, error: 'Not found.' }, 404);
     return { ok: true, message: `Marked ${status}.` };
@@ -2456,6 +2538,7 @@ const actions = {
   async delete_payable(input, auth) {
     await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
+    if (await payableFromPdc(input.id)) jsonExit({ ok: false, error: PDC_LOCK }, 400);
     await exec('DELETE FROM running_payables WHERE id=?', [toInt(input.id)]);
     return { ok: true, message: 'Payable deleted.' };
   },
@@ -2464,8 +2547,16 @@ const actions = {
   async clear_payables(input, auth) {
     await requirePayablesAdmin(auth, '/payables/running');
     await ensurePayablesTable();
-    const ids = [...new Set((Array.isArray(input.ids) ? input.ids : []).map(toInt).filter((n) => n > 0))];
+    let ids = [...new Set((Array.isArray(input.ids) ? input.ids : []).map(toInt).filter((n) => n > 0))];
     if (!ids.length) jsonExit({ ok: false, error: 'Nothing to clear.' }, 400);
+    // payables that come from the PDC Tracker are never cleared here
+    const keep = new Set();
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      for (const r of await all(`SELECT id FROM running_payables WHERE pdc_item_id IS NOT NULL AND id IN (${part.map(() => '?').join(',')})`, part)) keep.add(toInt(r.id));
+    }
+    ids = ids.filter((n) => !keep.has(n));
+    if (!ids.length) jsonExit({ ok: false, error: PDC_LOCK }, 400);
     let count = 0;
     await transaction(async (client) => {
       for (let i = 0; i < ids.length; i += 500) {
@@ -2473,7 +2564,7 @@ const actions = {
         count += await exec(`DELETE FROM running_payables WHERE id IN (${part.map(() => '?').join(',')})`, part, client);
       }
     });
-    return { ok: true, count, message: `${count} ${count === 1 ? 'payable' : 'payables'} deleted.` };
+    return { ok: true, count, message: `${count} ${count === 1 ? 'payable' : 'payables'} deleted.${keep.size ? ` ${keep.size} Future payable${keep.size === 1 ? '' : 's'} from the PDC Tracker kept.` : ''}` };
   },
 };
 
