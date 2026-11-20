@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { api } from './api';
 import { getBranding, applyTabBranding } from './branding';
+import { themeProps } from './theme';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 import { IconDashboard, IconList, IconBuilding, IconTable, IconClock, IconAlert, IconHash, IconActivity, IconCalendar, IconLogout, IconReceipt, IconHeart, IconSettings, IconUsers, IconCoins, IconBranches, IconWallet, IconBook, IconChecklist, IconPenPlus, IconAudit, IconUndo } from './icons';
 
@@ -209,7 +210,7 @@ export default function Layout() {
         <span className="mobile-bar-title">{brand.name}</span>
       </header>
       <div className="drawer-backdrop" onClick={() => setDrawer(false)} />
-      <aside className="sidebar">
+      <aside className="sidebar" data-tone={themeProps(user?.theme).tone} style={themeProps(user?.theme).style}>
         {brand.logo ? (
           <div className="brand brand-custom" data-initial={brand.initial} style={{ '--brand-color': brand.color }} title={brand.name}>
             <div className="brand-logo-card">

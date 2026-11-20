@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import LongDateInput from '../LongDateInput';
+import { HEX, DEFAULT_SIDEBAR, DEFAULT_ACCENT, themeProps } from '../theme';
 import { coveredPeriodForBilling, DEFAULT_COVERED_RULES, formatLongDate } from '../utils';
 
 const I = {
+  palette: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 100 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.5-1.2-.3-.4-.5-.7-.5-1.2 0-.9.8-1.6 1.7-1.6H17a4 4 0 004-4c0-4.4-4-8.3-9-8.3z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7.2" r="1" /><circle cx="14.5" cy="7.2" r="1" /></svg>,
   tag: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.2" /></svg>,
   shield: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></svg>,
   cal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 10h18M8 2.5v4M16 2.5v4" /></svg>,
@@ -171,6 +173,83 @@ function NamePanel() {
   );
 }
 
+const SIDEBAR_PRESETS = [['Navy', '#0e182b'], ['Teal', '#0f3d3a'], ['Forest', '#14352a'], ['Purple', '#2e1f4d'], ['Maroon', '#4a1620'], ['Charcoal', '#1f2328'], ['Slate', '#334155'], ['Soft grey', '#e8edf3'], ['White', '#ffffff']];
+const ACCENT_PRESETS = [['Teal', '#2fb9a3'], ['Blue', '#4f9cf9'], ['Amber', '#f0a93a'], ['Rose', '#f06292'], ['Violet', '#9b7bf0'], ['Green', '#4ade80']];
+
+// Settings -> Theme: the sidebar colour (and the little highlight on the open page).
+function ThemePanel() {
+  const { user, refreshUser } = useAuth();
+  const [sidebar, setSidebar] = useState(user?.theme?.sidebar || DEFAULT_SIDEBAR);
+  const [accent, setAccent] = useState(user?.theme?.accent || DEFAULT_ACCENT);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const saved = { sidebar: user?.theme?.sidebar || DEFAULT_SIDEBAR, accent: user?.theme?.accent || DEFAULT_ACCENT };
+  const dirty = sidebar.toLowerCase() !== saved.sidebar.toLowerCase() || accent.toLowerCase() !== saved.accent.toLowerCase();
+  const valid = HEX.test(sidebar) && HEX.test(accent);
+  const pv = themeProps({ sidebar: HEX.test(sidebar) ? sidebar : '', accent: HEX.test(accent) ? accent : '' });
+  async function save(reset) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveTheme(reset ? '' : sidebar, reset ? '' : accent);
+      if (reset) { setSidebar(DEFAULT_SIDEBAR); setAccent(DEFAULT_ACCENT); }
+      await refreshUser();
+      setMsg({ type: 'success', msg: r.message });
+    } catch (e) { setMsg({ type: 'error', msg: e.message }); }
+    setBusy(false);
+  }
+  const hexBox = (v, set, label) => (
+    <div className="th-pick">
+      <input type="color" value={HEX.test(v) ? v : '#000000'} onChange={(e) => set(e.target.value)} aria-label={`${label} colour picker`} />
+      <input type="text" className="th-hex" value={v} maxLength={7} spellCheck={false} onChange={(e) => set(e.target.value.startsWith('#') ? e.target.value : `#${e.target.value}`)} aria-label={`${label} hex code`} />
+    </div>
+  );
+  return (
+    <section className="st-card">
+      <CardHead icon={I.palette} title="Sidebar colours" tone="teal">
+        Pick the colour of the sidebar and the highlight on the page you are on. The text turns light or dark by itself so it stays readable. Everyone who uses this system sees it; each system (Main, Jaro) keeps its own.
+      </CardHead>
+      {msg && <div className={`flash flash-${msg.type}`}>{msg.msg}</div>}
+      <div className="th">
+        <div className="th-form">
+          <div className="th-block">
+            <div className="th-label">Sidebar colour</div>
+            <div className="th-swatches">
+              {SIDEBAR_PRESETS.map(([n, c]) => (
+                <button key={c} type="button" className={'th-sw' + (sidebar.toLowerCase() === c ? ' on' : '')} style={{ background: c }} title={n} aria-label={n} onClick={() => setSidebar(c)} />
+              ))}
+            </div>
+            {hexBox(sidebar, setSidebar, 'Sidebar')}
+          </div>
+          <div className="th-block">
+            <div className="th-label">Highlight colour <em>(open page marker and icon)</em></div>
+            <div className="th-swatches">
+              {ACCENT_PRESETS.map(([n, c]) => (
+                <button key={c} type="button" className={'th-sw' + (accent.toLowerCase() === c ? ' on' : '')} style={{ background: c }} title={n} aria-label={n} onClick={() => setAccent(c)} />
+              ))}
+            </div>
+            {hexBox(accent, setAccent, 'Highlight')}
+          </div>
+          {!valid && <div className="flash flash-error">Use a colour code like #0e182b (a # and 6 letters or numbers).</div>}
+          <div className="st-name-actions">
+            <button type="button" className="btn" disabled={busy || !valid || !dirty} onClick={() => save(false)}>{busy ? 'Saving…' : 'Save theme'}</button>
+            <button type="button" className="btn btn-secondary" disabled={busy || !user?.theme} onClick={() => save(true)}>Reset to default</button>
+          </div>
+        </div>
+        <div className="th-preview" aria-label="Preview">
+          <span className="st-name-cap">Preview</span>
+          <div className="th-side" data-tone={pv.tone} style={pv.style}>
+            <div className="th-brand">{user?.brand?.name || 'Project DLC'}<small>RECEIVABLES</small></div>
+            <div className="th-link">Dashboard</div>
+            <div className="th-link active"><i />Ledger</div>
+            <div className="th-link">Aging Report</div>
+            <div className="th-link">Past Due</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function BankPanel() {
   const { user, refreshUser } = useAuth();
   const [name, setName] = useState(user?.bank_name || '');
@@ -304,7 +383,7 @@ export default function Settings() {
 
   const days = parseInt(graceDays, 10) || 0;
   const numRules = rules.map((x) => ({ ...x, month: +x.month, day_from: +x.day_from, day_to: +x.day_to, from_offset: +x.from_offset, from_day: +x.from_day, to_offset: +x.to_offset, to_day: +x.to_day }));
-  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Terms & past due', I.clock], ['name', 'Name', I.tag], ['backup', 'Backup', I.shield]];
+  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Terms & past due', I.clock], ['name', 'Name', I.tag], ['theme', 'Theme', I.palette], ['backup', 'Backup', I.shield]];
 
   return (
     <div className="st">
@@ -327,6 +406,7 @@ export default function Settings() {
 
       {tab === 'backup' && user.is_admin_role && <BackupPanel />}
       {tab === 'name' && user.is_admin_role && <><NamePanel /><BankPanel /></>}
+      {tab === 'theme' && user.is_admin_role && <ThemePanel />}
 
       {tab === 'period' && (
         <>

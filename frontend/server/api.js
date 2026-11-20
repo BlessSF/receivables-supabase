@@ -120,15 +120,26 @@ const PAYABLES_ONLY_OK = new Set([
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item',
 ]);
 
+// The sidebar colours (Settings -> Theme). null = the built-in look.
+async function getTheme() {
+  try {
+    const t = JSON.parse(await getSetting('theme', 'null'));
+    const ok = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : '');
+    const sidebar = ok(t?.sidebar), accent = ok(t?.accent);
+    return sidebar || accent ? { sidebar, accent } : null;
+  } catch { return null; }
+}
+
 async function userPayload(u) {
   if (!u) return null;
-  const [pagesFor, brand, bankName] = await Promise.all([u.role === 'admin' ? null : navPagesFor(u), getBrand(), getBankName()]);
+  const [pagesFor, brand, bankName, theme] = await Promise.all([u.role === 'admin' ? null : navPagesFor(u), getBrand(), getBankName(), getTheme()]);
   const access = pagesFor || null;
   return {
     id: u.id, username: u.username, full_name: u.full_name, role: u.role,
     nav_access: access,
     brand,
     bank_name: bankName,
+    theme,
     // Accounting works like an admin inside Receivables (not Users, Branches, Settings or Payables)
     is_admin: u.role === 'admin' || u.role === 'accounting',
     is_accounting: u.role === 'accounting',
@@ -2018,6 +2029,15 @@ const actions = {
     const mark = trim(input.mark ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     await setSetting('brand', JSON.stringify(name ? { name, mark } : null));
     return { ok: true, brand: await getBrand(), message: name ? `Name changed to "${name}".` : 'Name reset to the default.' };
+  },
+
+  // Settings -> Theme: the sidebar colours everyone sees. Admin only.
+  async save_theme(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change the theme.' }, 403);
+    const pick = (v) => { const s = trim(v ?? '').toLowerCase(); return /^#[0-9a-f]{6}$/.test(s) ? s : ''; };
+    const sidebar = pick(input.sidebar), accent = pick(input.accent);
+    await setSetting('theme', JSON.stringify(sidebar || accent ? { sidebar, accent } : null));
+    return { ok: true, theme: await getTheme(), message: sidebar || accent ? 'Theme saved. Everyone sees the new colours the next time they open or refresh the page.' : 'Theme reset to the default colours.' };
   },
 
   async save_bank_name(input, auth) {
