@@ -2222,3 +2222,9 @@ select.rec-input { min-width: 112px; }
 .th-side[data-tone="light"] .th-link.active { background: rgba(15, 23, 42, 0.09); color: #0f172a; }
 @media (max-width: 820px) { .th { grid-template-columns: 1fr; } .th-preview { position: static; } }
 .cp-fsub { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 500; color: #6b7280; }
+
+/* Sidebar name centred */
+.brand { text-align: center; }
+.brand-sub { justify-content: center; }
+.brand-sub::before { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.10); }
+.sidebar[data-tone="light"] .brand-sub::before { background: rgba(15, 23, 42, 0.12); }
