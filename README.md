@@ -1,79 +1,108 @@
-# Multipliers Receivables — Vercel + Supabase
+# Multipliers Receivables
 
-Same app and same data as before, but it no longer needs PHP or MySQL:
+A receivables and payables management system for a multi-branch HMO billing business: ledger, SOA tracking, collections, aging, past-due follow-up, payables, cash position and cheque printing, in one app.
 
-- **Frontend** — the same React (Vite) app, unchanged.
-- **Backend** — `frontend/server/` (Node.js). It replaces `api.php`,
-  `export_csv.php` and `export_xlsx.php` and runs as Vercel functions
-  (`frontend/api/`). `vercel.json` routes the old `/api.php` paths to them,
-  so the React code didn't need to change.
-- **Database** — Supabase (PostgreSQL). `database/supabase_setup.sql`
-  creates the tables and loads all your existing data.
+**Built and developed by Bless Florentino.** See `LICENSE` and `COPYRIGHT.md`.
+
+- **Frontend:** React (Vite) single-page app in `frontend/src`
+- **Backend:** Node.js in `frontend/server`, run as Vercel functions (`frontend/api`)
+- **Database:** Supabase (PostgreSQL)
 
 ```
 receivables-supabase/
   database/supabase_setup.sql   run once in Supabase
+  LICENSE, COPYRIGHT.md         author credit
   frontend/                     deploy this folder to Vercel
     api/          Vercel functions (thin wrappers)
-    server/       backend code (API, exports, login, date rules)
-    src/          React app (unchanged)
+    server/       backend: API, auth, exports, date rules, combined report, audit
+    src/          React app (pages in src/pages)
     vercel.json   routes /api.php etc. to the functions
     dev-api.js    local backend for development
-    .env.example  the 2 settings the backend needs
+    .env.example  the settings the backend needs
 ```
+
+---
+
+## What it does
+
+### Receivables
+| Page | What it is for |
+| --- | --- |
+| **Dashboard** | Billed, Collected, Outstanding balance, Past due and Due for any account, by month, year or all time. Every card has **See why →**, which lists the exact entries behind the number (the list total equals the card). The header stays pinned while you scroll. |
+| **Ledger** | Every billing entry: SOA number, covered period, amount, paid, balance, payment history. Inline editing, exports. |
+| **Reports by Month / Summary** | January to December tables per account, using each entry's Period Date. |
+| **Aging / Past Due / Monitoring** | How old the unpaid balance is, what is late, and who to chase. |
+| **SOA Tracker, Billing, Payment Record** | Statement of Account tracking and payment records. |
+| **Executive Dashboard** | Owner/accounting overview: where the money is, how old it is, collection trend. |
+| **Combined (Demic Main + Demic Jaro)** | Both branch databases side by side, with **separate totals per branch** (not merged). Admin can set, per HMO, whether it shows as Both, Main only, Jaro only, or Hidden. |
+
+### Payables
+| Page | What it is for |
+| --- | --- |
+| **Running Payables** | Bills to pay, with pay dates and balances. Rows that came from the PDC Tracker are marked as future payables and are changed there. |
+| **PDC Tracker** | Post-dated cheque schedules per item. Marking a month unpaid creates the next unpaid row in Running Payables automatically. |
+| **Cash Position** | Receivables due, payables due and future payables (shown as the **outstanding balance** still to pay, not the instalment). |
+| **Cheque Maker** | Prints cheques on a saved layout, protected by an edit code. |
+
+### System (admin)
+- **Users:** create staff, branch, accounting and executive accounts; rename, reset password, delete. Admin and executive can also switch **Accounting Receivables** and **Accounting Payables** on or off **per user**.
+- **Settings:** payment terms and past-due rules, navigation access per role, brand name and logo, **Theme** (sidebar and highlight colors, saved for everyone), Combined-report scope.
+- **Audit log** of important changes.
+
+### Roles
+| Role | Sees |
+| --- | --- |
+| **admin** | Everything, including Users and Settings. |
+| **executive** | Dashboards and reports; can control who gets Receivables/Payables. |
+| **accounting** | Receivables and/or Payables, depending on the per-user switches. |
+| **staff** | Dashboard, Ledger (all companies), Reports by Month. In the Ledger they can edit only **Payment Date**, **Check Ref** and **Paid**. |
+| **branch** | Only companies whose **Branch** equals their username. |
+
+Permissions are enforced on the server (`server/api.js`), not only hidden in the screen.
+
+---
 
 ## 1. Create the database (Supabase)
 
-1. Go to https://supabase.com and create a free project. Pick the
-   **Southeast Asia (Singapore)** region, which is closest to the Philippines.
-   Save the database password it asks for.
-2. Open **SQL Editor**, then **New query**. Paste the whole content of
-   `database/supabase_setup.sql` and click **Run**.
-3. Check that it worked in **Table Editor**: `ledger_entries` should have
-   686 rows and `companies` 45.
+1. Go to https://supabase.com and create a free project. Pick the **Southeast Asia (Singapore)** region. Save the database password.
+2. Open **SQL Editor → New query**, paste the whole of `database/supabase_setup.sql` and click **Run**.
+3. Check in **Table Editor** that `ledger_entries` and `companies` have rows.
 
-Run the file only once. On a database that already has data it will fail
-on duplicate ids, which protects you from loading the data twice.
+Run the file **only once**. On a database that already has data it fails on duplicate ids, which protects you from loading the data twice.
 
 ## 2. Get the connection string
 
-In Supabase, click **Connect** at the top and copy the
-**Transaction pooler** string (port **6543**). It looks like:
+In Supabase click **Connect** and copy the **Transaction pooler** string (port **6543**):
 
 ```
 postgresql://postgres.abcdefgh:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
 ```
 
-Replace `[YOUR-PASSWORD]` with your database password. If the password has
-symbols like `@ # / ?`, reset it to one with only letters and numbers, or
-URL-encode it.
+Replace `[YOUR-PASSWORD]`. If the password has symbols like `@ # / ?`, reset it to letters and numbers only, or URL-encode it.
 
 ## 3. Deploy to Vercel
 
-1. Put this project on GitHub, then in Vercel choose **Add New → Project**
-   and import it.
-2. Set **Root Directory** to `frontend`. Vercel detects Vite by itself
-   (build `npm run build`, output `dist`).
-3. Under **Environment Variables** add:
-   - `DATABASE_URL`: the connection string from step 2
-   - `SESSION_SECRET`: a long random string. Generate one with
-     `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-4. Click **Deploy**, open the site and log in with your usual username
-   and password.
+1. Put the project on GitHub, then in Vercel choose **Add New → Project** and import it.
+2. Set **Root Directory** to `frontend`. Vercel detects Vite (build `npm run build`, output `dist`).
+3. Add these **Environment Variables**:
 
-If you change an environment variable later, redeploy so it takes effect.
+| Name | Required | Value |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | The connection string from step 2 |
+| `SESSION_SECRET` | yes | A long random string: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `PEER_DATABASE_URL` | only for the Combined page | Connection string of the other branch's database (e.g. Demic Jaro, from Demic Main) |
 
-## Updating a database you already set up (Period Date)
+4. Click **Deploy**, open the site and log in.
 
-The Ledger has a **Period Date** column (the month a bill covers) and there is a
-**Reports by Month** page that uses it. If your Supabase database was created before
-this change, run `database/add_period_date.sql` **once**, **before** you deploy the new
-code: Supabase -> SQL Editor -> New query -> paste the file -> Run.
+Changing an environment variable needs a **redeploy** to take effect.
 
-It adds the column and fills it from each entry's old Billing Date (e.g. `2026-06-01`
-or `JULY 16-31, 2026` become June / July 2026). Entries whose billing date can't be
-read are left blank; set their month in the Ledger. It is safe to run twice. New
-databases created from `supabase_setup.sql` already include all of this.
+Each branch is its own deployment with its own database. The Combined page reads the other one through `PEER_DATABASE_URL`.
+
+## Updating an existing database
+
+New tables, columns and settings are **created automatically** the first time the app needs them (for example the PDC tables, the Future-payable link on Running Payables, and settings for Theme, per-user modules and Combined scope). You normally don't run any SQL for an update.
+
+The one manual migration: if your database was created before the **Period Date** column existed, run `database/add_period_date.sql` once (Supabase → SQL Editor). It fills the column from each entry's old Billing Date and is safe to run twice.
 
 ## Running it on your PC (optional)
 
@@ -83,71 +112,40 @@ npm install
 copy .env.example .env     (then put your real values in .env)
 ```
 
-Then use two terminals:
+Two terminals:
 - Terminal 1: `npm run api` (backend on http://localhost:8000)
 - Terminal 2: `npm run dev` (open http://localhost:5173)
 
-The local backend uses the same Supabase database as the live site, so
-changes you make locally are real.
+The local backend uses the same database as the live site, so changes made locally are real.
 
-## What changed compared to the PHP version
+## Managing users
 
-- **Logins** are kept in a signed cookie (`SESSION_SECRET`) instead of PHP
-  session files, because Vercel functions don't keep files between
-  requests. Users are logged out after 12 hours or when the browser closes.
-  Existing passwords work unchanged.
-- **Times** like `created_at` are saved in Philippine time, same as before.
-- **Database safety:** Supabase exposes tables through its public API. The
-  setup file turns on Row Level Security with no policies, so nothing
-  (including password hashes) can be read that way; only this app's
-  backend, using `DATABASE_URL`, can reach the data.
-- The old "auto-create default accounts" behaviour is gone. The database
-  is created only by `supabase_setup.sql`.
-
-## Backups
-
-Accounting data is important. In Supabase, **Database → Backups** holds
-the automatic backups. You can also export any table as CSV from the Table
-Editor, or use the app's own Excel export, for example once a week.
-
-## Staff accounts (Users page)
-
-Admins get a **Users** page in the sidebar (System -> Users) to create **Staff** accounts:
-full name, username, password, role. No database change is needed; `role` is just text.
-
-A Staff account logs in at the same page and sees only:
-- **Dashboard**
-- **Ledger** for all companies (every branch)
-- **Reports by Month**
-
-In the Ledger a staff user can edit only the three highlighted columns,
-**Payment Date**, **Check Ref** and **Paid**. Everything else is read-only, and
-there is no New Entry button. This is enforced on the server too (`server/api.js`),
-not just hidden in the screen. Staff can export the Ledger only.
-
-On the Users page an admin can rename a staff user, reset their password or delete
-them (a deleted user is logged out on their next click). Admin, branch and executive
-accounts are listed but not editable there; see "Managing users" below for those.
-
-## Managing users (admin / branch accounts, SQL)
-
-There's no user admin page (same as before). To add a user, first make a
-bcrypt hash of the password on your PC:
+Use **System → Users** in the app. If you ever need to add an account by SQL, make a bcrypt hash first:
 
 ```
 cd frontend
 node -e "console.log(require('bcryptjs').hashSync('THE-PASSWORD', 10))"
 ```
 
-Then run this in Supabase's SQL Editor:
-
 ```sql
 INSERT INTO users (username, password_hash, full_name, role)
-VALUES ('newuser', 'PASTE-HASH-HERE', 'New User', 'branch');  -- or 'admin'
+VALUES ('newuser', 'PASTE-HASH-HERE', 'New User', 'branch');  -- admin, executive, accounting, staff or branch
 ```
 
-To change a password, run
-`UPDATE users SET password_hash = '...' WHERE username = '...';`
+Change a password: `UPDATE users SET password_hash = '...' WHERE username = '...';`
 
-Branch accounts only see companies whose **Branch** field equals their
-username, same as before.
+## Good to know
+
+- **Logins** are a signed cookie (`SESSION_SECRET`). Users are logged out after 12 hours or when the browser closes.
+- **Times** such as `created_at` are saved in Philippine time.
+- **Database safety:** Row Level Security is on with no policies, so nothing (including password hashes) can be read through Supabase's public API. Only this app's backend, using `DATABASE_URL`, reaches the data.
+- **Past due rule:** an entry is due on its own Due Date if it has one, otherwise a set number of months after its billing month (default 2; change it in Settings).
+- **Collected** counts each payment in the month it was received. **Billed** counts an entry in the month of its covered period.
+
+## Backups
+
+In Supabase, **Database → Backups** holds the automatic backups. You can also export any table as CSV from the Table Editor, or use the app's Excel export, for example once a week.
+
+## Author
+
+Designed, developed and maintained by **Bless Florentino**. Credit appears in the app footer. See `LICENSE` and `COPYRIGHT.md` for terms.
