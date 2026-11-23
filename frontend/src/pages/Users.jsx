@@ -323,11 +323,19 @@ export default function Users() {
       <div className="page-header">
         <div>
           <h1>Users</h1>
-          <div className="subtitle">Create Admin, Accounting or Staff accounts. For each Accounting user, use the Module access switches to allow or block Receivables and Payables (only Admin and Executive can change them). Accounting cannot open Users, Branches or Settings. Staff can see every company's ledger, the dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</div>
+          <div className="subtitle">Create and manage Admin, Accounting and Staff accounts.</div>
         </div>
       </div>
 
       {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
+
+      <details className="panel" style={{ padding: '10px 16px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>What can each role do?</summary>
+        <ul style={{ margin: '8px 0 2px', paddingLeft: 20, lineHeight: 1.6, fontSize: 14 }}>
+          <li><b>Accounting:</b> use the Module access switches to allow or block Receivables and Payables (only Admin and Executive can change them). Accounting cannot open Users, Branches or Settings.</li>
+          <li><b>Staff:</b> can see every company's ledger, the Dashboard and Reports by Month, and can edit only Payment Date, Check Ref and Paid.</li>
+        </ul>
+      </details>
 
       <div className="panel">
         <h2>Add a user</h2>
