@@ -173,6 +173,25 @@ button { font-family: inherit; }
 }
 .page-header .subtitle { color: var(--slate); font-size: 14px; max-width: 70ch; }
 
+/* ---------- Dashboard header: a ledger-page heading (title left, scope + period right, double rule under) ---------- */
+.dash-head {
+  display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 14px 32px;
+  padding: 0 0 14px; margin-bottom: 22px; border-bottom: 4px double var(--ink);
+}
+.dash-head-l, .dash-head-r { min-width: 0; }
+.dash-head-kicker, .dash-head-scope { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--slate); }
+.dash-head h1 { margin: 4px 0 0; font-family: var(--font-display); font-size: 38px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.05; overflow-wrap: anywhere; }
+.dash-head-note { margin-top: 6px; font-size: 13px; color: var(--slate); }
+.dash-head-r { text-align: right; }
+.dash-head-period { margin: 3px 0 2px; font-family: var(--font-display); font-size: 30px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; color: var(--teal-strong); font-variant-numeric: lining-nums; }
+.dash-head-view { font-size: 12.5px; color: var(--slate); }
+@media (max-width: 760px) {
+  .dash-head { align-items: flex-start; flex-direction: column; }
+  .dash-head h1 { font-size: 30px; }
+  .dash-head-r { text-align: left; }
+  .dash-head-period { font-size: 24px; }
+}
+
 /* ---------- Buttons ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -260,6 +279,16 @@ button { font-family: inherit; }
 .kpi-dark-card.is-click:hover .kpi-why, .kpi-dark-card.is-click:focus-visible .kpi-why { background: #f8d58f; }
 .kpi-dark-card.is-click:hover .kpi-why i { animation: none; transform: translateX(3px); }
 .kpi-dark-card.is-click { box-shadow: inset 0 0 0 1px rgba(226, 160, 58, .45); }
+/* "See why" pill tones for the Billed / Collected / Outstanding / Due cards (Past due keeps the amber default) */
+.kpi-why.t-blue { background: #e1ecfb; border-color: #a9c4ee; color: #1f4f8f; }
+.kpi-why.t-green { background: #dcf3ea; border-color: #96d6bb; color: #0d6048; }
+.kpi-why.t-red { background: #fbe3df; border-color: #eba79f; color: #8f2a20; }
+.kpi-dark-card.is-click.accent-green { box-shadow: inset 0 0 0 1px rgba(47, 181, 133, .45); }
+.kpi-dark-card.is-click.accent-red { box-shadow: inset 0 0 0 1px rgba(224, 89, 74, .45); }
+.kpi-dark-card.is-click.accent-blue, .kpi-dark-card.is-click:not(.accent-green):not(.accent-red):not(.accent-amber) { box-shadow: inset 0 0 0 1px rgba(79, 134, 224, .45); }
+.kpi-dark-card.is-click:hover .kpi-why.t-blue, .kpi-dark-card.is-click:focus-visible .kpi-why.t-blue { background: #cddff8; }
+.kpi-dark-card.is-click:hover .kpi-why.t-green, .kpi-dark-card.is-click:focus-visible .kpi-why.t-green { background: #c6ebdc; }
+.kpi-dark-card.is-click:hover .kpi-why.t-red, .kpi-dark-card.is-click:focus-visible .kpi-why.t-red { background: #f6d0ca; }
 @keyframes kpi-nudge { 0%, 70%, 100% { transform: translateX(0); } 80% { transform: translateX(4px); } 90% { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .kpi-why i { animation: none; } }
 .kpi-dark-card.accent-green .kpi-dark-fill { background: #2fb585; }

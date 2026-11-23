@@ -718,6 +718,18 @@ const actions = {
     const period = blank();
     // the entries behind the "Past due" card (what the Dashboard shows when you click it), with the reason for each
     const pdList = []; const pdSeen = new Set();
+    // the entries behind the other cards (Billed / Collected / Outstanding / Due): same rows the card adds up
+    const billedList = []; const openList = []; const dueList = []; const collList = [];
+    const whyRow = (r, bal) => {
+      const bk = billingMonthKey(r);
+      const dd = dueOf(r, due);
+      return {
+        id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
+        soa_number: r.soa_number || '', period_from: r.period_from, period_to: r.period_to, billing_date: r.billing_date,
+        amount: toFloat(r.amount), paid_amount: toFloat(r.paid_amount), balance: bal, due_date: dd, days: daysOverdue(dd),
+        basis: r.due_date ? 'its own Due Date' : bk ? `billed ${monthLabel(bk)} + ${terms} month${terms === 1 ? '' : 's'}` : 'billing date',
+      };
+    };
     const pdAdd = (r, bal) => {
       if (pdSeen.has(r.id)) return;
       pdSeen.add(r.id);
@@ -785,6 +797,7 @@ const actions = {
         const dueYm = dk ? { y: toInt(dk.slice(0, 4)), m: toInt(dk.slice(5, 7)) } : null;
         if (inPeriod(dueYm)) {
           dueIn.total += bal; dueIn.count++;
+          dueList.push(whyRow(r, bal));
           dueIn.by_type[r.account_type === 'HMO' ? 'HMO' : r.account_type === 'CHARGE' ? 'CHARGE' : 'COMPANY'] += bal;
         } else if (periodStart && dk && dk < periodStart) {
           dueIn.before += bal; dueIn.before_count++;
@@ -795,6 +808,8 @@ const actions = {
       if (inPeriod(b)) {
         period.billed += amount; period.entries++;
         tt.billed += amount; tt.entries++;
+        billedList.push(whyRow(r, bal));
+        if (open) openList.push(whyRow(r, bal));
         const c = co(r); c.billed += amount;
         if (open) {
           period.outstanding += bal; period.open_count++; c.outstanding += bal; tt.outstanding += bal; tt.open_count++;
@@ -819,7 +834,13 @@ const actions = {
           yAgg(p.y).collected += pc.amount;
           if (p.y === year) monthAgg[p.m - 1].collected += pc.amount;
         }
-        if (inPeriod(p)) { period.collected += pc.amount; co(r).collected += pc.amount; tt.collected += pc.amount; }
+        if (inPeriod(p)) {
+          period.collected += pc.amount; co(r).collected += pc.amount; tt.collected += pc.amount;
+          collList.push({
+            id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, account_type: r.account_type,
+            soa_number: r.soa_number || '', period_from: r.period_from, period_to: r.period_to, payment_date: pc.payment_date, amount: pc.amount,
+          });
+        }
       }
     }
 
@@ -841,6 +862,10 @@ const actions = {
       due_in: dueIn,
       payment_terms: terms,
       past_due_list: pdList.sort((a, b) => (b.days ?? 0) - (a.days ?? 0) || b.balance - a.balance).slice(0, 500),
+      billed_list: billedList.sort((a, b) => b.amount - a.amount).slice(0, 500),
+      collected_list: collList.sort((a, b) => (parseDate(b.payment_date) ?? 0) - (parseDate(a.payment_date) ?? 0) || b.amount - a.amount).slice(0, 500),
+      open_list: openList.sort((a, b) => b.balance - a.balance).slice(0, 500),
+      due_list: dueList.sort((a, b) => (parseDate(a.due_date) ?? 9e15) - (parseDate(b.due_date) ?? 9e15) || b.balance - a.balance).slice(0, 500),
       by_type: { COMPANY: withRate(byType.COMPANY), HMO: withRate(byType.HMO), CHARGE: withRate(byType.CHARGE) },
       years: [...yearAgg.values()].sort((a, b) => a.year - b.year).map(withRate),
       months: monthAgg.map(withRate),

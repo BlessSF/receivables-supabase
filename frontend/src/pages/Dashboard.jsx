@@ -160,6 +160,7 @@ export default function Dashboard() {
   const [companyId, setCompanyId] = useState('');
   const [view, setView] = useState('month');
   const [pdOpen, setPdOpen] = useState(false); // the "why is it past due" list
+  const [whyKind, setWhyKind] = useState(null); // 'billed' | 'collected' | 'open' | 'due': which card's "See why" list is open
   const [show, setShow] = useState({ billed: true, collected: true, unpaid: true }); // chart series switched on
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
@@ -273,6 +274,8 @@ export default function Dashboard() {
   const pdTotal = p.past_due + (pdBefore ? data.due_in.before : 0);
   const pdCount = p.past_due_count + (pdBefore ? data.due_in.before_count : 0);
   const pdBase = p.outstanding + (pdBefore ? data.due_in.before : 0);
+  // makes a KPI card open its "See why" list (click or Enter / Space)
+  const whyProps = (kind, on, title) => (on ? { role: 'button', tabIndex: 0, title, onClick: () => setWhyKind(kind), onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWhyKind(kind); } } } : {});
   const splitLine = (field) => showSplit && (
     <div className="kpi-dark-footer" style={{ marginTop: 6, fontSize: 12 }}>
       <span className="kpi-dark-left">HMOs {peso(data.by_type.HMO?.[field] || 0)}</span>
@@ -282,15 +285,18 @@ export default function Dashboard() {
 
   return (
     <div className={loading ? 'dash is-loading' : 'dash'}>
-      <div className="page-header">
-        <div>
+      <header className="dash-head">
+        <div className="dash-head-l">
+          <div className="dash-head-kicker">Receivables{data.today ? ` · as of ${fdate(data.today)}` : ''}</div>
           <h1>Dashboard</h1>
-          <div className="subtitle">
-            {scopeName} · {periodName}
-            {user?.is_admin || staff ? '' : ` — ${user?.full_name || user?.username} branch only`}
-          </div>
+          {!(user?.is_admin || staff) && <div className="dash-head-note">{user?.full_name || user?.username} branch only</div>}
         </div>
-      </div>
+        <div className="dash-head-r">
+          <div className="dash-head-scope">{scopeName}{!company && pickable.length ? ` · ${pickable.length} ${noun}` : ''}</div>
+          <div className="dash-head-period">{periodName}</div>
+          <div className="dash-head-view">{isMonth ? 'Monthly view' : isAllTime ? 'All-time view' : 'Yearly view'}</div>
+        </div>
+      </header>
 
       {err && <div className="flash flash-error">{err}</div>}
 
@@ -381,8 +387,8 @@ export default function Dashboard() {
 
       {!eachMode && (<>
       <div className="kpi-dark-grid">
-        <div className="kpi-dark-card">
-          <div className="kpi-dark-label">Billed · {periodName}</div>
+        <div className={`kpi-dark-card${p.entries > 0 ? ' is-click' : ''}`} {...whyProps('billed', p.entries > 0, 'Click to see the entries that make up Billed')}>
+          <div className="kpi-dark-label kpi-label-row">Billed · {periodName}{p.entries > 0 && <span className="kpi-why t-blue">See why <i aria-hidden="true">→</i></span>}</div>
           <div className="kpi-dark-value">{peso(p.billed)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: p.billed ? '100%' : '0%' }} /></div>
           <div className="kpi-dark-footer">
@@ -391,8 +397,8 @@ export default function Dashboard() {
           </div>
           {splitLine('billed')}
         </div>
-        <div className="kpi-dark-card accent-green">
-          <div className="kpi-dark-label">Collected · {periodName}</div>
+        <div className={`kpi-dark-card accent-green${p.collected > 0 ? ' is-click' : ''}`} {...whyProps('collected', p.collected > 0, 'Click to see the payments that make up Collected')}>
+          <div className="kpi-dark-label kpi-label-row">Collected · {periodName}{p.collected > 0 && <span className="kpi-why t-green">See why <i aria-hidden="true">→</i></span>}</div>
           <div className="kpi-dark-value">{peso(p.collected)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${Math.min(100, p.collection_rate)}%` }} /></div>
           <div className="kpi-dark-footer">
@@ -401,8 +407,8 @@ export default function Dashboard() {
           </div>
           {splitLine('collected')}
         </div>
-        <div className="kpi-dark-card accent-red">
-          <div className="kpi-dark-label">Outstanding balance</div>
+        <div className={`kpi-dark-card accent-red${p.open_count > 0 ? ' is-click' : ''}`} {...whyProps('open', p.open_count > 0, 'Click to see the unpaid entries')}>
+          <div className="kpi-dark-label kpi-label-row">Outstanding balance{p.open_count > 0 && <span className="kpi-why t-red">See why <i aria-hidden="true">→</i></span>}</div>
           <div className="kpi-dark-value">{peso(p.outstanding)}</div>
           <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.billed ? Math.min(100, (p.outstanding / p.billed) * 100) : 0}%` }} /></div>
           <div className="kpi-dark-footer">
@@ -427,8 +433,8 @@ export default function Dashboard() {
           )}
         </div>
         {data.due_in && (
-          <div className="kpi-dark-card accent-blue">
-            <div className="kpi-dark-label">Due · {periodName}</div>
+          <div className={`kpi-dark-card accent-blue${data.due_in.count > 0 ? ' is-click' : ''}`} {...whyProps('due', data.due_in.count > 0, 'Click to see the entries due in this period')}>
+            <div className="kpi-dark-label kpi-label-row">Due · {periodName}{data.due_in.count > 0 && <span className="kpi-why t-blue">See why <i aria-hidden="true">→</i></span>}</div>
             <div className="kpi-dark-value">{peso(data.due_in.total)}</div>
             <div className="kpi-dark-track"><div className="kpi-dark-fill" style={{ width: `${p.outstanding ? Math.min(100, (data.due_in.total / p.outstanding) * 100) : 0}%` }} /></div>
             <div className="kpi-dark-footer">
@@ -446,7 +452,7 @@ export default function Dashboard() {
                 <span className="kpi-dark-right">Company Charges {peso(data.due_in.by_type.CHARGE || 0)}</span>
               </div>
             )}
-            {navAllowed(user, '/payables/cash-position') && <Link className="dash-due-link" to="/payables/cash-position">Open in Cash Position →</Link>}
+            {navAllowed(user, '/payables/cash-position') && <Link className="dash-due-link" to="/payables/cash-position" onClick={(e) => e.stopPropagation()}>Open in Cash Position →</Link>}
           </div>
         )}
       </div>
@@ -693,6 +699,58 @@ export default function Dashboard() {
         )}
       </div>
       )}
+
+      {whyKind && (() => {
+        const K = {
+          billed: { list: data.billed_list, total: p.billed, count: p.entries, title: `Why ${peso(p.billed)} was billed`, field: (r) => r.amount, sum: 'TOTAL BILLED',
+            sub: `${p.entries} ${p.entries === 1 ? 'entry' : 'entries'} whose covered period falls in ${periodName} (an entry with no covered period uses its billing date). Click a row to open it in the Ledger.`,
+            head: ['Company', 'SOA #', 'Covered period', 'Paid', 'Balance', 'Amount'],
+            cells: (r) => [<td key="c" style={{ fontWeight: 600 }}>{r.company_name}</td>, <td key="s" style={{ whiteSpace: 'nowrap' }}>{r.soa_number || '—'}</td>, <td key="p" style={{ whiteSpace: 'nowrap' }}>{coveredLabel(r.period_from, r.period_to) || fdate(r.billing_date) || '—'}</td>, <td key="pd" className="text-right num">{peso(r.paid_amount)}</td>, <td key="b" className="text-right num">{peso(r.balance)}</td>, <td key="a" className="text-right num" style={{ fontWeight: 700 }}>{peso(r.amount)}</td>] },
+          collected: { list: data.collected_list, total: p.collected, count: data.collected_list?.length || 0, title: `Why ${peso(p.collected)} was collected`, field: (r) => r.amount, sum: 'TOTAL COLLECTED',
+            sub: `Payments received in ${periodName}, counted by the date each payment was made. Click a row to open its entry in the Ledger.`,
+            head: ['Company', 'SOA #', 'Covered period', 'Payment date', 'Amount'],
+            cells: (r) => [<td key="c" style={{ fontWeight: 600 }}>{r.company_name}</td>, <td key="s" style={{ whiteSpace: 'nowrap' }}>{r.soa_number || '—'}</td>, <td key="p" style={{ whiteSpace: 'nowrap' }}>{coveredLabel(r.period_from, r.period_to) || '—'}</td>, <td key="d" style={{ whiteSpace: 'nowrap' }}>{fdate(r.payment_date) || '—'}</td>, <td key="a" className="text-right num" style={{ fontWeight: 700 }}>{peso(r.amount)}</td>] },
+          open: { list: data.open_list, total: p.outstanding, count: p.open_count, title: `Why ${peso(p.outstanding)} is still unpaid`, field: (r) => r.balance, sum: 'TOTAL OUTSTANDING',
+            sub: `${p.open_count} ${p.open_count === 1 ? 'entry' : 'entries'} with a balance left, ${isAllTime && !data.fm ? 'across all periods' : `billed in ${periodName}`}. Click a row to open it in the Ledger.`,
+            head: ['Company', 'SOA #', 'Covered period', 'Due', 'Balance'],
+            cells: (r) => [<td key="c" style={{ fontWeight: 600 }}>{r.company_name}</td>, <td key="s" style={{ whiteSpace: 'nowrap' }}>{r.soa_number || '—'}</td>, <td key="p" style={{ whiteSpace: 'nowrap' }}>{coveredLabel(r.period_from, r.period_to) || '—'}</td>, <td key="d" className="why-reason">{r.due_date ? `${fdate(r.due_date)}${r.days > 0 ? ` · ${r.days}d late` : ''}` : '—'}</td>, <td key="b" className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>] },
+          due: { list: data.due_list, total: data.due_in?.total || 0, count: data.due_in?.count || 0, title: `Why ${peso(data.due_in?.total || 0)} is due`, field: (r) => r.balance, sum: 'TOTAL DUE',
+            sub: `${data.due_in?.count || 0} unpaid ${(data.due_in?.count || 0) === 1 ? 'entry' : 'entries'} whose due date falls in ${periodName}. An entry is due on its own Due Date if it has one, otherwise ${data.payment_terms ?? 2} month${(data.payment_terms ?? 2) === 1 ? '' : 's'} after its billing month. Click a row to open it in the Ledger.`,
+            head: ['Company', 'SOA #', 'Covered period', 'Why it is due', 'Balance'],
+            cells: (r) => [<td key="c" style={{ fontWeight: 600 }}>{r.company_name}</td>, <td key="s" style={{ whiteSpace: 'nowrap' }}>{r.soa_number || '—'}</td>, <td key="p" style={{ whiteSpace: 'nowrap' }}>{coveredLabel(r.period_from, r.period_to) || '—'}</td>, <td key="w" className="why-reason">Due {fdate(r.due_date)} ({r.basis})</td>, <td key="b" className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>] },
+        }[whyKind];
+        const list = K.list || [];
+        const sum = list.reduce((t, r) => t + K.field(r), 0);
+        const cut = list.length < K.count ? K.count - list.length : 0;
+        const close = () => setWhyKind(null);
+        return (
+          <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget) close(); }}>
+            <div className="pm-card why-card" role="dialog" aria-modal="true" aria-label={K.title}>
+              <div className="pm-head">
+                <div>
+                  <h2>{K.title}</h2>
+                  <div className="pm-sub">{K.sub}</div>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={close}>Close</button>
+              </div>
+              <div className="table-wrap why-wrap">
+                <table className="data-table">
+                  <thead><tr>{K.head.map((h, i) => <th key={h} className={i >= K.head.length - 1 || (whyKind === 'billed' && i >= 3) ? 'text-right' : ''}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {list.length === 0 && <tr><td colSpan={K.head.length} className="empty-state">Nothing here.</td></tr>}
+                    {list.map((r, i) => (
+                      <tr key={`${r.id}-${i}`} className="clickable-row" title="Open this entry in the Ledger" onClick={() => navigate(`/ledger?company_id=${r.company_id}&entry=${r.id}`)}>
+                        {K.cells(r)}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><td colSpan={K.head.length - 1}>{K.sum}{cut ? ` (first ${list.length} of ${K.count} shown)` : ''}</td><td className="text-right num">{peso(sum)}</td></tr></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {pdOpen && (() => {
         const list = data.past_due_list || [];
