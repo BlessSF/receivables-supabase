@@ -2294,3 +2294,8 @@ select.rec-input { min-width: 112px; }
 .kpi-dark-card.is-click:hover .kpi-why.t-red, .kpi-dark-card.is-click:focus-visible .kpi-why.t-red { background: #a02d21; }
 /* cards: drop the thin colored outline so only the button stands out */
 .kpi-dark-card.is-click:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-green:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-red:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-amber:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-blue:not(:hover):not(:focus-visible), .kpi-dark-card.is-click:not(.accent-green):not(.accent-red):not(.accent-amber):not(:hover):not(:focus-visible) { box-shadow: none; }
+
+/* Ledger: Provider Excess / Concern Amount / Disc cells (amount + on/off switch) */
+.xtra-cell { display: flex; align-items: center; gap: 6px; }
+.xtra-cell > :first-child { flex: 1; min-width: 0; }
+.xtra-cell.is-off input { color: var(--slate); text-decoration: line-through; text-decoration-color: rgba(0, 0, 0, .25); }

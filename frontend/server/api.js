@@ -177,10 +177,16 @@ function recalcRow(d) {
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
   // Receivable = Amount - Tax W/H + Surcharge - Rebate (only a rebate that was actually entered).
-  const receivable = round(amount - tax + surcharge - rebate, 2);
-  // Balance = Receivable - Paid. An unpaid difference stays outstanding until it is paid; an overpayment
-  // is shown as 0 outstanding, never as a negative amount in the totals.
-  const balance = Math.max(0, round(receivable - paid, 2));
+  const base = round(amount - tax + surcharge - rebate, 2);
+  // Provider Excess, Concern Amount and Disc: each is added to the Receivable total only while its switch is on.
+  // For now they do NOT change the Balance (the Balance still starts from `base`).
+  const extra = (d.pe_on !== false ? toFloat(d.provider_excess) : 0)
+    + (d.ca_on !== false ? toFloat(d.concern_amount) : 0)
+    + (d.dc_on !== false ? toFloat(d.disc_amount) : 0);
+  const receivable = round(base + extra, 2);
+  // Balance = Receivable (without the three extras) - Paid. An unpaid difference stays outstanding until it is
+  // paid; an overpayment is shown as 0 outstanding, never as a negative amount in the totals.
+  const balance = Math.max(0, round(base - paid, 2));
   return [receivable, balance];
 }
 
@@ -199,6 +205,13 @@ let taxOffReady = false;
 async function ensureTaxOffColumn() {
   if (taxOffReady) return;
   await exec('ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS tax_off BOOLEAN NOT NULL DEFAULT FALSE');
+  // Provider Excess / Concern Amount / Disc (amount + on/off switch each). Created the first time they are needed.
+  for (const c of ['provider_excess', 'concern_amount', 'disc_amount']) {
+    await exec(`ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS ${c} NUMERIC(15,2) NOT NULL DEFAULT 0`);
+  }
+  for (const c of ['pe_on', 'ca_on', 'dc_on']) {
+    await exec(`ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS ${c} BOOLEAN NOT NULL DEFAULT TRUE`);
+  }
   taxOffReady = true;
 }
 
@@ -1299,12 +1312,14 @@ const actions = {
   async inline_update_ledger(input, auth) {
     const allowed = ['billing_date', 'period_date', 'covered_period', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
       'payment_date', 'check_ref', 'check_date', 'paid_amount', 'due_date', 'remarks', 'deduction_remarks',
-      'payment_method', 'payment_method_bank', 'payment_method_other'];
+      'payment_method', 'payment_method_bank', 'payment_method_other',
+      'provider_excess', 'concern_amount', 'disc_amount', 'pe_on', 'ca_on', 'dc_on'];
     const id = toInt(input.id);
     const field = input.field ?? '';
     let value = input.value ?? null;
 
     if (!id || !allowed.includes(field)) jsonExit({ ok: false, error: 'Invalid field.' }, 400);
+    await ensureTaxOffColumn();
     if (field === 'tax_withheld') jsonExit({ ok: false, error: 'Tax W/H is calculated automatically (Amount x tax %).' }, 400);
     if (auth.isStaff() && !STAFF_EDITABLE_FIELDS.includes(field)) {
       jsonExit({ ok: false, error: 'Staff accounts can only edit Payment Date, Check Ref and Paid.' }, 403);
@@ -1328,8 +1343,10 @@ const actions = {
       return { ok: true, receivable_amount: row.receivable_amount, balance: row.balance };
     }
 
-    if (['amount', 'tax_withheld', 'surcharge', 'rebate', 'paid_amount'].includes(field)) {
+    if (['amount', 'tax_withheld', 'surcharge', 'rebate', 'paid_amount', 'provider_excess', 'concern_amount', 'disc_amount'].includes(field)) {
       value = value === '' || value === null ? 0 : toFloat(value);
+    } else if (['pe_on', 'ca_on', 'dc_on'].includes(field)) {
+      value = truthy(value);
     } else if (field === 'period_date') {
       // Always stored as the 1st of the month: "2026-06-01" = June 2026.
       if (value === '' || value === null) {
@@ -1798,14 +1815,18 @@ const actions = {
     if (truthy(input.recalc_existing) && cid && (await canAccessCompany(auth, cid))) {
       const recalcIsCharge = (await scalar('SELECT account_type FROM companies WHERE id = ?', [cid])) === 'CHARGE';
       await ensureTaxOffColumn();
-      const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount, tax_off FROM ledger_entries WHERE company_id = ?', [cid]);
+      const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount, tax_off, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE company_id = ?', [cid]);
       for (const r of rows) {
         const amount = toFloat(r.amount);
         const tax = (recalcIsCharge || r.tax_off) ? 0 : round((amount * percent) / 100, 2);
-        const receivable = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
+        // `base` = Receivable without Provider Excess / Concern Amount / Disc (they never change what counts as fully paid)
+        const extraOn = (r.pe_on !== false ? toFloat(r.provider_excess) : 0) + (r.ca_on !== false ? toFloat(r.concern_amount) : 0) + (r.dc_on !== false ? toFloat(r.disc_amount) : 0);
+        const oldBase = toFloat(r.receivable_amount) - extraOn;
+        const base = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
-        if (Math.abs(paid - toFloat(r.receivable_amount)) < 0.01) paid = receivable;
-        const balance = Math.max(0, round(receivable - paid, 2));
+        if (Math.abs(paid - oldBase) < 0.01) paid = base;
+        const receivable = round(base + extraOn, 2);
+        const balance = Math.max(0, round(base - paid, 2));
         await exec(
           "UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, paid_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?",
           [tax, receivable, paid, balance, r.id]

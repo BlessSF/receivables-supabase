@@ -26,18 +26,33 @@ function TrashIcon() {
 }
 
 const r2 = (n) => Math.round(n * 100) / 100;
+
+// Provider Excess / Concern Amount / Disc: an amount you type, plus a switch that adds it to (or leaves it out of) the Receivable.
+function ExtraCell({ row, col, label, amount, on, onSaveAmount, onToggle }) {
+  return (
+    <div className={`xtra-cell${on ? '' : ' is-off'}`}>
+      <EditableText row={row} col={col} value={amount} type="number" align="right" onSave={onSaveAmount} />
+      <button type="button" className={`tax-switch${on ? ' on' : ''}`}
+        title={on ? `${label} is added to the Receivable. Click to leave it out.` : `${label} is NOT counted. Click to add it to the Receivable.`}
+        aria-label={`${on ? 'Turn off' : 'Turn on'} ${label}`}
+        onClick={(e) => { e.stopPropagation(); onToggle(!on); }}><span /></button>
+    </div>
+  );
+}
 // Tax W/H, Receivable and Balance worked out from the typed numbers -- exactly the server's formulas.
 //   Tax W/H    = Amount x tax % (none for Charge to Company accounts, or an entry whose Tax W/H was switched off)
-//   Receivable = Amount - Tax W/H + Surcharge - Rebate   (Rebate is only what was actually entered)
-//   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
+//   Receivable = Amount - Tax W/H + Surcharge - Rebate + Provider Excess + Concern Amount + Disc (each only while its switch is on)
+//   Balance    = (Receivable without the three extras) - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
 //   Variance   = Paid above Receivable (an overpayment). It is NOT a rebate and NOT outstanding: it stays flagged until someone fixes the payment or enters a real rebate.
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
   const tax = (e.account_type === 'CHARGE' || e.tax_off) ? 0 : r2((amount * taxPct) / 100);
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
-  const receivable = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
-  return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
+  const base = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
+  // Provider Excess, Concern Amount and Disc are added to the Receivable while their switch is on. For now they do NOT change the Balance.
+  const extra = (e.pe_on !== false ? Number(e.provider_excess) || 0 : 0) + (e.ca_on !== false ? Number(e.concern_amount) || 0 : 0) + (e.dc_on !== false ? Number(e.disc_amount) || 0 : 0);
+  return { tax_withheld: tax, receivable_amount: r2(base + extra), balance: Math.max(0, r2(base - paid)), variance: Math.max(0, r2(paid - base)) };
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
@@ -252,7 +267,7 @@ export default function Ledger() {
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Surcharge', 'Rebate', 'Receivable',
+    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Rebate', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
@@ -262,6 +277,9 @@ export default function Ledger() {
       cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
       widest('amount', money, '0.00') + RO,
       widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
+      widest('provider_excess', money, '0.00') + INPUT + 36,   // input + on/off switch
+      widest('concern_amount', money, '0.00') + INPUT + 36,
+      widest('disc_amount', money, '0.00') + INPUT + 36,
       widest('surcharge', money, '0.00') + RO,
       widest('rebate', money, '0.00') + RO,
       widest('receivable_amount', peso, '₱0.00') + CELL,
@@ -322,7 +340,7 @@ export default function Ledger() {
       ),
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
-    if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate'].includes(field)) reload();
+    if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate', 'provider_excess', 'concern_amount', 'disc_amount', 'pe_on', 'ca_on', 'dc_on'].includes(field)) reload();
   }
 
   // Switch the automatic Tax W/H off (or back on) for the chosen entries only.
@@ -668,6 +686,7 @@ export default function Ledger() {
                     )}
                     Tax W/H
                   </th>
+                  <th className="text-right">Provider Excess</th><th className="text-right">Concern Amount</th><th className="text-right">Disc</th>
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
@@ -680,7 +699,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 16 : 15} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 19 : 18} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -696,6 +715,9 @@ export default function Ledger() {
                         <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
                         <td><div className="ro-cell ro-num">{r.tax_off && <span className="tax-off-tag" title="Tax W/H is turned off for this entry">OFF</span>}{money(r.tax_withheld)}</div></td>
+                        <td><div className="ro-cell ro-num">{r.pe_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.provider_excess)}</div></td>
+                        <td><div className="ro-cell ro-num">{r.ca_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.concern_amount)}</div></td>
+                        <td><div className="ro-cell ro-num">{r.dc_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.disc_amount)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                       </>
@@ -719,20 +741,23 @@ export default function Ledger() {
                             <span className="tax-amt">{money(r.tax_withheld)}</span>
                           </div>
                         </td>
-                        <td><EditableText row={rowIdx} col={5} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                        <td><EditableText row={rowIdx} col={6} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={5} label="Provider Excess" amount={r.provider_excess} on={r.pe_on !== false} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} onToggle={(v) => saveField(r.id, 'pe_on', v).catch(() => {})} /></td>
+                        <td><ExtraCell row={rowIdx} col={6} label="Concern Amount" amount={r.concern_amount} on={r.ca_on !== false} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} onToggle={(v) => saveField(r.id, 'ca_on', v).catch(() => {})} /></td>
+                        <td><ExtraCell row={rowIdx} col={7} label="Disc" amount={r.disc_amount} on={r.dc_on !== false} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} onToggle={(v) => saveField(r.id, 'dc_on', v).catch(() => {})} /></td>
+                        <td><EditableText row={rowIdx} col={8} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
+                        <td><EditableText row={rowIdx} col={9} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                       </>
                     )}
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
                     {(
                       <>
-                        <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                        <td className="cell-glow"><DateCell row={rowIdx} col={10} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={11} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
                         <td className="cell-glow">
                           <div className="paid-cell">
                             {r.payment_count > 1
                               ? <div className="ro-cell ro-num" title={`${r.payment_count} payments - use the + button`}>{money(r.paid_amount)}</div>
-                              : <EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
+                              : <EditableText row={rowIdx} col={12} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
                             {data?.payments_enabled && (
                               <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => setPayFor(r)}>
                                 {r.payment_count > 1 ? `×${r.payment_count}` : '+'}
@@ -755,7 +780,7 @@ export default function Ledger() {
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                         <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
                         {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
-                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
+                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={13} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
                 ))}
