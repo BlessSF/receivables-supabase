@@ -2300,3 +2300,21 @@ select.rec-input { min-width: 112px; }
 .xtra-cell > :first-child { flex: 1; min-width: 0; }
 .xtra-cell.is-off input { color: var(--slate); text-decoration: line-through; text-decoration-color: rgba(0, 0, 0, .25); }
 .xtra-cell .editable-cell input { padding-left: 6px; padding-right: 6px; min-width: 0; }
+
+/* Ledger: Tax W/H + Provider Excess + Concern Amount + Disc read as one tinted group, each column with its own divider */
+td:has(> .tax-cell), td:has(> .xtra-cell),
+table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) {
+  background-image: linear-gradient(rgba(18, 117, 106, .055), rgba(18, 117, 106, .055));
+}
+td:has(> .tax-cell), td:has(> .xtra-cell),
+table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) {
+  box-shadow: inset 1px 0 0 #cfdcd9;
+  padding-left: 14px; padding-right: 14px;
+}
+td:has(> .xtra-cell):nth-child(8), table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9; }
+table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) { box-shadow: inset 1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); color: var(--teal-strong); }
+table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); }
+/* the amount and its switch: the switch sits in its own small slot with a divider, so the next column's amount can't run into it */
+.xtra-cell { gap: 10px; }
+.xtra-cell .tax-switch { margin-left: 2px; }
+.xtra-cell .tax-switch::before { content: ''; position: absolute; left: -8px; top: -6px; bottom: -6px; border-left: 1px dashed #c3d0cd; }
