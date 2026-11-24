@@ -2299,3 +2299,4 @@ select.rec-input { min-width: 112px; }
 .xtra-cell { display: flex; align-items: center; gap: 6px; }
 .xtra-cell > :first-child { flex: 1; min-width: 0; }
 .xtra-cell.is-off input { color: var(--slate); text-decoration: line-through; text-decoration-color: rgba(0, 0, 0, .25); }
+.xtra-cell .editable-cell input { padding-left: 6px; padding-right: 6px; min-width: 0; }

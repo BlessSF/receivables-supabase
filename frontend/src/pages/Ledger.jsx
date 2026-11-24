@@ -277,9 +277,9 @@ export default function Ledger() {
       cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
       widest('amount', money, '0.00') + RO,
       widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
-      widest('provider_excess', money, '0.00') + INPUT + 36,   // input + on/off switch
-      widest('concern_amount', money, '0.00') + INPUT + 36,
-      widest('disc_amount', money, '0.00') + INPUT + 36,
+      Math.max(widest('provider_excess', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,   // input + on/off switch
+      Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,
+      Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,
       widest('surcharge', money, '0.00') + RO,
       widest('rebate', money, '0.00') + RO,
       widest('receivable_amount', peso, '₱0.00') + CELL,
