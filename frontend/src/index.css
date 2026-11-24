@@ -2272,3 +2272,25 @@ select.rec-input { min-width: 112px; }
 .brand-sub { justify-content: center; }
 .brand-sub::before { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.10); }
 .sidebar[data-tone="light"] .brand-sub::before { background: rgba(15, 23, 42, 0.12); }
+
+/* ---- Dashboard "See why": a real button (solid color, magnifier icon, lifts on hover) ---- */
+.kpi-why {
+  gap: 6px; padding: 6px 12px 6px 10px; border-radius: 8px; border: 0;
+  background: #b9770e; color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .01em;
+  box-shadow: 0 1px 2px rgba(19, 32, 58, .25), inset 0 -2px 0 rgba(0, 0, 0, .16);
+  transition: background .15s ease, transform .12s ease, box-shadow .12s ease;
+}
+.kpi-why::before {
+  content: ''; width: 14px; height: 14px; flex: none; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M20 20l-4.9-4.9'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M20 20l-4.9-4.9'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.kpi-why.t-blue { background: #2f64b8; color: #fff; border: 0; }
+.kpi-why.t-green { background: #0f8a68; color: #fff; border: 0; }
+.kpi-why.t-red { background: #c0392b; color: #fff; border: 0; }
+.kpi-dark-card.is-click:hover .kpi-why, .kpi-dark-card.is-click:focus-visible .kpi-why { background: #9a6209; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(19, 32, 58, .3), inset 0 -2px 0 rgba(0, 0, 0, .16); }
+.kpi-dark-card.is-click:hover .kpi-why.t-blue, .kpi-dark-card.is-click:focus-visible .kpi-why.t-blue { background: #234f98; }
+.kpi-dark-card.is-click:hover .kpi-why.t-green, .kpi-dark-card.is-click:focus-visible .kpi-why.t-green { background: #0b6f53; }
+.kpi-dark-card.is-click:hover .kpi-why.t-red, .kpi-dark-card.is-click:focus-visible .kpi-why.t-red { background: #a02d21; }
+/* cards: drop the thin colored outline so only the button stands out */
+.kpi-dark-card.is-click:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-green:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-red:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-amber:not(:hover):not(:focus-visible), .kpi-dark-card.is-click.accent-blue:not(:hover):not(:focus-visible), .kpi-dark-card.is-click:not(.accent-green):not(.accent-red):not(.accent-amber):not(:hover):not(:focus-visible) { box-shadow: none; }
