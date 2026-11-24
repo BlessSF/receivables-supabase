@@ -15,10 +15,10 @@ const BUCKET_OPTIONS = [
 ];
 
 function statusBadge(r) {
-  if (r.is_paid) return <span className="badge badge-success">Paid</span>;
-  if (r.days === null || r.days === undefined) return <span className="badge badge-secondary">N/A</span>;
-  if (r.is_overdue) return <span className="badge badge-danger">{r.days} day{r.days === 1 ? '' : 's'} past due</span>;
-  return <span className="badge badge-info">{r.days} day{r.days === 1 ? '' : 's'} unpaid</span>;
+  if (r.is_paid) return <span className="badge badge-success ic-paid">Paid</span>;
+  if (r.days === null || r.days === undefined) return <span className="badge badge-secondary ic-clock">N/A</span>;
+  if (r.is_overdue) return <span className="badge badge-danger ic-overdue">{r.days} day{r.days === 1 ? '' : 's'} past due</span>;
+  return <span className="badge badge-info ic-clock">{r.days} day{r.days === 1 ? '' : 's'} unpaid</span>;
 }
 
 // Overdue first (most days overdue), then not-yet-due (longest unpaid first), paid last.
@@ -182,7 +182,7 @@ export default function Summary() {
           <div className="kpi-value">{peso(totalPaid)}</div>
         </div>
         <div className="kpi-card accent-red">
-          <div className="kpi-label">{readOnly ? 'Still Owed' : 'Total Balance'}</div>
+          <div className="kpi-label">{readOnly ? 'Still Owed' : 'Total Deduction'}</div>
           <div className="kpi-value">{peso(totalDeduction)}</div>
         </div>
       </div>
@@ -228,7 +228,7 @@ export default function Summary() {
           </p>
           {!rows && <div className="empty-state">Loading…</div>}
           {rows && grouping === 'all' && (
-            <MonthTable months={monthRows} totalLabel={`TOTAL ${year}`} owedLabel={readOnly ? 'Still Owed' : 'Balance'} />
+            <MonthTable months={monthRows} totalLabel={`TOTAL ${year}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
           )}
           {rows && grouping === 'company' && (
             companyBlocks.length === 0
@@ -250,7 +250,7 @@ export default function Summary() {
                             {t.entries} entr{t.entries === 1 ? 'y' : 'ies'} · billed {peso(t.billed)} · {readOnly ? 'still owed' : 'deduction'} {peso(t.owed)}
                           </span>
                         </summary>
-                        <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Balance'} />
+                        <MonthTable months={c.months} totalLabel={`TOTAL ${c.name}`} owedLabel={readOnly ? 'Still Owed' : 'Deduction'} />
                       </details>
                     );
                   })}
@@ -267,7 +267,7 @@ export default function Summary() {
             <thead>
               <tr>
                 <th>Company</th><th>Covered Period</th><th className="text-right">Amount</th>
-                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Balance'}</th>
+                <th className="text-right">Paid</th><th>Date Paid</th><th className="text-right">{readOnly ? 'Still Owed' : 'Deduction'}</th>
                 <th>Comment</th><th>Status</th>
               </tr>
             </thead>
@@ -294,7 +294,7 @@ export default function Summary() {
                   <td>{r.deduction_remarks || '—'}</td>
                   <td>
                     {statusBadge(r)}{' '}
-                    {!r.is_paid && <span className={`badge ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
+                    {!r.is_paid && <span className={`badge ${r.aging_bucket === 'Over 90 days' ? 'ic-over' : 'ic-clock'} ${AGING_BADGE[r.aging_bucket] || 'badge-secondary'}`}>{r.aging_bucket}</span>}
                   </td>
                 </tr>
               ))}
