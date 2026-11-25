@@ -293,9 +293,16 @@ function BankPanel() {
 }
 
 // Settings -> Maintenance: put the whole system "under maintenance" for everyone except admins.
+const MT_DEFAULTS = {
+  title: 'We’re doing some maintenance',
+  message: 'The system is being updated. Your data is safe. Please check back soon.',
+};
+
 function MaintenancePanel() {
+  const { user } = useAuth();
   const [loaded, setLoaded] = useState(false);
   const [on, setOn] = useState(false);
+  const [saved, setSaved] = useState({ title: '', message: '', back: '' });
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [back, setBack] = useState('');
@@ -304,47 +311,87 @@ function MaintenancePanel() {
   useEffect(() => {
     api.getMaintenance().then((r) => {
       const m = r.maintenance || {};
-      setOn(!!m.on); setTitle(m.title || ''); setMessage(m.message || ''); setBack(m.back || ''); setLoaded(true);
+      setOn(!!m.on); setTitle(m.title || ''); setMessage(m.message || ''); setBack(m.back || '');
+      setSaved({ title: m.title || '', message: m.message || '', back: m.back || '' });
+      setLoaded(true);
     }).catch((e) => { setMsg({ type: 'error', msg: e.message }); setLoaded(true); });
   }, []);
   async function save(nextOn) {
-    if (nextOn && !window.confirm('Turn maintenance mode ON?\n\nEveryone except admins will be locked out and see the notice until you turn it off. People who are logged in are stopped within about 30 seconds.')) return;
+    if (nextOn && !on && !window.confirm('Turn maintenance mode ON?\n\nEveryone except admins will be locked out and see the notice until you turn it off. People who are logged in are stopped within about 30 seconds.')) return;
     setBusy(true); setMsg(null);
     try {
       const r = await api.saveMaintenance({ on: nextOn, title, message, back });
       setOn(nextOn);
+      setSaved({ title, message, back });
       setMsg({ type: 'success', msg: r.message });
     } catch (e) { setMsg({ type: 'error', msg: e.message }); }
     setBusy(false);
   }
   if (!loaded) return <div className="loading-state">Loading…</div>;
+
+  const dirty = title !== saved.title || message !== saved.message || back !== saved.back;
+  const shownTitle = title.trim() || MT_DEFAULTS.title;
+  const shownMessage = message.trim() || MT_DEFAULTS.message;
+  const BACK_QUICK = ['In 30 minutes', 'In 1 hour', 'Tomorrow morning'];
+
   return (
-    <section className="st-card">
+    <section className="st-card mt-card">
       <CardHead icon={I.tool} title="Maintenance mode" tone="teal">
-        Turn this on while you update the system. Everyone except admins sees a "Under maintenance" page instead of the app. You can still sign in as admin, and a bar at the bottom reminds you it is on. This only affects this system (Main or Jaro), not the other one.
+        Close the system to everyone except admins while you update it. Admins can still sign in and see everything; only this system (Main or Jaro) is affected.
       </CardHead>
       {msg && <div className={`flash flash-${msg.type}`}>{msg.msg}</div>}
-      <div className={`mt-status${on ? ' on' : ''}`}><i />{on ? 'ON — the system is closed to everyone except admins' : 'OFF — the system is open'}</div>
-      <div className="mt-form">
-        <label>Title <small>(optional)</small>
-          <input type="text" className="input" maxLength={80} placeholder="We’re doing some maintenance" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <label>Message <small>(optional)</small>
-          <textarea className="input" rows={3} maxLength={600} placeholder="The system is being updated. Your data is safe. Please check back soon." value={message} onChange={(e) => setMessage(e.target.value)} />
-        </label>
-        <label>Expected back <small>(optional, shown as written, e.g. “Today 3:00 PM”)</small>
-          <input type="text" className="input" maxLength={80} placeholder="Today, 3:00 PM" value={back} onChange={(e) => setBack(e.target.value)} />
-        </label>
-        <div className="st-name-actions">
-          {on ? (
-            <>
-              <button type="button" className="btn" disabled={busy} onClick={() => save(false)}>{busy ? 'Saving…' : 'Turn OFF — open the system'}</button>
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => save(true)}>Save changes to the notice</button>
-            </>
-          ) : (
-            <button type="button" className="btn" disabled={busy} onClick={() => save(true)}>{busy ? 'Saving…' : 'Turn ON maintenance mode'}</button>
-          )}
+
+      <div className={`mt-state${on ? ' on' : ''}`} role="status">
+        <i aria-hidden="true" />
+        <div>
+          <strong>{on ? 'Closed' : 'Open'}</strong>
+          <span>{on ? 'Only admins can get in. Signed-in users are stopped within about 30 seconds.' : 'Everyone can use the system normally.'}</span>
         </div>
+      </div>
+
+      <div className="mt-grid">
+        <div className="mt-fields">
+          <label className="mt-f">
+            <span className="mt-f-top"><b>Title</b><em>{title.length}/80</em></span>
+            <input type="text" maxLength={80} placeholder={MT_DEFAULTS.title} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </label>
+          <label className="mt-f">
+            <span className="mt-f-top"><b>Message</b><em>{message.length}/600</em></span>
+            <textarea rows={4} maxLength={600} placeholder={MT_DEFAULTS.message} value={message} onChange={(e) => setMessage(e.target.value)} />
+          </label>
+          <label className="mt-f">
+            <span className="mt-f-top"><b>Expected back</b><em>shown exactly as you type it</em></span>
+            <input type="text" maxLength={80} placeholder="e.g. Today, 3:00 PM" value={back} onChange={(e) => setBack(e.target.value)} />
+            <span className="mt-quick">
+              {BACK_QUICK.map((q) => <button key={q} type="button" onClick={() => setBack(q)}>{q}</button>)}
+              {back && <button type="button" className="clear" onClick={() => setBack('')}>Clear</button>}
+            </span>
+          </label>
+          <small className="mt-leave">Leave a field empty to use the default wording.</small>
+        </div>
+
+        <aside className="mt-prev" aria-label="Preview of the notice">
+          <div className="mt-prev-cap">What people will see</div>
+          <div className="mt-prev-sheet">
+            <div className="mt-prev-kicker">{user?.brand?.name || 'DLM'} · Receivables</div>
+            <div className="mt-prev-title">{shownTitle}</div>
+            <div className="mt-prev-rule" aria-hidden="true" />
+            <p>{shownMessage}</p>
+            {back.trim() && <div className="mt-prev-back"><span>Expected back</span><b>{back.trim()}</b></div>}
+          </div>
+        </aside>
+      </div>
+
+      <div className="mt-actions-row">
+        {on ? (
+          <>
+            <button type="button" className="btn" disabled={busy} onClick={() => save(false)}>{busy ? 'Saving…' : 'Open the system'}</button>
+            <button type="button" className="btn btn-secondary" disabled={busy || !dirty} onClick={() => save(true)}>Update the notice</button>
+          </>
+        ) : (
+          <button type="button" className="btn mt-go" disabled={busy} onClick={() => save(true)}>{busy ? 'Saving…' : 'Turn on maintenance mode'}</button>
+        )}
+        {dirty && <span className="mt-dirty">Unsaved changes</span>}
       </div>
     </section>
   );

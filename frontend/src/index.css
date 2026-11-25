@@ -2346,3 +2346,45 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 @media print { .mt-banner { display: none; } }
 .mt-form input.input, .mt-form textarea.input { font: inherit; font-size: 15px; font-weight: 500; color: var(--ink); border: 1px solid var(--line-strong, #cfd8df); border-radius: 10px; padding: 10px 12px; width: 100%; background: #fff; }
 .mt-form input.input:focus, .mt-form textarea.input:focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+/* ---------- Settings > Maintenance ---------- */
+.mt-state { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; padding: 13px 16px; border: 1px solid #cfe5dd; border-left: 4px solid #0f8a68; border-radius: 6px; background: #f3faf7; }
+.mt-state i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #0f8a68; }
+.mt-state strong { display: block; font-size: 14px; color: #0d6048; }
+.mt-state span { display: block; font-size: 13px; color: var(--slate); margin-top: 1px; }
+.mt-state.on { border-color: #ecd49c; border-left-color: #b9770e; background: #fdf6e6; }
+.mt-state.on i { background: #b9770e; animation: mt-pulse 1.8s ease-in-out infinite; }
+.mt-state.on strong { color: #8a5608; }
+@keyframes mt-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .mt-state.on i { animation: none; } }
+
+.mt-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 28px; align-items: start; }
+.mt-fields { display: grid; gap: 18px; }
+.mt-f { display: grid; gap: 6px; }
+.mt-f-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.mt-f-top b { font-size: 13px; color: var(--ink); }
+.mt-f-top em { font-style: normal; font-size: 12px; color: var(--slate); font-variant-numeric: tabular-nums; }
+.mt-f input, .mt-f textarea { font: inherit; font-size: 15px; color: var(--ink); width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong, #cfd8df); border-radius: 8px; background: #fff; resize: vertical; }
+.mt-f input::placeholder, .mt-f textarea::placeholder { color: #9aa6b4; }
+.mt-f input:focus, .mt-f textarea:focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+.mt-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.mt-quick button { font: inherit; font-size: 12px; padding: 3px 10px; border: 1px solid var(--line-strong, #cfd8df); border-radius: 999px; background: #fff; color: var(--slate); cursor: pointer; }
+.mt-quick button:hover { border-color: var(--ink); color: var(--ink); }
+.mt-quick button.clear { border-color: transparent; text-decoration: underline; padding-inline: 4px; }
+.mt-leave { font-size: 12px; color: var(--slate); }
+
+.mt-prev { position: sticky; top: 16px; }
+.mt-prev-cap { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--slate); }
+.mt-prev-sheet { padding: 20px 22px 18px; background: #fff; border: 1px solid #d7dde4; border-top: 5px solid var(--ink); border-radius: 3px; box-shadow: 0 8px 22px rgba(19, 32, 58, .08); }
+.mt-prev-kicker { font-size: 9.5px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--slate); }
+.mt-prev-title { margin: 8px 0 10px; font-family: var(--font-display); font-size: 22px; font-weight: 500; line-height: 1.15; letter-spacing: -0.01em; color: var(--ink); overflow-wrap: anywhere; }
+.mt-prev-rule { border-bottom: 3px double var(--ink); margin-bottom: 12px; }
+.mt-prev-sheet p { margin: 0; font-size: 13px; line-height: 1.55; color: #34425a; white-space: pre-line; overflow-wrap: anywhere; }
+.mt-prev-back { display: flex; align-items: baseline; gap: 10px; margin-top: 14px; padding-top: 10px; border-top: 1px solid #e3e8ed; }
+.mt-prev-back span { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--slate); }
+.mt-prev-back b { font-family: var(--font-display); font-size: 16px; font-weight: 500; color: var(--teal-strong); }
+
+.mt-actions-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.mt-go { background: #8a5608; border-color: #8a5608; }
+.mt-go:hover:not(:disabled) { background: #704505; border-color: #704505; }
+.mt-dirty { font-size: 12.5px; color: #8a5608; }
+@media (max-width: 860px) { .mt-grid { grid-template-columns: 1fr; } .mt-prev { position: static; } }
