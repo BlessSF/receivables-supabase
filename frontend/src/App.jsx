@@ -5,31 +5,66 @@ import Maintenance from './pages/Maintenance';
 import { AuthProvider, useAuth } from './AuthContext';
 import Layout from './Layout';
 import Login from './pages/Login';
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Summary = lazy(() => import('./pages/Summary'));
-const Companies = lazy(() => import('./pages/Companies'));
-const Ledger = lazy(() => import('./pages/Ledger'));
-const Billing = lazy(() => import('./pages/Billing'));
-const Hmos = lazy(() => import('./pages/Hmos'));
-const CompanyCharges = lazy(() => import('./pages/CompanyCharges'));
-const Aging = lazy(() => import('./pages/Aging'));
-const PastDue = lazy(() => import('./pages/PastDue'));
-const Combined = lazy(() => import('./pages/Combined'));
-const PdcTracker = lazy(() => import('./pages/PdcTracker'));
-const SoaTracker = lazy(() => import('./pages/SoaTracker'));
-const Monitoring = lazy(() => import('./pages/Monitoring'));
-const ExecDashboard = lazy(() => import('./pages/ExecDashboard'));
-const MonthlyReport = lazy(() => import('./pages/MonthlyReport'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Branches = lazy(() => import('./pages/Branches'));
-const Users = lazy(() => import('./pages/Users'));
-const CashPosition = lazy(() => import('./pages/CashPosition'));
-const MainFund = lazy(() => import('./pages/MainFund'));
-const AccountTitles = lazy(() => import('./pages/AccountTitles'));
-const RunningPayables = lazy(() => import('./pages/RunningPayables'));
-const PaymentRecord = lazy(() => import('./pages/PaymentRecord'));
-const Audit = lazy(() => import('./pages/Audit'));
-const DeletedItems = lazy(() => import('./pages/DeletedItems'));
+// Each page is its own chunk. The loaders are kept here so the chunks can also be
+// fetched ahead of time (see prefetchPages), which makes navigation feel instant.
+const loaders = {
+  Dashboard: () => import('./pages/Dashboard'),
+  Summary: () => import('./pages/Summary'),
+  Companies: () => import('./pages/Companies'),
+  Ledger: () => import('./pages/Ledger'),
+  Billing: () => import('./pages/Billing'),
+  Hmos: () => import('./pages/Hmos'),
+  CompanyCharges: () => import('./pages/CompanyCharges'),
+  Aging: () => import('./pages/Aging'),
+  PastDue: () => import('./pages/PastDue'),
+  Combined: () => import('./pages/Combined'),
+  PdcTracker: () => import('./pages/PdcTracker'),
+  SoaTracker: () => import('./pages/SoaTracker'),
+  Monitoring: () => import('./pages/Monitoring'),
+  ExecDashboard: () => import('./pages/ExecDashboard'),
+  MonthlyReport: () => import('./pages/MonthlyReport'),
+  Settings: () => import('./pages/Settings'),
+  Branches: () => import('./pages/Branches'),
+  Users: () => import('./pages/Users'),
+  CashPosition: () => import('./pages/CashPosition'),
+  MainFund: () => import('./pages/MainFund'),
+  AccountTitles: () => import('./pages/AccountTitles'),
+  RunningPayables: () => import('./pages/RunningPayables'),
+  PaymentRecord: () => import('./pages/PaymentRecord'),
+  Audit: () => import('./pages/Audit'),
+  DeletedItems: () => import('./pages/DeletedItems'),
+};
+function prefetchPages() {
+  const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
+  if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 4000 });
+  else setTimeout(run, 1500);
+}
+
+const Dashboard = lazy(loaders.Dashboard);
+const Summary = lazy(loaders.Summary);
+const Companies = lazy(loaders.Companies);
+const Ledger = lazy(loaders.Ledger);
+const Billing = lazy(loaders.Billing);
+const Hmos = lazy(loaders.Hmos);
+const CompanyCharges = lazy(loaders.CompanyCharges);
+const Aging = lazy(loaders.Aging);
+const PastDue = lazy(loaders.PastDue);
+const Combined = lazy(loaders.Combined);
+const PdcTracker = lazy(loaders.PdcTracker);
+const SoaTracker = lazy(loaders.SoaTracker);
+const Monitoring = lazy(loaders.Monitoring);
+const ExecDashboard = lazy(loaders.ExecDashboard);
+const MonthlyReport = lazy(loaders.MonthlyReport);
+const Settings = lazy(loaders.Settings);
+const Branches = lazy(loaders.Branches);
+const Users = lazy(loaders.Users);
+const CashPosition = lazy(loaders.CashPosition);
+const MainFund = lazy(loaders.MainFund);
+const AccountTitles = lazy(loaders.AccountTitles);
+const RunningPayables = lazy(loaders.RunningPayables);
+const PaymentRecord = lazy(loaders.PaymentRecord);
+const Audit = lazy(loaders.Audit);
+const DeletedItems = lazy(loaders.DeletedItems);
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 
 function GateInner({ maint, recheck }) {
@@ -157,6 +192,9 @@ function GateInner({ maint, recheck }) {
 function Gate() {
   const { user } = useAuth();
   const [maint, setMaint] = useState(null);
+  // Once someone is signed in, quietly download the rest of the pages in the background
+  const signedIn = !!user;
+  useEffect(() => { if (signedIn) prefetchPages(); }, [signedIn]);
   const load = () => api.getMaintenance().then((r) => setMaint(r.maintenance || null)).catch(() => {});
   useEffect(() => {
     load();
