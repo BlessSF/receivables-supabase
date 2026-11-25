@@ -33,14 +33,14 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
   function startAdd() {
     setErr('');
     setForm({ amount: balance > 0.009 ? balance.toFixed(2) : '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '',
-      provider_excess: '', concern_amount: '', disc_amount: '', tax_off: !!e?.tax_off });
+      provider_excess: '', concern_amount: '', disc_amount: '', pay_tax: entry.account_type !== 'CHARGE' });
   }
   function startEdit(p) {
     setErr('');
     setForm({ id: p.id, amount: String(Number(p.amount).toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
       payment_method: p.payment_method || '', payment_method_bank: p.payment_method_bank || '', payment_method_other: p.payment_method_other || '', remarks: p.remarks || '',
       provider_excess: Number(p.pe_amount) ? String(Number(p.pe_amount).toFixed(2)) : '', concern_amount: Number(p.ca_amount) ? String(Number(p.ca_amount).toFixed(2)) : '',
-      disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', tax_off: !!e?.tax_off });
+      disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', pay_tax: Number(p.tax_amount) > 0 });
   }
 
   async function save(ev) {
@@ -48,7 +48,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     setBusy(true); setErr('');
     try {
       const body = { ...form, amount: rawNum(form.amount), provider_excess: rawNum(form.provider_excess), concern_amount: rawNum(form.concern_amount), disc_amount: rawNum(form.disc_amount),
-        tax_off: entry.account_type === 'CHARGE' ? undefined : (form.tax_off ? 1 : 0) };
+        pay_tax: entry.account_type === 'CHARGE' ? 0 : (form.pay_tax ? 1 : 0) };
       const r = form.id ? await api.updatePayment(form.id, body) : await api.addPayment(entry.id, body);
       setInfo(r.data);
       setForm(null);
@@ -84,18 +84,21 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     const typed = { pe: n(rawNum(form.provider_excess)), ca: n(rawNum(form.concern_amount)), dc: n(rawNum(form.disc_amount)) };
     const was = { pe: n(old?.pe_amount), ca: n(old?.ca_amount), dc: n(old?.dc_amount) };
     const afterRaw = { pe: nowRaw.pe - was.pe + typed.pe, ca: nowRaw.ca - was.ca + typed.ca, dc: nowRaw.dc - was.dc + typed.dc };
-    const taxNow = e.tax_off ? 0 : taxOn;
-    const taxAfter = isCharge || form.tax_off ? 0 : taxOn;
+    // Tax W/H of the entry = its own tax + the tax withheld with each payment (this payment adds its own % of the amount paid)
+    const payAmt = n(rawNum(form.amount));
+    const thisTax = (on) => (isCharge || !on ? 0 : r2((payAmt * pct) / 100));
+    const taxNow = (e.tax_off ? 0 : taxOn) + n(e.pay_tax);
+    const taxAfter = (e.tax_off ? 0 : taxOn) + n(e.pay_tax) - n(old?.tax_amount) + thisTax(form.pay_tax);
     const sur = n(e.surcharge) - n(e.rebate);
     const dedNow = has('pe', nowRaw.pe) + has('ca', nowRaw.ca) + has('dc', nowRaw.dc);
     const dedAfter = has('pe', afterRaw.pe) + has('ca', afterRaw.ca) + has('dc', afterRaw.dc);
     const recNow = r2(gross - taxNow - dedNow + sur);
     const recAfter = r2(gross - taxAfter - dedAfter + sur);
     const paidNow = n(e.paid_amount);
-    const paidAfter = r2(paidNow - n(old?.amount) + n(rawNum(form.amount)));
+    const paidAfter = r2(paidNow - n(old?.amount) + payAmt);
     const row = (nowV, afterV) => ({ now: r2(nowV), add: r2(afterV - nowV), after: r2(afterV) });
     return {
-      pct, isCharge, flags, taxOnNow: !e.tax_off, taxOnAfter: !form.tax_off,
+      pct, isCharge, flags, payTax: thisTax(form.pay_tax),
       tax: row(taxNow, taxAfter),
       pe: row(has('pe', nowRaw.pe), has('pe', afterRaw.pe)),
       ca: row(has('ca', nowRaw.ca), has('ca', afterRaw.ca)),
@@ -103,7 +106,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
       receivable: row(recNow, recAfter),
       paid: row(paidNow, paidAfter),
       balance: row(Math.max(0, r2(recNow - paidNow)), Math.max(0, r2(recAfter - paidAfter))),
-      amount: gross, withTax: r2(gross - taxOn - dedAfter + sur), withoutTax: r2(gross - dedAfter + sur),
+      amount: gross, withTax: r2(gross - (taxAfter - thisTax(form.pay_tax) + thisTax(true)) - dedAfter + sur), withoutTax: r2(gross - (taxAfter - thisTax(form.pay_tax)) - dedAfter + sur),
     };
   })();
   const showBank = form && (form.payment_method === 'Check' || form.payment_method === 'Card');
@@ -205,11 +208,11 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                       <MoneyInput className="num" value={form.disc_amount} placeholder="0.00" onChange={(v) => setForm({ ...form, disc_amount: v })} />
                     </div>
                     {entry.account_type !== 'CHARGE' && (
-                      <div className="form-group"><label>Tax W/H (2%)</label>
+                      <div className="form-group"><label>Tax W/H on this payment ({Number(info.tax_percent) || 0}%)</label>
                         <div className="pm-tax">
-                          <button type="button" className={`tax-switch${form.tax_off ? '' : ' on'}`} aria-label={form.tax_off ? 'Turn Tax W/H on' : 'Turn Tax W/H off'}
-                            onClick={() => setForm({ ...form, tax_off: !form.tax_off })}><span /></button>
-                          <span>{form.tax_off ? 'Off: not deducted' : 'On: deducted from the Receivable'}</span>
+                          <button type="button" className={`tax-switch${form.pay_tax ? ' on' : ''}`} aria-label={form.pay_tax ? 'Turn Tax W/H off for this payment' : 'Turn Tax W/H on for this payment'}
+                            onClick={() => setForm({ ...form, pay_tax: !form.pay_tax })}><span /></button>
+                          <span>{form.pay_tax ? `On: another ${Number(info.tax_percent) || 0}% of this payment is withheld` : 'Off: no tax withheld on this payment'}</span>
                         </div>
                       </div>
                     )}
@@ -233,7 +236,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                         <thead><tr><th></th><th>Now</th><th>This payment</th><th>After</th></tr></thead>
                         <tbody>
                           <tr><td>Amount</td><td className="num">{peso(calc.amount)}</td><td className="num pm-calc-add">—</td><td className="num">{peso(calc.amount)}</td></tr>
-                          {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true, form.tax_off ? <span className="pm-calc-off"> · off</span> : null)}
+                          {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true, form.pay_tax ? null : <span className="pm-calc-off"> · none on this payment</span>)}
                           {line('Provider Excess', calc.pe, true, calc.flags.pe ? null : off)}
                           {line('Concern Amount', calc.ca, true, calc.flags.ca ? null : off)}
                           {line('Disc', calc.dc, true, calc.flags.dc ? null : off)}
@@ -242,7 +245,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                           <tr className={`pm-calc-total${calc.balance.after > 0.009 ? ' is-due' : ' is-ok'}`}><td>Balance</td><td className="num">{peso(calc.balance.now)}</td><td className="num pm-calc-add">{sign(calc.balance.add, false)}</td><td className="num">{peso(calc.balance.after)}</td></tr>
                         </tbody>
                       </table>
-                      {!calc.isCharge && <div className="pm-calc-alt">Receivable with Tax W/H: <b className="num">{peso(calc.withTax)}</b> · without Tax W/H: <b className="num">{peso(calc.withoutTax)}</b></div>}
+                      {!calc.isCharge && <div className="pm-calc-alt">Receivable if this payment withholds tax: <b className="num">{peso(calc.withTax)}</b> · if not: <b className="num">{peso(calc.withoutTax)}</b></div>}
                     </div>
                   );
                 })()}

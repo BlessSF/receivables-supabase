@@ -214,12 +214,26 @@ async function paymentsEnabled() {
   const ok = !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
   if (ok && !payExtrasReady) {
     // What each payment deducted (Provider Excess / Concern Amount / Disc). Created the first time it is needed.
-    for (const c of ['pe_amount', 'ca_amount', 'dc_amount']) {
+    for (const c of ['pe_amount', 'ca_amount', 'dc_amount', 'tax_amount']) {
       await exec(`ALTER TABLE ledger_payments ADD COLUMN IF NOT EXISTS ${c} NUMERIC(15,2) NOT NULL DEFAULT 0`);
     }
     payExtrasReady = true;
   }
   return ok;
+}
+
+/** Tax W/H that came with the payments of an entry (each payment can withhold its own tax on top of the entry's). */
+async function payTaxSum(entryId) {
+  if (!(await paymentsEnabled())) return 0;
+  return round(toFloat(await scalar('SELECT COALESCE(SUM(tax_amount), 0) FROM ledger_payments WHERE ledger_entry_id = ?', [entryId])), 2);
+}
+
+/** The tax a payment withholds: its own amount x the tax %, only when its switch is on (never for Charge to Company). */
+async function paymentTaxFor(entryId, amount, on) {
+  if (!on) return 0;
+  const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [entryId]);
+  const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(cid)]);
+  return acctType === 'CHARGE' ? 0 : round(toFloat(amount) * (await taxWithheldPercent()) / 100, 2);
 }
 
 /** Add (or take back, with a negative delta) a payment's Provider Excess / Concern Amount / Disc on its ledger entry. */
@@ -252,9 +266,10 @@ async function ensureTaxOffColumn() {
 }
 
 async function autoTaxFor(row) {
-  if (row.tax_off) return 0; // this entry was switched to "no Tax W/H"
+  const paid = await payTaxSum(row.id); // tax withheld together with the payments
+  if (row.tax_off) return paid; // this entry was switched to "no Tax W/H"
   const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
-  return acctType === 'CHARGE' ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+  return acctType === 'CHARGE' ? paid : round(round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2) + paid, 2);
 }
 
 /** Paid / Payment Date / Check Ref / Balance of a row = the total and the latest of its payments. */
@@ -335,12 +350,14 @@ function cleanPayment(input) {
   out.pe_amount = ded(input.provider_excess);
   out.ca_amount = ded(input.concern_amount);
   out.dc_amount = ded(input.disc_amount);
+  out.pay_tax = input.pay_tax === undefined || input.pay_tax === null ? true : truthy(input.pay_tax);
   return out;
 }
 
 async function paymentsReply(entryId) {
   const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date, surcharge, rebate, tax_off, tax_withheld, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE id = ?', [entryId]);
   const payments = await all('SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, \'\') ASC, id ASC', [entryId]);
+  if (e) e.pay_tax = round(payments.reduce((t, x) => t + toFloat(x.tax_amount), 0), 2);
   return { enabled: true, entry: e, payments, payment_count: payments.length, tax_percent: await taxWithheldPercent() };
 }
 
@@ -1173,6 +1190,12 @@ const actions = {
       const counts = await all('SELECT ledger_entry_id, COUNT(*) AS n FROM ledger_payments GROUP BY ledger_entry_id');
       counts.forEach((c) => payCounts.set(String(c.ledger_entry_id), toInt(c.n)));
     }
+    const payTaxes = new Map();
+    if (paymentsOn && entries.length) {
+      const sums = await all('SELECT ledger_entry_id, COALESCE(SUM(tax_amount), 0) AS t FROM ledger_payments GROUP BY ledger_entry_id');
+      sums.forEach((c) => payTaxes.set(String(c.ledger_entry_id), toFloat(c.t)));
+    }
+    for (const r of entries) r.pay_tax = payTaxes.get(String(r.id)) || 0;
     for (const r of entries) r.payment_count = payCounts.get(String(r.id)) || 0;
 
     const agingTally = {};
@@ -1278,7 +1301,7 @@ const actions = {
       await requireCompanyAccess(auth, toInt(row.company_id));
       if (row.acct_type === 'CHARGE') continue; // Charge to Company accounts never have Tax W/H
       if (!who) who = row.co_name || row.company_name || '';
-      const tax = off ? 0 : round(toFloat(row.amount) * pct / 100, 2);
+      const tax = round((off ? 0 : round(toFloat(row.amount) * pct / 100, 2)) + (await payTaxSum(id)), 2);
       row.tax_withheld = tax;
       const [receivable, balance] = recalcRow(row);
       await exec(
@@ -1315,11 +1338,10 @@ const actions = {
     // a row that still has Paid typed in directly (no payment record yet) keeps that amount as its first payment
     await mirrorRowToPayments(id);
     await exec(
-      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other, remarks, pe_amount, ca_amount, dc_amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount]);
+      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other, remarks, pe_amount, ca_amount, dc_amount, tax_amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount, await paymentTaxFor(id, p.amount, p.pay_tax)]);
     await shiftEntryDeductions(id, p.pe_amount, p.ca_amount, p.dc_amount);
-    if (input.tax_off !== undefined && input.tax_off !== null) await exec('UPDATE ledger_entries SET tax_off = ? WHERE id = ?', [truthy(input.tax_off), id]);
     const row = await syncRowFromPayments(id);
     return { ok: true, row, data: await paymentsReply(id) };
   },
@@ -1334,10 +1356,9 @@ const actions = {
     const p = cleanPayment(input);
     await exec(
       `UPDATE ledger_payments SET payment_date = ?, amount = ?, check_ref = ?, check_date = ?, payment_method = ?,
-              payment_method_bank = ?, payment_method_other = ?, remarks = ?, pe_amount = ?, ca_amount = ?, dc_amount = ? WHERE id = ?`,
-      [p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount, pid]);
+              payment_method_bank = ?, payment_method_other = ?, remarks = ?, pe_amount = ?, ca_amount = ?, dc_amount = ?, tax_amount = ? WHERE id = ?`,
+      [p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount, await paymentTaxFor(toInt(pay.ledger_entry_id), p.amount, p.pay_tax), pid]);
     await shiftEntryDeductions(toInt(pay.ledger_entry_id), p.pe_amount - toFloat(pay.pe_amount), p.ca_amount - toFloat(pay.ca_amount), p.dc_amount - toFloat(pay.dc_amount));
-    if (input.tax_off !== undefined && input.tax_off !== null) await exec('UPDATE ledger_entries SET tax_off = ? WHERE id = ?', [truthy(input.tax_off), toInt(pay.ledger_entry_id)]);
     const row = await syncRowFromPayments(toInt(pay.ledger_entry_id));
     return { ok: true, row, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
   },
@@ -1441,7 +1462,7 @@ const actions = {
     // Rebate is NOT calculated: only a rebate that someone actually enters reduces the balance. An unpaid
     // difference stays outstanding until it is paid.
     const acctType = await scalar('SELECT account_type FROM companies WHERE id = ?', [toInt(row.company_id)]);
-    const autoTax = (acctType === 'CHARGE' || row.tax_off) ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2);
+    const autoTax = round(((acctType === 'CHARGE' || row.tax_off) ? 0 : round(toFloat(row.amount) * (await taxWithheldPercent()) / 100, 2)) + (await payTaxSum(toInt(id))), 2);
     row.tax_withheld = autoTax;
     const [receivable, balance] = recalcRow(row);
 
@@ -1864,7 +1885,7 @@ const actions = {
       const rows = await all('SELECT id, amount, surcharge, rebate, paid_amount, receivable_amount, tax_off, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE company_id = ?', [cid]);
       for (const r of rows) {
         const amount = toFloat(r.amount);
-        const tax = (recalcIsCharge || r.tax_off) ? 0 : round((amount * percent) / 100, 2);
+        const tax = round(((recalcIsCharge || r.tax_off) ? 0 : round((amount * percent) / 100, 2)) + (await payTaxSum(r.id)), 2);
         const deduct = (r.pe_on !== false ? toFloat(r.provider_excess) : 0) + (r.ca_on !== false ? toFloat(r.concern_amount) : 0) + (r.dc_on !== false ? toFloat(r.disc_amount) : 0);
         const oldBase = toFloat(r.receivable_amount);
         const base = amount - tax - deduct + toFloat(r.surcharge) - toFloat(r.rebate);
