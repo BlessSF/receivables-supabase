@@ -253,6 +253,7 @@ const RULES = {
   save_tax_setting: { area: 'Settings', kind: 'setting', text: () => 'Changed the tax withheld setting' },
   save_bank_name: { area: 'Settings', kind: 'setting', text: (i) => (String(i.name || '').trim() ? `Changed the bank name in Main to ${q(String(i.name).trim().slice(0, 30))}` : 'Reset the bank name in Main to Security Bank') },
   save_theme: { area: 'Settings', kind: 'setting', text: (i) => (String(i.sidebar || '').trim() || String(i.accent || '').trim() ? `Changed the sidebar theme: colour ${String(i.sidebar || 'default')}, accent ${String(i.accent || 'default')}` : 'Reset the sidebar theme to the default colours') },
+  save_maintenance: { area: 'Settings', kind: 'setting', text: (i) => (i.on ? 'Turned Maintenance mode ON (only admins can use the system)' : 'Turned Maintenance mode OFF') },
   save_brand: { area: 'Settings', kind: 'setting', text: (i) => (String(i.name || '').trim() ? `Changed the sidebar name to ${q(String(i.name).trim().slice(0, 30))}` : 'Reset the sidebar name to the default') },
   save_nav_access: { area: 'Settings', kind: 'setting', text: () => 'Changed the sidebar access of the roles' },
   create_user: { area: 'Users', kind: 'user', text: (i) => `Created user ${q(i.username)} (${i.role || 'staff'})` },

@@ -11,6 +11,7 @@ const I = {
   shield: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></svg>,
   cal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 10h18M8 2.5v4M16 2.5v4" /></svg>,
   clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
+  tool: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z" /></svg>,
   arrow: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>,
   trash: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>,
 };
@@ -291,6 +292,64 @@ function BankPanel() {
   );
 }
 
+// Settings -> Maintenance: put the whole system "under maintenance" for everyone except admins.
+function MaintenancePanel() {
+  const [loaded, setLoaded] = useState(false);
+  const [on, setOn] = useState(false);
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [back, setBack] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => {
+    api.getMaintenance().then((r) => {
+      const m = r.maintenance || {};
+      setOn(!!m.on); setTitle(m.title || ''); setMessage(m.message || ''); setBack(m.back || ''); setLoaded(true);
+    }).catch((e) => { setMsg({ type: 'error', msg: e.message }); setLoaded(true); });
+  }, []);
+  async function save(nextOn) {
+    if (nextOn && !window.confirm('Turn maintenance mode ON?\n\nEveryone except admins will be locked out and see the notice until you turn it off. People who are logged in are stopped within about 30 seconds.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveMaintenance({ on: nextOn, title, message, back });
+      setOn(nextOn);
+      setMsg({ type: 'success', msg: r.message });
+    } catch (e) { setMsg({ type: 'error', msg: e.message }); }
+    setBusy(false);
+  }
+  if (!loaded) return <div className="loading-state">Loading…</div>;
+  return (
+    <section className="st-card">
+      <CardHead icon={I.tool} title="Maintenance mode" tone="teal">
+        Turn this on while you update the system. Everyone except admins sees a "Under maintenance" page instead of the app. You can still sign in as admin, and a bar at the bottom reminds you it is on. This only affects this system (Main or Jaro), not the other one.
+      </CardHead>
+      {msg && <div className={`flash flash-${msg.type}`}>{msg.msg}</div>}
+      <div className={`mt-status${on ? ' on' : ''}`}><i />{on ? 'ON — the system is closed to everyone except admins' : 'OFF — the system is open'}</div>
+      <div className="mt-form">
+        <label>Title <small>(optional)</small>
+          <input type="text" className="input" maxLength={80} placeholder="We’re doing some maintenance" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label>Message <small>(optional)</small>
+          <textarea className="input" rows={3} maxLength={600} placeholder="The system is being updated. Your data is safe. Please check back soon." value={message} onChange={(e) => setMessage(e.target.value)} />
+        </label>
+        <label>Expected back <small>(optional, shown as written, e.g. “Today 3:00 PM”)</small>
+          <input type="text" className="input" maxLength={80} placeholder="Today, 3:00 PM" value={back} onChange={(e) => setBack(e.target.value)} />
+        </label>
+        <div className="st-name-actions">
+          {on ? (
+            <>
+              <button type="button" className="btn" disabled={busy} onClick={() => save(false)}>{busy ? 'Saving…' : 'Turn OFF — open the system'}</button>
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => save(true)}>Save changes to the notice</button>
+            </>
+          ) : (
+            <button type="button" className="btn" disabled={busy} onClick={() => save(true)}>{busy ? 'Saving…' : 'Turn ON maintenance mode'}</button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const [loaded, setLoaded] = useState(false);
@@ -383,7 +442,7 @@ export default function Settings() {
 
   const days = parseInt(graceDays, 10) || 0;
   const numRules = rules.map((x) => ({ ...x, month: +x.month, day_from: +x.day_from, day_to: +x.day_to, from_offset: +x.from_offset, from_day: +x.from_day, to_offset: +x.to_offset, to_day: +x.to_day }));
-  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Terms & past due', I.clock], ['name', 'Name', I.tag], ['theme', 'Theme', I.palette], ['backup', 'Backup', I.shield]];
+  const TABS = [['period', 'Covered period', I.cal], ['aging', 'Terms & past due', I.clock], ['name', 'Name', I.tag], ['theme', 'Theme', I.palette], ['maint', 'Maintenance', I.tool], ['backup', 'Backup', I.shield]];
 
   return (
     <div className="st">
@@ -407,6 +466,7 @@ export default function Settings() {
       {tab === 'backup' && user.is_admin_role && <BackupPanel />}
       {tab === 'name' && user.is_admin_role && <><NamePanel /><BankPanel /></>}
       {tab === 'theme' && user.is_admin_role && <ThemePanel />}
+      {tab === 'maint' && user.is_admin_role && <MaintenancePanel />}
 
       {tab === 'period' && (
         <>

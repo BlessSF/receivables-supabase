@@ -130,6 +130,22 @@ async function getTheme() {
   } catch { return null; }
 }
 
+// Maintenance mode (Settings -> Maintenance). While it is ON only an admin can use the system; everyone else sees the notice.
+let maintCache = { at: 0, v: null };
+async function getMaintenance() {
+  if (Date.now() - maintCache.at < 5000 && maintCache.v) return maintCache.v;
+  let m = { on: false, title: '', message: '', back: '' };
+  try {
+    const t = JSON.parse(await getSetting('maintenance', 'null'));
+    if (t && typeof t === 'object') m = { on: t.on === true, title: String(t.title || '').slice(0, 80), message: String(t.message || '').slice(0, 600), back: String(t.back || '').slice(0, 80) };
+  } catch { /* keep the default */ }
+  // Emergency switch: set MAINTENANCE_MODE=1 in Vercel (then redeploy) to close the system even when Settings can't be reached.
+  if (/^(1|true|on|yes)$/i.test(String(process.env.MAINTENANCE_MODE || '').trim())) m = { ...m, on: true };
+  maintCache = { at: Date.now(), v: m };
+  return m;
+}
+const maintOpen = (a) => ['me', 'logout', 'get_maintenance'].includes(a);
+
 async function userPayload(u) {
   if (!u) return null;
   const [pagesFor, brand, bankName, theme] = await Promise.all([u.role === 'admin' ? null : navPagesFor(u), getBrand(), getBankName(), getTheme()]);
@@ -2159,6 +2175,17 @@ const actions = {
     return { ok: true, theme: await getTheme(), message: sidebar || accent ? 'Theme saved. Everyone sees the new colours the next time they open or refresh the page.' : 'Theme reset to the default colours.' };
   },
 
+  async save_maintenance(input, auth) {
+    if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change maintenance mode.' }, 403);
+    const on = truthy(input.on);
+    const title = trim(input.title ?? '').slice(0, 80);
+    const message = trim(input.message ?? '').slice(0, 600);
+    const back = trim(input.back ?? '').slice(0, 80);
+    await setSetting('maintenance', JSON.stringify({ on, title, message, back }));
+    maintCache = { at: 0, v: null };
+    return { ok: true, maintenance: await getMaintenance(), message: on ? 'Maintenance mode is ON. Everyone except admins now sees the notice.' : 'Maintenance mode is OFF. The system is open again.' };
+  },
+
   async save_bank_name(input, auth) {
     if (!auth.isAdmin()) jsonExit({ ok: false, error: 'Only an admin can change the bank name.' }, 403);
     const name = trim(input.name ?? '').slice(0, 30);
@@ -2706,9 +2733,14 @@ export default async function handleApi(req, res) {
     if (user && action !== 'logout') { const c = renewCookie(req); if (c) res.setHeader('Set-Cookie', c); }
 
     // ---- public (no login needed)
+    if (action === 'get_maintenance') return sendJson(res, 200, { ok: true, maintenance: { ...(await getMaintenance()), brand: (await getBrand())?.name || '' } });
     if (action === 'login') {
       const u = await attemptLogin(trim(input.username ?? ''), String(input.password ?? ''));
       await auditLogin(trim(input.username ?? ''), !!u, u, clientIp(req));
+      if (u && u.role !== 'admin') {
+        const mt = await getMaintenance();
+        if (mt.on) return sendJson(res, 503, { ok: false, maintenance: true, error: 'The system is under maintenance. Only an admin can sign in right now.' });
+      }
       if (u) return sendJson(res, 200, { ok: true, user: await userPayload(u) }, { 'Set-Cookie': sessionCookie(req, u) });
       return sendJson(res, 401, { ok: false, error: 'Invalid username or password.' });
     }
@@ -2726,6 +2758,10 @@ export default async function handleApi(req, res) {
 
     // ---- everything else needs a login
     if (!user) return sendJson(res, 401, { ok: false, error: 'Not logged in.' });
+    if (user.role !== 'admin' && !maintOpen(action)) {
+      const mt = await getMaintenance();
+      if (mt.on) return sendJson(res, 503, { ok: false, maintenance: true, error: 'The system is under maintenance. Please try again later.' });
+    }
 
     if (user.role === 'executive' && !EXECUTIVE_ACTIONS.has(action) && !(await navActionAllowed('executive', action))) {
       return sendJson(res, 403, { ok: false, error: 'Your account can view reports only.' });

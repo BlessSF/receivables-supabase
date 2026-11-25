@@ -2318,3 +2318,31 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .xtra-cell { gap: 10px; }
 .xtra-cell .tax-switch { margin-left: 2px; }
 .xtra-cell .tax-switch::before { content: ''; position: absolute; left: -8px; top: -6px; bottom: -6px; border-left: 1px dashed #c3d0cd; }
+
+/* ---------- Maintenance page + Settings panel ---------- */
+.mt-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 28px 16px; background: #eef1f4; }
+.mt-sheet { width: min(560px, 100%); background: #fff; border: 1px solid #d7dde4; border-top: 6px solid var(--ink); border-radius: 4px; padding: 36px 40px 28px; box-shadow: 0 18px 40px rgba(19, 32, 58, .10); }
+.mt-kicker { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--slate); }
+.mt-sheet h1 { margin: 10px 0 14px; font-family: var(--font-display); font-size: 34px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; color: var(--ink); }
+.mt-rule { height: 0; border-bottom: 4px double var(--ink); margin: 0 0 18px; }
+.mt-msg { margin: 0 0 18px; font-size: 16px; line-height: 1.6; color: #34425a; white-space: pre-line; }
+.mt-back-row { display: flex; align-items: baseline; gap: 12px; margin: 0 0 22px; padding: 12px 0; border-top: 1px solid #e3e8ed; border-bottom: 1px solid #e3e8ed; }
+.mt-back-row dt { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--slate); }
+.mt-back-row dd { margin: 0; font-family: var(--font-display); font-size: 22px; color: var(--teal-strong); }
+.mt-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mt-admin { background: none; border: 0; padding: 6px 2px; color: var(--slate); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.mt-admin:hover { color: var(--ink); }
+.mt-foot { margin-top: 22px; font-size: 12px; color: var(--slate); }
+.mt-back { position: fixed; top: 14px; left: 14px; z-index: 50; background: #fff; border: 1px solid #d7dde4; border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+.mt-banner { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 24px); padding: 9px 16px; border-radius: 999px; background: #b9770e; color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
+.mt-status { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; padding: 10px 14px; border-radius: 8px; background: #e6f3ef; color: #0d6048; font-weight: 600; font-size: 14px; }
+.mt-status i { width: 10px; height: 10px; border-radius: 50%; background: #0f8a68; flex: none; }
+.mt-status.on { background: #fdf0d8; color: #8a5608; }
+.mt-status.on i { background: #b9770e; }
+.mt-form { display: grid; gap: 14px; max-width: 640px; }
+.mt-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.mt-form label small { font-weight: 400; color: var(--slate); }
+.mt-form textarea.input { resize: vertical; }
+@media print { .mt-banner { display: none; } }
+.mt-form input.input, .mt-form textarea.input { font: inherit; font-size: 15px; font-weight: 500; color: var(--ink); border: 1px solid var(--line-strong, #cfd8df); border-radius: 10px; padding: 10px 12px; width: 100%; background: #fff; }
+.mt-form input.input:focus, .mt-form textarea.input:focus { outline: 2px solid var(--teal); outline-offset: 1px; }

@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { api } from './api';
+import Maintenance from './pages/Maintenance';
 import { AuthProvider, useAuth } from './AuthContext';
 import Layout from './Layout';
 import Login from './pages/Login';
@@ -29,11 +32,19 @@ import Audit from './pages/Audit';
 import DeletedItems from './pages/DeletedItems';
 import { isExecutive, isStaff, isAccounting, navAllowed } from './utils';
 
-function Gate() {
-  const { user } = useAuth();
+function GateInner({ maint, recheck }) {
+  const { user, logout } = useAuth();
+  const [adminLogin, setAdminLogin] = useState(false);
 
   if (user === undefined) {
     return <div className="loading-state" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
+  }
+  // Maintenance mode: only an admin gets past this point
+  if (maint?.on && !(user && user.is_admin_role)) {
+    if (user === null && adminLogin) {
+      return (<><Login /><button type="button" className="mt-back" onClick={() => setAdminLogin(false)}>← Back to the maintenance notice</button></>);
+    }
+    return <Maintenance info={maint} signedIn={!!user} onAdmin={() => setAdminLogin(true)} onLogout={logout} onRecheck={recheck} />;
   }
   if (user === null) {
     return <Login />;
@@ -140,6 +151,23 @@ function Gate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+  );
+}
+
+function Gate() {
+  const { user } = useAuth();
+  const [maint, setMaint] = useState(null);
+  const load = () => api.getMaintenance().then((r) => setMaint(r.maintenance || null)).catch(() => {});
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30000); // picks up a switch-on or switch-off without a refresh
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <>
+      <GateInner maint={maint} recheck={load} />
+      {maint?.on && user?.is_admin_role && <div className="mt-banner" role="status">Maintenance mode is ON — only admins can see the system. Turn it off in Settings → Maintenance.</div>}
+    </>
   );
 }
 
