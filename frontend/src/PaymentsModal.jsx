@@ -15,16 +15,17 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
   const [form, setForm] = useState(null); // null = hidden, object = add / edit
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [sheet, setSheet] = useState(null); // null = closed, 'all' = every payment, or one payment id
 
   useEffect(() => {
     api.getPayments(entry.id).then((r) => setInfo(r.data)).catch((e) => setErr(e.message));
   }, [entry.id]);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') { if (sheet !== null) setSheet(null); else onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, sheet]);
 
   const e = info?.entry;
   const balance = Number(e?.balance) || 0;
@@ -169,6 +170,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                       <td>{p.check_ref || '—'}</td>
                       <td>{[p.payment_method, p.payment_method_bank === 'Other' ? p.payment_method_other : p.payment_method_bank].filter(Boolean).join(' · ') || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <button type="button" className="btn btn-secondary btn-sm" title="Show this payment like the SOA sheet" disabled={busy} onClick={() => setSheet(p.id)} style={{ marginRight: 4 }}>Sheet</button>
                         <button type="button" className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" disabled={busy} onClick={() => startEdit(p)}><IconEdit /></button>
                         <button type="button" className="btn btn-danger btn-sm icon-btn" title="Delete" aria-label="Delete" disabled={busy} onClick={() => remove(p)}><IconTrash /></button>
                       </td>
@@ -181,6 +183,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
             {!form && (
               <div className="pm-actions">
                 <button type="button" className="btn" onClick={startAdd}>+ Add payment{balance > 0.009 ? ` (remaining ${peso(balance)})` : ''}</button>
+                {info.payments.length > 0 && <button type="button" className="btn btn-secondary" onClick={() => setSheet('all')} style={{ marginLeft: 8 }}>View sheet{info.payments.length > 1 ? ` (all ${info.payments.length} payments)` : ''}</button>}
               </div>
             )}
 
@@ -287,6 +290,68 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
             )}
           </>
         )}
+      </div>
+      {sheet !== null && info && info.enabled && (
+        <PaymentSheet entry={entry} e={e} taxPercent={Number(info.tax_percent) || 0} payments={info.payments} only={sheet === 'all' ? null : sheet} onClose={() => setSheet(null)} />
+      )}
+    </div>
+  );
+}
+
+const ORD = ['FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH', 'SIXTH', 'SEVENTH', 'EIGHTH', 'NINTH', 'TENTH'];
+
+// The payments of one SOA laid out like the Excel sheet: one block per payment (First payment, Second payment, ...)
+function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
+  const n = (v) => Number(v) || 0;
+  const r2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+  const isCharge = entry.account_type === 'CHARGE';
+  const soa = r2(n(e.amount) + n(e.surcharge) - n(e.rebate)); // Amount in SOA
+  let cum = 0;
+  const blocks = payments.map((p, i) => {
+    const ded = n(p.pe_amount) + n(p.ca_amount) + n(p.dc_amount);
+    const modern = p.net_amount !== null && p.net_amount !== undefined;
+    // an older payment only knows what was received: its tax is worked out from it (received x tax% / (100 - tax%))
+    const tax = modern ? n(p.tax_amount)
+      : ((isCharge || e.tax_off || taxPercent <= 0 || taxPercent >= 100) ? 0 : r2((n(p.amount) * taxPercent) / (100 - taxPercent)));
+    const net = modern ? n(p.net_amount) : r2(n(p.amount) + ded + tax);
+    cum = r2(cum + net);
+    return { p, i, net, tax, remaining: Math.max(0, r2(soa - cum)) };
+  });
+  const shown = only === null ? blocks : blocks.filter((b) => b.p.id === only);
+  const month = (() => {
+    const d = entry.period_date ? new Date(`${String(entry.period_date).slice(0, 10)}T00:00:00`) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleString('en-US', { month: 'long', year: 'numeric' }) : '';
+  })();
+  const money = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (
+    <div className="pm-backdrop" style={{ zIndex: 1100 }} onMouseDown={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
+      <div className="pm-card pm-sheet-card" role="dialog" aria-modal="true" aria-label="Payment sheet">
+        <div className="pm-head">
+          <div>
+            <h2>{month || 'Payment sheet'}{entry.soa_number ? ` · ${entry.soa_number}` : ''}</h2>
+            <div className="pm-sub">{only === null ? 'All payments of this SOA' : 'One payment of this SOA'}, laid out like the Excel sheet.</div>
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
+        </div>
+        <table className="pm-sheet">
+          <tbody>
+            <tr><td>Amount in SOA</td><td className="num">{money(soa)}</td></tr>
+          </tbody>
+        </table>
+        {shown.map(({ p, i, net, tax, remaining }) => (
+          <table className="pm-sheet" key={p.id}>
+            <thead><tr><th colSpan={2}>{(ORD[i] || `${i + 1}TH`)} PAYMENT{p.payment_date ? <span> · {formatLongDate(p.payment_date)}</span> : null}</th></tr></thead>
+            <tbody>
+              <tr><td>NET AMOUNT PROCESSED</td><td className="num">{money(net)}</td></tr>
+              <tr><td>DISCOUNT</td><td className="num">{money(n(p.dc_amount))}</td></tr>
+              <tr><td>PROVIDED EXCESS</td><td className="num">{money(n(p.pe_amount))}</td></tr>
+              <tr><td>CONCERN AMOUNT</td><td className="num">{money(n(p.ca_amount))}</td></tr>
+              <tr><td>TAX</td><td className="num">{money(tax)}</td></tr>
+              <tr className="pm-sheet-recv"><td>AMOUNT RECEIVED</td><td className="num">{money(n(p.amount))}</td></tr>
+              <tr className={remaining > 0.009 ? 'pm-sheet-due' : 'pm-sheet-ok'}><td>REMAINING BALANCE</td><td className="num">{money(remaining)}</td></tr>
+            </tbody>
+          </table>
+        ))}
       </div>
     </div>
   );
