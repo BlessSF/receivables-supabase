@@ -96,12 +96,15 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     const received = r2(baseThis - taxThis);
     // ---- the entry now / after
     const oldNet = old && old.net_amount !== null && old.net_amount !== undefined;
-    const modern = n(e.pay_net) > 0;
+    // what was typed straight into Paid (received) has its tax worked out from it: received x tax% / (100 - tax%)
+    const typedTaxOf = (recv) => ((isCharge || e.tax_off || pct <= 0 || pct >= 100) ? 0 : r2((Math.max(0, recv) * pct) / (100 - pct)));
+    const typedRecvNow = Math.max(0, n(e.paid_amount) - n(e.pay_recv));
+    const typedRecvAfter = Math.max(0, typedRecvNow - (old && !oldNet ? n(old.amount) : 0));
     const nowRaw = { pe: n(e.provider_excess), ca: n(e.concern_amount), dc: n(e.disc_amount) };
     const was = { pe: n(old?.pe_amount), ca: n(old?.ca_amount), dc: n(old?.dc_amount) };
     const afterRaw = { pe: nowRaw.pe - was.pe + typed.pe, ca: nowRaw.ca - was.ca + typed.ca, dc: nowRaw.dc - was.dc + typed.dc };
-    const taxNow = modern ? n(e.pay_tax) : ((isCharge || e.tax_off) ? 0 : r2((gross * pct) / 100));
-    const taxAfter = r2((modern ? n(e.pay_tax) : 0) - (oldNet ? n(old.tax_amount) : 0) + taxThis);
+    const taxNow = r2(n(e.pay_tax) + typedTaxOf(typedRecvNow));
+    const taxAfter = r2(n(e.pay_tax) - (oldNet ? n(old.tax_amount) : 0) + taxThis + typedTaxOf(typedRecvAfter));
     const sur = n(e.surcharge) - n(e.rebate);
     const dedNow = has('pe', nowRaw.pe) + has('ca', nowRaw.ca) + has('dc', nowRaw.dc);
     const dedAfter = has('pe', afterRaw.pe) + has('ca', afterRaw.ca) + has('dc', afterRaw.dc);
