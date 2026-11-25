@@ -68,7 +68,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     setBusy(false);
   }
 
-  // What the entry will look like once this form is saved (same formula as the ledger row)
+  // What the entry looks like now, what this form adds, and what it will be once saved (same formula as the ledger row)
   const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
   const calc = (() => {
     if (!form || !e) return null;
@@ -76,18 +76,35 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     const n = (v) => Number(v) || 0;
     const pct = Number(info.tax_percent) || 0;
     const isCharge = entry.account_type === 'CHARGE';
-    const pe = n(e.provider_excess) - n(old?.pe_amount) + n(rawNum(form.provider_excess));
-    const ca = n(e.concern_amount) - n(old?.ca_amount) + n(rawNum(form.concern_amount));
-    const dc = n(e.disc_amount) - n(old?.dc_amount) + n(rawNum(form.disc_amount));
-    const deduct = (e.pe_on !== false ? pe : 0) + (e.ca_on !== false ? ca : 0) + (e.dc_on !== false ? dc : 0);
     const gross = n(e.amount);
     const taxOn = isCharge ? 0 : r2((gross * pct) / 100);
-    const net = (tax) => r2(gross - tax - deduct + n(e.surcharge) - n(e.rebate));
-    const tax = isCharge || form.tax_off ? 0 : taxOn;
-    const receivable = net(tax);
-    const paid = n(e.paid_amount) - n(old?.amount) + n(rawNum(form.amount));
-    return { pct, isCharge, tax, deduct, receivable, paid, balance: Math.max(0, r2(receivable - paid)),
-      withTax: net(taxOn), withoutTax: net(0), amount: gross };
+    const flags = { pe: e.pe_on !== false, ca: e.ca_on !== false, dc: e.dc_on !== false };
+    const has = (k, v) => (flags[k] ? n(v) : 0); // a deduction counts only while its switch is on
+    const nowRaw = { pe: n(e.provider_excess), ca: n(e.concern_amount), dc: n(e.disc_amount) };
+    const typed = { pe: n(rawNum(form.provider_excess)), ca: n(rawNum(form.concern_amount)), dc: n(rawNum(form.disc_amount)) };
+    const was = { pe: n(old?.pe_amount), ca: n(old?.ca_amount), dc: n(old?.dc_amount) };
+    const afterRaw = { pe: nowRaw.pe - was.pe + typed.pe, ca: nowRaw.ca - was.ca + typed.ca, dc: nowRaw.dc - was.dc + typed.dc };
+    const taxNow = e.tax_off ? 0 : taxOn;
+    const taxAfter = isCharge || form.tax_off ? 0 : taxOn;
+    const sur = n(e.surcharge) - n(e.rebate);
+    const dedNow = has('pe', nowRaw.pe) + has('ca', nowRaw.ca) + has('dc', nowRaw.dc);
+    const dedAfter = has('pe', afterRaw.pe) + has('ca', afterRaw.ca) + has('dc', afterRaw.dc);
+    const recNow = r2(gross - taxNow - dedNow + sur);
+    const recAfter = r2(gross - taxAfter - dedAfter + sur);
+    const paidNow = n(e.paid_amount);
+    const paidAfter = r2(paidNow - n(old?.amount) + n(rawNum(form.amount)));
+    const row = (nowV, afterV) => ({ now: r2(nowV), add: r2(afterV - nowV), after: r2(afterV) });
+    return {
+      pct, isCharge, flags, taxOnNow: !e.tax_off, taxOnAfter: !form.tax_off,
+      tax: row(taxNow, taxAfter),
+      pe: row(has('pe', nowRaw.pe), has('pe', afterRaw.pe)),
+      ca: row(has('ca', nowRaw.ca), has('ca', afterRaw.ca)),
+      dc: row(has('dc', nowRaw.dc), has('dc', afterRaw.dc)),
+      receivable: row(recNow, recAfter),
+      paid: row(paidNow, paidAfter),
+      balance: row(Math.max(0, r2(recNow - paidNow)), Math.max(0, r2(recAfter - paidAfter))),
+      amount: gross, withTax: r2(gross - taxOn - dedAfter + sur), withoutTax: r2(gross - dedAfter + sur),
+    };
   })();
   const showBank = form && (form.payment_method === 'Check' || form.payment_method === 'Card');
   const over = e && Number(e.paid_amount) > Number(e.receivable_amount) + 0.009;
@@ -198,18 +215,37 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                     )}
                   </div>
                 </div>
-                {calc && (
-                  <div className="pm-calc" aria-live="polite">
-                    <div className="pm-calc-title">Total after this payment</div>
-                    <div className="pm-calc-row"><span>Amount</span><b className="num">{peso(calc.amount)}</b></div>
-                    {!calc.isCharge && <div className="pm-calc-row"><span>Tax W/H ({calc.pct}%) {form.tax_off ? '· off' : '· on'}</span><b className="num">{form.tax_off ? '₱0.00' : '− ' + peso(calc.tax)}</b></div>}
-                    {calc.deduct > 0.009 && <div className="pm-calc-row"><span>Provider Excess + Concern Amount + Disc</span><b className="num">− {peso(calc.deduct)}</b></div>}
-                    <div className="pm-calc-row pm-calc-total"><span>Receivable</span><b className="num">{peso(calc.receivable)}</b></div>
-                    <div className="pm-calc-row"><span>Paid (with this payment)</span><b className="num">{peso(calc.paid)}</b></div>
-                    <div className={`pm-calc-row pm-calc-total${calc.balance > 0.009 ? ' is-due' : ' is-ok'}`}><span>Balance</span><b className="num">{peso(calc.balance)}</b></div>
-                    {!calc.isCharge && <div className="pm-calc-alt">With Tax W/H: <b className="num">{peso(calc.withTax)}</b> · Without Tax W/H: <b className="num">{peso(calc.withoutTax)}</b> (Receivable)</div>}
-                  </div>
-                )}
+                {calc && (() => {
+                  const sign = (v, minus) => (Math.abs(v) < 0.005 ? '—' : (minus ? (v > 0 ? '− ' : '+ ') : (v > 0 ? '+ ' : '− ')) + peso(Math.abs(v)));
+                  const line = (label, r, minus, extra) => (
+                    <tr>
+                      <td>{label}{extra}</td>
+                      <td className="num">{minus ? (r.now > 0.005 ? '− ' + peso(r.now) : '—') : peso(r.now)}</td>
+                      <td className="num pm-calc-add">{sign(r.add, minus)}</td>
+                      <td className="num">{minus ? (r.after > 0.005 ? '− ' + peso(r.after) : '—') : peso(r.after)}</td>
+                    </tr>
+                  );
+                  const off = <span className="pm-calc-off"> · switch off in ledger</span>;
+                  return (
+                    <div className="pm-calc" aria-live="polite">
+                      <div className="pm-calc-title">Preview: now → this payment → after saving</div>
+                      <table>
+                        <thead><tr><th></th><th>Now</th><th>This payment</th><th>After</th></tr></thead>
+                        <tbody>
+                          <tr><td>Amount</td><td className="num">{peso(calc.amount)}</td><td className="num pm-calc-add">—</td><td className="num">{peso(calc.amount)}</td></tr>
+                          {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true, form.tax_off ? <span className="pm-calc-off"> · off</span> : null)}
+                          {line('Provider Excess', calc.pe, true, calc.flags.pe ? null : off)}
+                          {line('Concern Amount', calc.ca, true, calc.flags.ca ? null : off)}
+                          {line('Disc', calc.dc, true, calc.flags.dc ? null : off)}
+                          <tr className="pm-calc-total"><td>Receivable</td><td className="num">{peso(calc.receivable.now)}</td><td className="num pm-calc-add">{sign(calc.receivable.add, false)}</td><td className="num">{peso(calc.receivable.after)}</td></tr>
+                          <tr><td>Paid</td><td className="num">{peso(calc.paid.now)}</td><td className="num pm-calc-add">{sign(calc.paid.add, false)}</td><td className="num">{peso(calc.paid.after)}</td></tr>
+                          <tr className={`pm-calc-total${calc.balance.after > 0.009 ? ' is-due' : ' is-ok'}`}><td>Balance</td><td className="num">{peso(calc.balance.now)}</td><td className="num pm-calc-add">{sign(calc.balance.add, false)}</td><td className="num">{peso(calc.balance.after)}</td></tr>
+                        </tbody>
+                      </table>
+                      {!calc.isCharge && <div className="pm-calc-alt">Receivable with Tax W/H: <b className="num">{peso(calc.withTax)}</b> · without Tax W/H: <b className="num">{peso(calc.withoutTax)}</b></div>}
+                    </div>
+                  );
+                })()}
                 <div className="form-actions">
                   <button className="btn" type="submit" disabled={busy}>{form.id ? 'Save changes' : 'Save payment'}</button>
                   <button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>Cancel</button>
