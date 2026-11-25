@@ -142,6 +142,7 @@ export default function Ledger() {
   const [viewCard, setViewCard] = useState(null); // { id, x, y } company card whose View popup is open
   const viewTimer = useRef(null);
   const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
+  const [sheetFirst, setSheetFirst] = useState(false); // open that popup straight on the SOA sheet (from the Amount Received column)
   const [taxSel, setTaxSel] = useState(null); // null = normal view; a Set of entry ids while choosing entries for Tax W/H on/off
   const [taxBusy, setTaxBusy] = useState(false);
   const [taxMsg, setTaxMsg] = useState('');
@@ -273,7 +274,7 @@ export default function Ledger() {
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Rebate', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
+      'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
@@ -293,6 +294,7 @@ export default function Ledger() {
       Math.min(Math.max(widest('check_ref', undefined, 'Check'), tw('0'.repeat(14))), tw('0'.repeat(26))) + INPUT,
       // Paid always has room for an 8-digit amount with centavos (12,345,678.00 typed as 12345678.00) and grows past that if a bigger one is saved
       Math.min(Math.max(widest('paid_amount', fmtNum, '0.00'), tw('0'.repeat(12))), tw('0'.repeat(20))) + INPUT + 30, // + room for the payments button
+      Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_amounts || []).map((a) => tw(money(a)) + (r.pay_amounts.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Amount Received (one line per payment)
       balanceW + CELL,
       Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
       Math.max(tw('Unpaid') + 46, (canSettle ? tw('Settle') + 76 : 0), rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
@@ -695,7 +697,7 @@ export default function Ledger() {
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
-                  <th className="text-right">Paid</th><th className="text-right">Balance</th>
+                  <th className="text-right">Paid</th><th className="text-right">Amount Received</th><th className="text-right">Balance</th>
                   <th>Aging</th>
                   <th>Paid Status</th>
                   <th>Remarks</th>
@@ -704,7 +706,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 19 : 18} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 20 : 19} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -764,7 +766,7 @@ export default function Ledger() {
                               ? <div className="ro-cell ro-num" title={`${r.payment_count} payments - use the + button`}>{money(r.paid_amount)}</div>
                               : <EditableText row={rowIdx} col={12} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
                             {data?.payments_enabled && (
-                              <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => setPayFor(r)}>
+                              <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => { setSheetFirst(false); setPayFor(r); }}>
                                 {r.payment_count > 1 ? `×${r.payment_count}` : '+'}
                               </button>
                             )}
@@ -772,6 +774,17 @@ export default function Ledger() {
                         </td>
                       </>
                     )}
+                    <td className="text-right num recv-cell">
+                      {(r.pay_amounts || []).length > 0
+                        ? (
+                          <button type="button" className="recv-btn" title="Open the SOA sheet of this entry" onClick={() => { setSheetFirst(true); setPayFor(r); }}>
+                            {r.pay_amounts.map((a, i) => (
+                              <div key={i} className="recv-line">{r.pay_amounts.length > 1 && <small>{['1st', '2nd', '3rd'][i] || `${i + 1}th`}</small>}{money(a)}</div>
+                            ))}
+                          </button>
+                        )
+                        : (Number(r.paid_amount) > 0 ? <div className="recv-line">{money(r.paid_amount)}</div> : <span style={{ color: 'var(--slate)' }}>—</span>)}
+                    </td>
                     <td className="text-right num" style={{ fontWeight: 700 }}>{peso(r.balance)}</td>
                     <td>
                       {r.is_paid && <span style={{ color: 'var(--slate)' }}>—</span>}
@@ -823,7 +836,8 @@ export default function Ledger() {
       {payFor && (
         <PaymentsModal
           entry={payFor}
-          onClose={() => setPayFor(null)}
+          openSheet={sheetFirst}
+          onClose={() => { setPayFor(null); setSheetFirst(false); }}
           onChanged={(row) => {
             if (row) setData((d) => ({ ...d, entries: d.entries.map((e) => (e.id === payFor.id ? { ...e, ...row } : e)) }));
             reload();

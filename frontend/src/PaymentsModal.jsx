@@ -10,12 +10,12 @@ const METHODS = ['Cash', 'Card', 'Check'];
 const BANKS = ['Metrobank', 'BPI', 'PBB', 'Maya', 'Other'];
 const today = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // Manila date
 
-export default function PaymentsModal({ entry, onClose, onChanged }) {
+export default function PaymentsModal({ entry, onClose, onChanged, openSheet = false }) {
   const [info, setInfo] = useState(null); // { enabled, entry, payments }
   const [form, setForm] = useState(null); // null = hidden, object = add / edit
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [sheet, setSheet] = useState(null); // null = closed, 'all' = every payment, or one payment id
+  const [sheet, setSheet] = useState(openSheet ? 'all' : null); // null = closed, 'all' = every payment, or one payment id
 
   useEffect(() => {
     api.getPayments(entry.id).then((r) => setInfo(r.data)).catch((e) => setErr(e.message));

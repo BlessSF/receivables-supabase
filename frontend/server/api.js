@@ -1244,7 +1244,18 @@ const actions = {
       const sums = await all('SELECT ledger_entry_id, COUNT(*) AS n, COALESCE(SUM(tax_amount), 0) AS t, COALESCE(SUM(amount), 0) AS a FROM ledger_payments WHERE net_amount IS NOT NULL GROUP BY ledger_entry_id');
       sums.forEach((c) => payTaxes.set(String(c.ledger_entry_id), { n: toInt(c.n), t: toFloat(c.t), a: toFloat(c.a) }));
     }
+    // the amount received by each payment of a row, oldest first (the Ledger's "Amount Received" column)
+    const payAmounts = new Map();
+    if (paymentsOn && entries.length) {
+      const list = await all("SELECT ledger_entry_id, amount FROM ledger_payments ORDER BY COALESCE(payment_date, '') ASC, id ASC");
+      for (const x of list) {
+        const k = String(x.ledger_entry_id);
+        if (!payAmounts.has(k)) payAmounts.set(k, []);
+        payAmounts.get(k).push(toFloat(x.amount));
+      }
+    }
     for (const r of entries) {
+      r.pay_amounts = payAmounts.get(String(r.id)) || [];
       const pt = payTaxes.get(String(r.id));
       r.pay_net = pt ? pt.n : 0; // payments entered with a net amount (their taxes replace the automatic Tax W/H)
       r.pay_tax = pt ? pt.t : 0;

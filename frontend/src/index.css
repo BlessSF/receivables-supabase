@@ -2432,3 +2432,10 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .pm-sheet-recv td { font-weight: 700; }
 .pm-sheet-due td.num { background: #fde2e2; color: #b91c1c; font-weight: 700; }
 .pm-sheet-ok td.num { background: #dcf5e1; color: #166534; font-weight: 700; }
+
+/* Ledger: Amount Received column (one line per payment) */
+.recv-cell { white-space: nowrap; }
+.recv-btn { all: unset; cursor: pointer; display: block; width: 100%; text-align: right; color: var(--teal-strong); font-weight: 600; border-radius: 4px; }
+.recv-btn:hover { background: #eaf4f1; }
+.recv-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.recv-line small { color: var(--slate); font-weight: 400; font-size: .8em; margin-right: 6px; }
