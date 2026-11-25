@@ -339,9 +339,9 @@ function cleanPayment(input) {
 }
 
 async function paymentsReply(entryId) {
-  const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date, tax_off, tax_withheld, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE id = ?', [entryId]);
+  const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date, surcharge, rebate, tax_off, tax_withheld, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE id = ?', [entryId]);
   const payments = await all('SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, \'\') ASC, id ASC', [entryId]);
-  return { enabled: true, entry: e, payments, payment_count: payments.length };
+  return { enabled: true, entry: e, payments, payment_count: payments.length, tax_percent: await taxWithheldPercent() };
 }
 
 async function requireCompanyAccess(auth, companyId) {

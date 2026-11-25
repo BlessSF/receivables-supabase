@@ -68,6 +68,27 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     setBusy(false);
   }
 
+  // What the entry will look like once this form is saved (same formula as the ledger row)
+  const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const calc = (() => {
+    if (!form || !e) return null;
+    const old = form.id ? info.payments.find((x) => x.id === form.id) : null;
+    const n = (v) => Number(v) || 0;
+    const pct = Number(info.tax_percent) || 0;
+    const isCharge = entry.account_type === 'CHARGE';
+    const pe = n(e.provider_excess) - n(old?.pe_amount) + n(rawNum(form.provider_excess));
+    const ca = n(e.concern_amount) - n(old?.ca_amount) + n(rawNum(form.concern_amount));
+    const dc = n(e.disc_amount) - n(old?.dc_amount) + n(rawNum(form.disc_amount));
+    const deduct = (e.pe_on !== false ? pe : 0) + (e.ca_on !== false ? ca : 0) + (e.dc_on !== false ? dc : 0);
+    const gross = n(e.amount);
+    const taxOn = isCharge ? 0 : r2((gross * pct) / 100);
+    const net = (tax) => r2(gross - tax - deduct + n(e.surcharge) - n(e.rebate));
+    const tax = isCharge || form.tax_off ? 0 : taxOn;
+    const receivable = net(tax);
+    const paid = n(e.paid_amount) - n(old?.amount) + n(rawNum(form.amount));
+    return { pct, isCharge, tax, deduct, receivable, paid, balance: Math.max(0, r2(receivable - paid)),
+      withTax: net(taxOn), withoutTax: net(0), amount: gross };
+  })();
   const showBank = form && (form.payment_method === 'Check' || form.payment_method === 'Card');
   const over = e && Number(e.paid_amount) > Number(e.receivable_amount) + 0.009;
 
@@ -177,6 +198,18 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                     )}
                   </div>
                 </div>
+                {calc && (
+                  <div className="pm-calc" aria-live="polite">
+                    <div className="pm-calc-title">Total after this payment</div>
+                    <div className="pm-calc-row"><span>Amount</span><b className="num">{peso(calc.amount)}</b></div>
+                    {!calc.isCharge && <div className="pm-calc-row"><span>Tax W/H ({calc.pct}%) {form.tax_off ? '· off' : '· on'}</span><b className="num">{form.tax_off ? '₱0.00' : '− ' + peso(calc.tax)}</b></div>}
+                    {calc.deduct > 0.009 && <div className="pm-calc-row"><span>Provider Excess + Concern Amount + Disc</span><b className="num">− {peso(calc.deduct)}</b></div>}
+                    <div className="pm-calc-row pm-calc-total"><span>Receivable</span><b className="num">{peso(calc.receivable)}</b></div>
+                    <div className="pm-calc-row"><span>Paid (with this payment)</span><b className="num">{peso(calc.paid)}</b></div>
+                    <div className={`pm-calc-row pm-calc-total${calc.balance > 0.009 ? ' is-due' : ' is-ok'}`}><span>Balance</span><b className="num">{peso(calc.balance)}</b></div>
+                    {!calc.isCharge && <div className="pm-calc-alt">With Tax W/H: <b className="num">{peso(calc.withTax)}</b> · Without Tax W/H: <b className="num">{peso(calc.withoutTax)}</b> (Receivable)</div>}
+                  </div>
+                )}
                 <div className="form-actions">
                   <button className="btn" type="submit" disabled={busy}>{form.id ? 'Save changes' : 'Save payment'}</button>
                   <button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>Cancel</button>

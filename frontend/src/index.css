@@ -2394,3 +2394,14 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .pm-deduct-head { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
 .pm-deduct-head span { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .pm-tax { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 13px; color: var(--ink); }
+
+/* Payments modal: live total */
+.pm-calc { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-strong); border-left: 3px solid var(--teal-strong); background: #f6faf9; }
+.pm-calc-title { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
+.pm-calc-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; }
+.pm-calc-row span { color: var(--slate); }
+.pm-calc-total { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 6px; font-size: 14px; }
+.pm-calc-total span { color: var(--ink); font-weight: 600; }
+.pm-calc-total.is-due b { color: #b45309; }
+.pm-calc-total.is-ok b { color: var(--teal-strong); }
+.pm-calc-alt { margin-top: 8px; font-size: 12px; color: var(--slate); }
