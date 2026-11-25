@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { api } from './api';
 import { getBranding, applyTabBranding } from './branding';
@@ -280,9 +280,7 @@ export default function Layout() {
               onClick={() => { setBkHidden(true); try { sessionStorage.setItem('bk_hide', '1'); } catch { /* ignore */ } }}>×</button>
           </div>
         )}
-        <Suspense fallback={<div className="loading-state">Loading…</div>}>
-          <Outlet />
-        </Suspense>
+        <Outlet />
         <footer className="app-credit">Receivables Management System · Designed and developed by Bless Florentino</footer>
       </main>
     </div>
