@@ -37,10 +37,14 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
   }
   function startEdit(p) {
     setErr('');
-    setForm({ id: p.id, amount: String(Number(p.amount).toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
+    // an older payment only knows what was received: net = received + what was deducted
+    const net = p.net_amount !== null && p.net_amount !== undefined
+      ? Number(p.net_amount)
+      : Number(p.amount) + (Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0) + (Number(p.tax_amount) || 0);
+    setForm({ id: p.id, amount: String(net.toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
       payment_method: p.payment_method || '', payment_method_bank: p.payment_method_bank || '', payment_method_other: p.payment_method_other || '', remarks: p.remarks || '',
       provider_excess: Number(p.pe_amount) ? String(Number(p.pe_amount).toFixed(2)) : '', concern_amount: Number(p.ca_amount) ? String(Number(p.ca_amount).toFixed(2)) : '',
-      disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', pay_tax: Number(p.tax_amount) > 0 });
+      disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', pay_tax: entry.account_type === 'CHARGE' ? false : (p.net_amount === null || p.net_amount === undefined ? true : Number(p.tax_amount) > 0) });
   }
 
   async function save(ev) {
@@ -68,37 +72,46 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
     setBusy(false);
   }
 
-  // What the entry looks like now, what this form adds, and what it will be once saved (same formula as the ledger row)
+  // The SOA sheet, live. Per payment:
+  //   Amount received = Net amount processed - Provider Excess - Concern Amount - Disc - Tax W/H
+  //   Tax W/H         = tax % x (Net amount processed - the deductions), only while this payment's switch is on
+  // The entry: Receivable = Amount - all Tax W/H - all deductions (+ Surcharge - Rebate), Balance = Receivable - Paid (received).
   const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
   const calc = (() => {
     if (!form || !e) return null;
     const old = form.id ? info.payments.find((x) => x.id === form.id) : null;
     const n = (v) => Number(v) || 0;
-    const pct = Number(info.tax_percent) || 0;
+    const pct = n(info.tax_percent);
     const isCharge = entry.account_type === 'CHARGE';
     const gross = n(e.amount);
-    const taxOn = isCharge ? 0 : r2((gross * pct) / 100);
     const flags = { pe: e.pe_on !== false, ca: e.ca_on !== false, dc: e.dc_on !== false };
     const has = (k, v) => (flags[k] ? n(v) : 0); // a deduction counts only while its switch is on
-    const nowRaw = { pe: n(e.provider_excess), ca: n(e.concern_amount), dc: n(e.disc_amount) };
     const typed = { pe: n(rawNum(form.provider_excess)), ca: n(rawNum(form.concern_amount)), dc: n(rawNum(form.disc_amount)) };
+    const net = n(rawNum(form.amount));
+    // ---- this payment
+    const dedThis = has('pe', typed.pe) + has('ca', typed.ca) + has('dc', typed.dc);
+    const baseThis = r2(net - dedThis);
+    const taxFor = (on) => (isCharge || !on || baseThis <= 0 ? 0 : r2((baseThis * pct) / 100));
+    const taxThis = taxFor(form.pay_tax);
+    const received = r2(baseThis - taxThis);
+    // ---- the entry now / after
+    const oldNet = old && old.net_amount !== null && old.net_amount !== undefined;
+    const modern = n(e.pay_net) > 0;
+    const nowRaw = { pe: n(e.provider_excess), ca: n(e.concern_amount), dc: n(e.disc_amount) };
     const was = { pe: n(old?.pe_amount), ca: n(old?.ca_amount), dc: n(old?.dc_amount) };
     const afterRaw = { pe: nowRaw.pe - was.pe + typed.pe, ca: nowRaw.ca - was.ca + typed.ca, dc: nowRaw.dc - was.dc + typed.dc };
-    // Tax W/H of the entry = its own tax + the tax withheld with each payment (this payment adds its own % of the amount paid)
-    const payAmt = n(rawNum(form.amount));
-    const thisTax = (on) => (isCharge || !on ? 0 : r2((payAmt * pct) / 100));
-    const taxNow = (e.tax_off ? 0 : taxOn) + n(e.pay_tax);
-    const taxAfter = (e.tax_off ? 0 : taxOn) + n(e.pay_tax) - n(old?.tax_amount) + thisTax(form.pay_tax);
+    const taxNow = modern ? n(e.pay_tax) : ((isCharge || e.tax_off) ? 0 : r2((gross * pct) / 100));
+    const taxAfter = r2((modern ? n(e.pay_tax) : 0) - (oldNet ? n(old.tax_amount) : 0) + taxThis);
     const sur = n(e.surcharge) - n(e.rebate);
     const dedNow = has('pe', nowRaw.pe) + has('ca', nowRaw.ca) + has('dc', nowRaw.dc);
     const dedAfter = has('pe', afterRaw.pe) + has('ca', afterRaw.ca) + has('dc', afterRaw.dc);
     const recNow = r2(gross - taxNow - dedNow + sur);
     const recAfter = r2(gross - taxAfter - dedAfter + sur);
     const paidNow = n(e.paid_amount);
-    const paidAfter = r2(paidNow - n(old?.amount) + payAmt);
+    const paidAfter = r2(paidNow - n(old?.amount) + received);
     const row = (nowV, afterV) => ({ now: r2(nowV), add: r2(afterV - nowV), after: r2(afterV) });
     return {
-      pct, isCharge, flags, payTax: thisTax(form.pay_tax),
+      pct, isCharge, flags, net, typed, dedThis, taxThis, received, amount: gross,
       tax: row(taxNow, taxAfter),
       pe: row(has('pe', nowRaw.pe), has('pe', afterRaw.pe)),
       ca: row(has('ca', nowRaw.ca), has('ca', afterRaw.ca)),
@@ -106,7 +119,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
       receivable: row(recNow, recAfter),
       paid: row(paidNow, paidAfter),
       balance: row(Math.max(0, r2(recNow - paidNow)), Math.max(0, r2(recAfter - paidAfter))),
-      amount: gross, withTax: r2(gross - (taxAfter - thisTax(form.pay_tax) + thisTax(true)) - dedAfter + sur), withoutTax: r2(gross - (taxAfter - thisTax(form.pay_tax)) - dedAfter + sur),
+      withTax: r2(baseThis - taxFor(true)), withoutTax: baseThis,
     };
   })();
   const showBank = form && (form.payment_method === 'Check' || form.payment_method === 'Card');
@@ -140,14 +153,16 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
 
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Date</th><th className="text-right">Amount</th><th className="text-right">Deducted</th><th>Check ref</th><th>Method</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th className="text-right">Net processed</th><th className="text-right">Deducted</th><th className="text-right">Tax W/H</th><th className="text-right">Received</th><th>Check ref</th><th>Method</th><th></th></tr></thead>
                 <tbody>
-                  {info.payments.length === 0 && <tr><td colSpan={6} className="empty-state">No payments yet.</td></tr>}
+                  {info.payments.length === 0 && <tr><td colSpan={8} className="empty-state">No payments yet.</td></tr>}
                   {info.payments.map((p) => (
                     <tr key={p.id}>
                       <td>{p.payment_date ? formatLongDate(p.payment_date) : '—'}</td>
-                      <td className="text-right num">{peso(p.amount)}</td>
+                      <td className="text-right num">{peso(p.net_amount !== null && p.net_amount !== undefined ? p.net_amount : p.amount)}</td>
                       <td className="text-right num" title="Provider Excess + Concern Amount + Disc entered with this payment">{(Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0) > 0.009 ? peso((Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0)) : '—'}</td>
+                      <td className="text-right num">{Number(p.tax_amount) > 0.009 ? peso(p.tax_amount) : '—'}</td>
+                      <td className="text-right num"><b>{peso(p.amount)}</b></td>
                       <td>{p.check_ref || '—'}</td>
                       <td>{[p.payment_method, p.payment_method_bank === 'Other' ? p.payment_method_other : p.payment_method_bank].filter(Boolean).join(' · ') || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
@@ -170,7 +185,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
               <form className="pm-form" onSubmit={save}>
                 <h3>{form.id ? 'Edit payment' : 'New payment'}</h3>
                 <div className="form-grid">
-                  <div className="form-group"><label>Amount *</label>
+                  <div className="form-group"><label>Net amount processed *</label>
                     <MoneyInput className="num" value={form.amount} placeholder="0.00" onChange={(v) => setForm({ ...form, amount: v })} autoFocus />
                   </div>
                   <div className="form-group"><label>Payment date</label>
@@ -196,7 +211,7 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                   )}
                 </div>
                 <div className="pm-deduct">
-                  <div className="pm-deduct-head">Deductions <span>taken off the Receivable (each one counts while its switch is on in the ledger)</span></div>
+                  <div className="pm-deduct-head">Deductions <span>taken off this payment (a deduction counts while its switch is on in the ledger)</span></div>
                   <div className="form-grid">
                     <div className="form-group"><label>Provider Excess</label>
                       <MoneyInput className="num" value={form.provider_excess} placeholder="0.00" onChange={(v) => setForm({ ...form, provider_excess: v })} />
@@ -208,11 +223,11 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                       <MoneyInput className="num" value={form.disc_amount} placeholder="0.00" onChange={(v) => setForm({ ...form, disc_amount: v })} />
                     </div>
                     {entry.account_type !== 'CHARGE' && (
-                      <div className="form-group"><label>Tax W/H on this payment ({Number(info.tax_percent) || 0}%)</label>
+                      <div className="form-group"><label>Tax W/H ({Number(info.tax_percent) || 0}% of net minus deductions)</label>
                         <div className="pm-tax">
                           <button type="button" className={`tax-switch${form.pay_tax ? ' on' : ''}`} aria-label={form.pay_tax ? 'Turn Tax W/H off for this payment' : 'Turn Tax W/H on for this payment'}
                             onClick={() => setForm({ ...form, pay_tax: !form.pay_tax })}><span /></button>
-                          <span>{form.pay_tax ? `On: another ${Number(info.tax_percent) || 0}% of this payment is withheld` : 'Off: no tax withheld on this payment'}</span>
+                          <span>{form.pay_tax ? `On: ${Number(info.tax_percent) || 0}% is withheld from this payment` : 'Off: no tax withheld on this payment'}</span>
                         </div>
                       </div>
                     )}
@@ -229,23 +244,35 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                     </tr>
                   );
                   const off = <span className="pm-calc-off"> · switch off in ledger</span>;
+                  const dash = (v) => (v > 0.005 ? '− ' + peso(v) : '—');
                   return (
                     <div className="pm-calc" aria-live="polite">
-                      <div className="pm-calc-title">Preview: now → this payment → after saving</div>
+                      <div className="pm-calc-title">This payment</div>
+                      <table className="pm-calc-one">
+                        <tbody>
+                          <tr><td>Net amount processed</td><td className="num">{peso(calc.net)}</td></tr>
+                          <tr><td>Provider Excess{calc.flags.pe ? null : off}</td><td className="num">{dash(calc.flags.pe ? calc.typed.pe : 0)}</td></tr>
+                          <tr><td>Concern Amount{calc.flags.ca ? null : off}</td><td className="num">{dash(calc.flags.ca ? calc.typed.ca : 0)}</td></tr>
+                          <tr><td>Disc{calc.flags.dc ? null : off}</td><td className="num">{dash(calc.flags.dc ? calc.typed.dc : 0)}</td></tr>
+                          {!calc.isCharge && <tr><td>Tax W/H ({calc.pct}% of {peso(Math.max(0, calc.net - calc.dedThis))}){form.pay_tax ? null : <span className="pm-calc-off"> · off</span>}</td><td className="num">{dash(calc.taxThis)}</td></tr>}
+                          <tr className="pm-calc-total is-ok"><td>Amount received</td><td className="num">{peso(calc.received)}</td></tr>
+                        </tbody>
+                      </table>
+                      {!calc.isCharge && <div className="pm-calc-alt">Amount received with tax: <b className="num">{peso(calc.withTax)}</b> · without tax: <b className="num">{peso(calc.withoutTax)}</b></div>}
+                      <div className="pm-calc-title" style={{ marginTop: 14 }}>Whole SOA: now → this payment → after saving</div>
                       <table>
                         <thead><tr><th></th><th>Now</th><th>This payment</th><th>After</th></tr></thead>
                         <tbody>
-                          <tr><td>Amount</td><td className="num">{peso(calc.amount)}</td><td className="num pm-calc-add">—</td><td className="num">{peso(calc.amount)}</td></tr>
-                          {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true, form.pay_tax ? null : <span className="pm-calc-off"> · none on this payment</span>)}
+                          <tr><td>Amount in SOA</td><td className="num">{peso(calc.amount)}</td><td className="num pm-calc-add">—</td><td className="num">{peso(calc.amount)}</td></tr>
+                          {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true)}
                           {line('Provider Excess', calc.pe, true, calc.flags.pe ? null : off)}
                           {line('Concern Amount', calc.ca, true, calc.flags.ca ? null : off)}
                           {line('Disc', calc.dc, true, calc.flags.dc ? null : off)}
                           <tr className="pm-calc-total"><td>Receivable</td><td className="num">{peso(calc.receivable.now)}</td><td className="num pm-calc-add">{sign(calc.receivable.add, false)}</td><td className="num">{peso(calc.receivable.after)}</td></tr>
-                          <tr><td>Paid</td><td className="num">{peso(calc.paid.now)}</td><td className="num pm-calc-add">{sign(calc.paid.add, false)}</td><td className="num">{peso(calc.paid.after)}</td></tr>
-                          <tr className={`pm-calc-total${calc.balance.after > 0.009 ? ' is-due' : ' is-ok'}`}><td>Balance</td><td className="num">{peso(calc.balance.now)}</td><td className="num pm-calc-add">{sign(calc.balance.add, false)}</td><td className="num">{peso(calc.balance.after)}</td></tr>
+                          <tr><td>Paid (amount received)</td><td className="num">{peso(calc.paid.now)}</td><td className="num pm-calc-add">{sign(calc.paid.add, false)}</td><td className="num">{peso(calc.paid.after)}</td></tr>
+                          <tr className={`pm-calc-total${calc.balance.after > 0.009 ? ' is-due' : ' is-ok'}`}><td>Remaining balance</td><td className="num">{peso(calc.balance.now)}</td><td className="num pm-calc-add">{sign(calc.balance.add, false)}</td><td className="num">{peso(calc.balance.after)}</td></tr>
                         </tbody>
                       </table>
-                      {!calc.isCharge && <div className="pm-calc-alt">Receivable if this payment withholds tax: <b className="num">{peso(calc.withTax)}</b> · if not: <b className="num">{peso(calc.withoutTax)}</b></div>}
                     </div>
                   );
                 })()}

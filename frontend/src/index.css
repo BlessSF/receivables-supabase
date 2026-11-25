@@ -2417,3 +2417,7 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .pm-calc tr.pm-calc-total.is-ok td:last-child { color: var(--teal-strong); }
 .pm-calc-add { color: var(--teal-strong); font-weight: 600; }
 .pm-calc-off { font-size: 11px; color: #b45309; }
+
+/* Payments modal: the single-payment block of the preview */
+.pm-calc-one { width: 100%; }
+.pm-calc-one td:last-child { text-align: right; }

@@ -47,8 +47,8 @@ function ExtraCell({ row, col, label, amount, on, onSaveAmount, onToggle }) {
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
-  // plus the tax that was withheld together with each payment (Payments popup)
-  const tax = r2(((e.account_type === 'CHARGE' || e.tax_off) ? 0 : r2((amount * taxPct) / 100)) + (Number(e.pay_tax) || 0));
+  // Once payments were entered with a net amount, Tax W/H is the sum of THEIR taxes (tax % x (net - deductions) each)
+  const tax = Number(e.pay_net) > 0 ? r2(Number(e.pay_tax) || 0) : ((e.account_type === 'CHARGE' || e.tax_off) ? 0 : r2((amount * taxPct) / 100));
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
   // Provider Excess, Concern Amount and Disc are deducted from the Amount while their switch is on.
   const deduct = (e.pe_on !== false ? Number(e.provider_excess) || 0 : 0) + (e.ca_on !== false ? Number(e.concern_amount) || 0 : 0) + (e.dc_on !== false ? Number(e.disc_amount) || 0 : 0);
