@@ -209,8 +209,25 @@ function recalcRow(d) {
 // the old way: one Paid / Payment Date / Check Ref per row.
 const PAY_FIELDS = ['payment_date', 'check_ref', 'check_date', 'payment_method', 'payment_method_bank', 'payment_method_other'];
 
+let payExtrasReady = false;
 async function paymentsEnabled() {
-  return !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
+  const ok = !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
+  if (ok && !payExtrasReady) {
+    // What each payment deducted (Provider Excess / Concern Amount / Disc). Created the first time it is needed.
+    for (const c of ['pe_amount', 'ca_amount', 'dc_amount']) {
+      await exec(`ALTER TABLE ledger_payments ADD COLUMN IF NOT EXISTS ${c} NUMERIC(15,2) NOT NULL DEFAULT 0`);
+    }
+    payExtrasReady = true;
+  }
+  return ok;
+}
+
+/** Add (or take back, with a negative delta) a payment's Provider Excess / Concern Amount / Disc on its ledger entry. */
+async function shiftEntryDeductions(entryId, pe, ca, dc) {
+  if (!pe && !ca && !dc) return;
+  await exec(
+    `UPDATE ledger_entries SET provider_excess = GREATEST(0, provider_excess + ?), concern_amount = GREATEST(0, concern_amount + ?),
+            disc_amount = GREATEST(0, disc_amount + ?) WHERE id = ?`, [pe, ca, dc, entryId]);
 }
 
 // Per-entry "Tax W/H off" switch. The column is created the first time it is needed (no manual SQL).
@@ -313,11 +330,16 @@ function cleanPayment(input) {
   out.payment_method_bank = PAYMENT_BANKS.includes(bank) ? bank : null;
   out.payment_method_other = txt(input.payment_method_other);
   out.remarks = txt(input.remarks);
+  // Deductions typed together with this payment (each is subtracted from the Receivable, like in the ledger row)
+  const ded = (v) => { const n = toFloat(v); return n > 0 ? round(n, 2) : 0; };
+  out.pe_amount = ded(input.provider_excess);
+  out.ca_amount = ded(input.concern_amount);
+  out.dc_amount = ded(input.disc_amount);
   return out;
 }
 
 async function paymentsReply(entryId) {
-  const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date FROM ledger_entries WHERE id = ?', [entryId]);
+  const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date, tax_off, tax_withheld, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE id = ?', [entryId]);
   const payments = await all('SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, \'\') ASC, id ASC', [entryId]);
   return { enabled: true, entry: e, payments, payment_count: payments.length };
 }
@@ -1293,9 +1315,11 @@ const actions = {
     // a row that still has Paid typed in directly (no payment record yet) keeps that amount as its first payment
     await mirrorRowToPayments(id);
     await exec(
-      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks]);
+      `INSERT INTO ledger_payments (ledger_entry_id, payment_date, amount, check_ref, check_date, payment_method, payment_method_bank, payment_method_other, remarks, pe_amount, ca_amount, dc_amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount]);
+    await shiftEntryDeductions(id, p.pe_amount, p.ca_amount, p.dc_amount);
+    if (input.tax_off !== undefined && input.tax_off !== null) await exec('UPDATE ledger_entries SET tax_off = ? WHERE id = ?', [truthy(input.tax_off), id]);
     const row = await syncRowFromPayments(id);
     return { ok: true, row, data: await paymentsReply(id) };
   },
@@ -1310,8 +1334,10 @@ const actions = {
     const p = cleanPayment(input);
     await exec(
       `UPDATE ledger_payments SET payment_date = ?, amount = ?, check_ref = ?, check_date = ?, payment_method = ?,
-              payment_method_bank = ?, payment_method_other = ?, remarks = ? WHERE id = ?`,
-      [p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, pid]);
+              payment_method_bank = ?, payment_method_other = ?, remarks = ?, pe_amount = ?, ca_amount = ?, dc_amount = ? WHERE id = ?`,
+      [p.payment_date, p.amount, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount, pid]);
+    await shiftEntryDeductions(toInt(pay.ledger_entry_id), p.pe_amount - toFloat(pay.pe_amount), p.ca_amount - toFloat(pay.ca_amount), p.dc_amount - toFloat(pay.dc_amount));
+    if (input.tax_off !== undefined && input.tax_off !== null) await exec('UPDATE ledger_entries SET tax_off = ? WHERE id = ?', [truthy(input.tax_off), toInt(pay.ledger_entry_id)]);
     const row = await syncRowFromPayments(toInt(pay.ledger_entry_id));
     return { ok: true, row, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
   },
@@ -1324,6 +1350,7 @@ const actions = {
     const cid = await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [pay.ledger_entry_id]);
     await requireCompanyAccess(auth, toInt(cid));
     await exec('DELETE FROM ledger_payments WHERE id = ?', [pid]);
+    await shiftEntryDeductions(toInt(pay.ledger_entry_id), -toFloat(pay.pe_amount), -toFloat(pay.ca_amount), -toFloat(pay.dc_amount));
     const row = await syncRowFromPayments(toInt(pay.ledger_entry_id));
     return { ok: true, row, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
   },

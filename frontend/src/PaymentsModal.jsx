@@ -32,19 +32,23 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
 
   function startAdd() {
     setErr('');
-    setForm({ amount: balance > 0.009 ? balance.toFixed(2) : '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '' });
+    setForm({ amount: balance > 0.009 ? balance.toFixed(2) : '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '',
+      provider_excess: '', concern_amount: '', disc_amount: '', tax_off: !!e?.tax_off });
   }
   function startEdit(p) {
     setErr('');
     setForm({ id: p.id, amount: String(Number(p.amount).toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
-      payment_method: p.payment_method || '', payment_method_bank: p.payment_method_bank || '', payment_method_other: p.payment_method_other || '', remarks: p.remarks || '' });
+      payment_method: p.payment_method || '', payment_method_bank: p.payment_method_bank || '', payment_method_other: p.payment_method_other || '', remarks: p.remarks || '',
+      provider_excess: Number(p.pe_amount) ? String(Number(p.pe_amount).toFixed(2)) : '', concern_amount: Number(p.ca_amount) ? String(Number(p.ca_amount).toFixed(2)) : '',
+      disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', tax_off: !!e?.tax_off });
   }
 
   async function save(ev) {
     ev.preventDefault();
     setBusy(true); setErr('');
     try {
-      const body = { ...form, amount: rawNum(form.amount) };
+      const body = { ...form, amount: rawNum(form.amount), provider_excess: rawNum(form.provider_excess), concern_amount: rawNum(form.concern_amount), disc_amount: rawNum(form.disc_amount),
+        tax_off: entry.account_type === 'CHARGE' ? undefined : (form.tax_off ? 1 : 0) };
       const r = form.id ? await api.updatePayment(form.id, body) : await api.addPayment(entry.id, body);
       setInfo(r.data);
       setForm(null);
@@ -95,13 +99,14 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
 
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Date</th><th className="text-right">Amount</th><th>Check ref</th><th>Method</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th className="text-right">Amount</th><th className="text-right">Deducted</th><th>Check ref</th><th>Method</th><th></th></tr></thead>
                 <tbody>
-                  {info.payments.length === 0 && <tr><td colSpan={5} className="empty-state">No payments yet.</td></tr>}
+                  {info.payments.length === 0 && <tr><td colSpan={6} className="empty-state">No payments yet.</td></tr>}
                   {info.payments.map((p) => (
                     <tr key={p.id}>
                       <td>{p.payment_date ? formatLongDate(p.payment_date) : '—'}</td>
                       <td className="text-right num">{peso(p.amount)}</td>
+                      <td className="text-right num" title="Provider Excess + Concern Amount + Disc entered with this payment">{(Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0) > 0.009 ? peso((Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0)) : '—'}</td>
                       <td>{p.check_ref || '—'}</td>
                       <td>{[p.payment_method, p.payment_method_bank === 'Other' ? p.payment_method_other : p.payment_method_bank].filter(Boolean).join(' · ') || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
@@ -148,6 +153,29 @@ export default function PaymentsModal({ entry, onClose, onChanged }) {
                   {showBank && form.payment_method_bank === 'Other' && (
                     <div className="form-group"><label>Other bank</label><input value={form.payment_method_other} onChange={setF('payment_method_other')} /></div>
                   )}
+                </div>
+                <div className="pm-deduct">
+                  <div className="pm-deduct-head">Deductions <span>taken off the Receivable (each one counts while its switch is on in the ledger)</span></div>
+                  <div className="form-grid">
+                    <div className="form-group"><label>Provider Excess</label>
+                      <MoneyInput className="num" value={form.provider_excess} placeholder="0.00" onChange={(v) => setForm({ ...form, provider_excess: v })} />
+                    </div>
+                    <div className="form-group"><label>Concern Amount</label>
+                      <MoneyInput className="num" value={form.concern_amount} placeholder="0.00" onChange={(v) => setForm({ ...form, concern_amount: v })} />
+                    </div>
+                    <div className="form-group"><label>Disc</label>
+                      <MoneyInput className="num" value={form.disc_amount} placeholder="0.00" onChange={(v) => setForm({ ...form, disc_amount: v })} />
+                    </div>
+                    {entry.account_type !== 'CHARGE' && (
+                      <div className="form-group"><label>Tax W/H (2%)</label>
+                        <div className="pm-tax">
+                          <button type="button" className={`tax-switch${form.tax_off ? '' : ' on'}`} aria-label={form.tax_off ? 'Turn Tax W/H on' : 'Turn Tax W/H off'}
+                            onClick={() => setForm({ ...form, tax_off: !form.tax_off })}><span /></button>
+                          <span>{form.tax_off ? 'Off: not deducted' : 'On: deducted from the Receivable'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="form-actions">
                   <button className="btn" type="submit" disabled={busy}>{form.id ? 'Save changes' : 'Save payment'}</button>
