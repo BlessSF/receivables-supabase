@@ -41,18 +41,18 @@ function ExtraCell({ row, col, label, amount, on, onSaveAmount, onToggle }) {
 }
 // Tax W/H, Receivable and Balance worked out from the typed numbers -- exactly the server's formulas.
 //   Tax W/H    = Amount x tax % (none for Charge to Company accounts, or an entry whose Tax W/H was switched off)
-//   Receivable = Amount - Tax W/H + Surcharge - Rebate + Provider Excess + Concern Amount + Disc (each only while its switch is on)
-//   Balance    = (Receivable without the three extras) - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
+//   Receivable = Amount - Tax W/H - Provider Excess - Concern Amount - Disc + Surcharge - Rebate (Tax W/H and each deduction only while its switch is on)
+//   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
 //   Variance   = Paid above Receivable (an overpayment). It is NOT a rebate and NOT outstanding: it stays flagged until someone fixes the payment or enters a real rebate.
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
   const tax = (e.account_type === 'CHARGE' || e.tax_off) ? 0 : r2((amount * taxPct) / 100);
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
-  const base = r2(amount - tax + (Number(e.surcharge) || 0) - rebate);
-  // Provider Excess, Concern Amount and Disc are added to the Receivable while their switch is on. For now they do NOT change the Balance.
-  const extra = (e.pe_on !== false ? Number(e.provider_excess) || 0 : 0) + (e.ca_on !== false ? Number(e.concern_amount) || 0 : 0) + (e.dc_on !== false ? Number(e.disc_amount) || 0 : 0);
-  return { tax_withheld: tax, receivable_amount: r2(base + extra), balance: Math.max(0, r2(base - paid)), variance: Math.max(0, r2(paid - base)) };
+  // Provider Excess, Concern Amount and Disc are deducted from the Amount while their switch is on.
+  const deduct = (e.pe_on !== false ? Number(e.provider_excess) || 0 : 0) + (e.ca_on !== false ? Number(e.concern_amount) || 0 : 0) + (e.dc_on !== false ? Number(e.disc_amount) || 0 : 0);
+  const receivable = r2(amount - tax - deduct + (Number(e.surcharge) || 0) - rebate);
+  return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {

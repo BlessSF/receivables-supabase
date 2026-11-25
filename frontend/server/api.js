@@ -192,17 +192,14 @@ function recalcRow(d) {
   const surcharge = toFloat(d.surcharge);
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
-  // Receivable = Amount - Tax W/H + Surcharge - Rebate (only a rebate that was actually entered).
-  const base = round(amount - tax + surcharge - rebate, 2);
-  // Provider Excess, Concern Amount and Disc: each is added to the Receivable total only while its switch is on.
-  // For now they do NOT change the Balance (the Balance still starts from `base`).
-  const extra = (d.pe_on !== false ? toFloat(d.provider_excess) : 0)
+  // Provider Excess, Concern Amount and Disc are deducted from the Amount, each one only while its switch is on.
+  const deduct = (d.pe_on !== false ? toFloat(d.provider_excess) : 0)
     + (d.ca_on !== false ? toFloat(d.concern_amount) : 0)
     + (d.dc_on !== false ? toFloat(d.disc_amount) : 0);
-  const receivable = round(base + extra, 2);
-  // Balance = Receivable (without the three extras) - Paid. An unpaid difference stays outstanding until it is
-  // paid; an overpayment is shown as 0 outstanding, never as a negative amount in the totals.
-  const balance = Math.max(0, round(base - paid, 2));
+  // Receivable = Amount - Tax W/H (when its switch is on) - Provider Excess - Concern Amount - Disc + Surcharge - Rebate.
+  const receivable = round(amount - tax - deduct + surcharge - rebate, 2);
+  // Balance = Receivable - Paid. An overpayment is shown as 0 outstanding, never as a negative amount in the totals.
+  const balance = Math.max(0, round(receivable - paid, 2));
   return [receivable, balance];
 }
 
@@ -228,6 +225,12 @@ async function ensureTaxOffColumn() {
   for (const c of ['pe_on', 'ca_on', 'dc_on']) {
     await exec(`ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS ${c} BOOLEAN NOT NULL DEFAULT TRUE`);
   }
+  // The three amounts are now DEDUCTED from the Receivable (they used to be added). Re-derive stored rows that have one;
+  // it is computed from the entry's own columns, so running it again changes nothing.
+  await exec(`UPDATE ledger_entries SET
+      receivable_amount = ROUND(amount - tax_withheld - (CASE WHEN pe_on THEN provider_excess ELSE 0 END) - (CASE WHEN ca_on THEN concern_amount ELSE 0 END) - (CASE WHEN dc_on THEN disc_amount ELSE 0 END) + surcharge - rebate, 2)
+    WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0`);
+  await exec('UPDATE ledger_entries SET balance = GREATEST(0, ROUND(receivable_amount - paid_amount, 2)) WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0');
   taxOffReady = true;
 }
 
@@ -1835,14 +1838,13 @@ const actions = {
       for (const r of rows) {
         const amount = toFloat(r.amount);
         const tax = (recalcIsCharge || r.tax_off) ? 0 : round((amount * percent) / 100, 2);
-        // `base` = Receivable without Provider Excess / Concern Amount / Disc (they never change what counts as fully paid)
-        const extraOn = (r.pe_on !== false ? toFloat(r.provider_excess) : 0) + (r.ca_on !== false ? toFloat(r.concern_amount) : 0) + (r.dc_on !== false ? toFloat(r.disc_amount) : 0);
-        const oldBase = toFloat(r.receivable_amount) - extraOn;
-        const base = amount - tax + toFloat(r.surcharge) - toFloat(r.rebate);
+        const deduct = (r.pe_on !== false ? toFloat(r.provider_excess) : 0) + (r.ca_on !== false ? toFloat(r.concern_amount) : 0) + (r.dc_on !== false ? toFloat(r.disc_amount) : 0);
+        const oldBase = toFloat(r.receivable_amount);
+        const base = amount - tax - deduct + toFloat(r.surcharge) - toFloat(r.rebate);
         let paid = toFloat(r.paid_amount);
         if (Math.abs(paid - oldBase) < 0.01) paid = base;
-        const receivable = round(base + extraOn, 2);
-        const balance = Math.max(0, round(base - paid, 2));
+        const receivable = round(base, 2);
+        const balance = Math.max(0, round(receivable - paid, 2));
         await exec(
           "UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, paid_amount = ?, balance = ?, updated_at = (now() AT TIME ZONE 'Asia/Manila') WHERE id = ?",
           [tax, receivable, paid, balance, r.id]
