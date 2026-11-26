@@ -269,7 +269,7 @@ export default function Ledger() {
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Rebate', 'Receivable',
+    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Rebate', 'Net Amount Processed', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
@@ -284,6 +284,7 @@ export default function Ledger() {
       Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
       widest('surcharge', money, '0.00') + RO,
       widest('rebate', money, '0.00') + RO,
+      Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_nets || []).map((a) => tw(money(a)) + (r.pay_nets.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Net Amount Processed (one line per payment)
       widest('receivable_amount', peso, '₱0.00') + CELL,
       DATE,                                                   // Payment Date
       // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
@@ -691,6 +692,7 @@ export default function Ledger() {
                   </th>
                   <th className="text-right">Provider Excess</th><th className="text-right">Concern Amount</th><th className="text-right">Disc</th>
                   <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
+                  <th className="text-right">Net Amount Processed</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
                   <th className="text-right">Paid</th><th className="text-right">Amount Received</th><th className="text-right">Balance</th>
@@ -702,7 +704,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 20 : 19} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 21 : 20} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -751,6 +753,16 @@ export default function Ledger() {
                         <td><EditableText row={rowIdx} col={9} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                       </>
                     )}
+                    <td className="text-right num recv-cell" title="Net amount processed: one value per payment, read-only">
+                      {(r.pay_nets || []).length > 0
+                        ? r.pay_nets.map((a, i) => (
+                          <div key={i} className="recv-line">{r.pay_nets.length > 1 && <small>{['1st', '2nd', '3rd'][i] || `${i + 1}th`}</small>}{money(a)}</div>
+                        ))
+                        : (Number(r.paid_amount) > 0
+                          // no payment records: everything paid so far is one payment (received + tax + the amounts taken off)
+                          ? <div className="recv-line">{money((Number(r.paid_amount) || 0) + (Number(r.tax_withheld) || 0) + (Number(r.provider_excess) || 0) + (Number(r.concern_amount) || 0) + (Number(r.disc_amount) || 0))}</div>
+                          : <span style={{ color: 'var(--slate)' }}>—</span>)}
+                    </td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
                     {(
                       <>
