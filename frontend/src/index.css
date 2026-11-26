@@ -2455,3 +2455,14 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .sheet-tool-pdf:hover:not(:disabled) { background: #fadbd8; border-color: #c62828; }
 .sheet-tool-excel { color: #1d6f42; background: #e8f5ee; border-color: #acd6bf; }
 .sheet-tool-excel:hover:not(:disabled) { background: #d5ecdf; border-color: #1d6f42; }
+
+/* Ledger: frozen header row (like Excel). The table box scrolls up/down as well as sideways, so the column
+   names stay on top however many entries there are. Needed because a box that scrolls sideways cannot let
+   its header stick to the window. */
+.table-wrap:has(> table.ledger-table) { max-height: max(360px, calc(100vh - 150px)); overflow: auto; scroll-padding-top: 60px; }
+.table-wrap:has(> table.ledger-table) .ledger-table thead th { position: sticky; top: 0; z-index: 5; }
+.table-wrap:has(> table.ledger-table) .ledger-table thead th.col-sticky-r { right: 0; z-index: 6; }
+@media print {
+  .table-wrap:has(> table.ledger-table) { max-height: none; overflow: visible; }
+  .table-wrap:has(> table.ledger-table) .ledger-table thead th { position: static; }
+}
