@@ -2439,3 +2439,7 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .recv-btn:hover { background: #eaf4f1; }
 .recv-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 .recv-line small { color: var(--slate); font-weight: 400; font-size: .8em; margin-right: 6px; }
+
+/* SOA sheet popup: Print / PDF / Excel */
+.pm-sheet-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
+.pm-sheet-hint { font-size: 12px; color: var(--slate); margin: 0 0 12px; }

@@ -3,6 +3,7 @@ import { api } from './api';
 import { peso, formatLongDate } from './utils';
 import MoneyInput, { rawNum } from './MoneyInput';
 import { IconEdit, IconTrash } from './icons';
+import { printSheet, downloadSheetXlsx } from './soaSheet';
 
 // The payments of ONE ledger row (one SOA): every payment keeps its own date, amount and check ref.
 // The row's Paid is the total of these, so a part payment leaves the rest outstanding until the next one.
@@ -321,6 +322,25 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
     return d && !Number.isNaN(d.getTime()) ? d.toLocaleString('en-US', { month: 'long', year: 'numeric' }) : '';
   })();
   const money = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState('');
+  // exactly what is on screen, for Print / PDF / Excel
+  const sheetData = () => ({
+    month, soaNumber: entry.soa_number || '', company: entry.company_name || '', soa,
+    blocks: shown.map(({ p, i, net, tax, remaining }) => ({
+      title: `${ORD[i] || `${i + 1}TH`} PAYMENT`,
+      date: p.payment_date ? formatLongDate(p.payment_date) : '',
+      rows: [
+        ['NET AMOUNT PROCESSED', net], ['DISCOUNT', n(p.dc_amount)], ['PROVIDED EXCESS', n(p.pe_amount)], ['CONCERN AMOUNT', n(p.ca_amount)], ['TAX', tax],
+        ['AMOUNT RECEIVED', n(p.amount), 'recv'], ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
+      ],
+    })),
+  });
+  async function toExcel() {
+    setExporting(true); setExportErr('');
+    try { await downloadSheetXlsx(sheetData()); } catch (x) { setExportErr(`Could not make the Excel file: ${x.message}`); }
+    setExporting(false);
+  }
   return (
     <div className="pm-backdrop" style={{ zIndex: 1100 }} onMouseDown={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
       <div className="pm-card pm-sheet-card" role="dialog" aria-modal="true" aria-label="Payment sheet">
@@ -331,6 +351,13 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
           </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
         </div>
+        <div className="pm-sheet-tools">
+          <button type="button" className="btn btn-sm" onClick={() => printSheet(sheetData())}>Print</button>
+          <button type="button" className="btn btn-secondary btn-sm" title="In the print window, set the printer to Save as PDF" onClick={() => printSheet(sheetData())}>Save as PDF</button>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={exporting} onClick={toExcel}>{exporting ? 'Preparing…' : 'Download Excel'}</button>
+        </div>
+        <div className="pm-sheet-hint">For a PDF, choose <b>Save as PDF</b> as the printer in the window that opens.</div>
+        {exportErr && <div className="flash flash-error" style={{ margin: '0 0 12px' }}>{exportErr}</div>}
         <table className="pm-sheet">
           <tbody>
             <tr><td>Amount in SOA</td><td className="num">{money(soa)}</td></tr>
