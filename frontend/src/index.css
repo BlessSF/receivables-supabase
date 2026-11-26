@@ -2458,7 +2458,7 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 
 /* Ledger: the column names stay just under the page banner while the page scrolls (see src/stickyHead.js).
    One scrollbar only: the page. */
-.table-wrap > table.ledger-table thead th { position: relative; top: auto; z-index: 5; transform: translateY(var(--head-shift, 0px)); }
+.table-wrap > table.ledger-table thead th { position: relative; top: auto; z-index: 5; }
 .table-wrap > table.ledger-table thead th.col-sticky-r { position: sticky; right: 0; z-index: 6; }
 .ledger-table tbody input, .ledger-table tbody button { scroll-margin-top: 220px; } /* arrow-key moves never land under the header */
-@media print { .table-wrap > table.ledger-table thead th { position: static; transform: none; } }
+@media print { .table-wrap > table.ledger-table thead th { position: static; transform: none !important; } }

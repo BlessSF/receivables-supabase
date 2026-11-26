@@ -5,16 +5,34 @@
 
 const STEP = 0.8; // arrow buttons move 80% of the visible width
 
+// Stops a running glide, leaving the table where it is
+function stopGlide(el) {
+  if (el.__hsRaf) cancelAnimationFrame(el.__hsRaf);
+  el.__hsRaf = 0;
+}
+
 function smoothTo(el, target) {
   const max = el.scrollWidth - el.clientWidth;
-  const to = Math.max(0, Math.min(max, target));
-  if (el.__hsRaf) cancelAnimationFrame(el.__hsRaf);
-  el.__hsTarget = to;
-  const tick = () => {
-    const cur = el.scrollLeft;
-    const diff = el.__hsTarget - cur;
-    if (Math.abs(diff) < 0.6) { el.scrollLeft = el.__hsTarget; el.__hsRaf = 0; return; }
-    el.scrollLeft = cur + diff * 0.2;
+  el.__hsTarget = Math.max(0, Math.min(max, target));
+  if (el.__hsRaf) return; // already gliding: it just heads for the new target
+
+  // The browser rounds scrollLeft to whole screen pixels, so the exact position is kept here. Reading it back
+  // from scrollLeft made the small last steps round away: the glide never ended and kept pulling the table back.
+  let pos = el.scrollLeft;
+  let written = el.scrollLeft; // what the table showed after our last step
+  let before = performance.now();
+  const finish = () => { el.__hsRaf = 0; el.__hsTarget = el.scrollLeft; };
+  const tick = (now) => {
+    if (Math.abs(el.scrollLeft - written) > 2) { finish(); return; } // moved some other way (scrollbar, keys): let go
+    const frames = Math.min(4, Math.max(0.5, (now - before) / 16.7)); // same speed even when frames are slow
+    before = now;
+    const diff = el.__hsTarget - pos;
+    const step = diff * (1 - Math.pow(0.78, frames));
+    const done = Math.abs(diff) <= 1;
+    pos = done ? el.__hsTarget : pos + (Math.abs(step) < 1 ? Math.sign(diff) : step); // at least 1px, so it always arrives
+    el.scrollLeft = pos;
+    written = el.scrollLeft;
+    if (done) { finish(); return; }
     el.__hsRaf = requestAnimationFrame(tick);
   };
   el.__hsRaf = requestAnimationFrame(tick);
@@ -64,6 +82,8 @@ function enhance(wrap) {
     smoothTo(wrap, (wrap.__hsTarget ?? wrap.scrollLeft) + px * 1.4);
   }, { passive: false });
 
+  wrap.addEventListener('pointerdown', () => stopGlide(wrap));
+
   // Drag the thumb, or click the track to jump
   function jumpTo(clientX, grab) {
     const r = track.getBoundingClientRect();
@@ -75,7 +95,7 @@ function enhance(wrap) {
   }
   track.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (wrap.__hsRaf) { cancelAnimationFrame(wrap.__hsRaf); wrap.__hsRaf = 0; }
+    stopGlide(wrap);
     const onThumb = e.target === thumb;
     const grab = onThumb ? e.clientX - thumb.getBoundingClientRect().left : thumb.offsetWidth / 2;
     track.setPointerCapture(e.pointerId);

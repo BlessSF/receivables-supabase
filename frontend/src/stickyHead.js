@@ -1,13 +1,14 @@
 // Keeps a wide table's header row just under the page banner while the PAGE scrolls.
 // CSS "position: sticky" cannot do this here: the table's box scrolls sideways, and a header inside a
 // sideways-scrolling box can only stick to that box, never to the window. So the header cells are moved
-// down by exactly the distance the table has gone up behind the banner (CSS variable --head-shift).
+// down by exactly the distance the table has gone up behind the banner.
 export function followHeader(wrap) {
   const table = wrap?.querySelector(':scope > table');
   const head = table?.tHead;
   if (!head) return () => {};
 
-  const update = () => {
+  const update = (ev) => {
+    if (ev?.target === wrap) return; // a sideways scroll never moves the header up or down: do nothing
     // the lowest edge of whatever stays fixed at the top of the screen (page banner; the menu bar on phones)
     let edge = 0;
     document.querySelectorAll('.page-header, .mobile-bar').forEach((el) => {
@@ -17,7 +18,8 @@ export function followHeader(wrap) {
     const r = table.getBoundingClientRect();
     const max = Math.max(0, r.height - head.offsetHeight - 40); // never past the last row
     const shift = Math.min(max, Math.max(0, edge - r.top));
-    table.style.setProperty('--head-shift', `${shift}px`);
+    const move = shift > 0 ? `translateY(${shift}px)` : '';
+    for (const th of head.querySelectorAll('th')) if (th.style.transform !== move) th.style.transform = move;
   };
 
   window.addEventListener('scroll', update, { passive: true, capture: true });
