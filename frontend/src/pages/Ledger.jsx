@@ -39,13 +39,13 @@ function ExtraCell({ row, col, amount, onSaveAmount }) {
 }
 // Tax W/H, Receivable and Balance worked out from the typed numbers -- exactly the server's formulas.
 //   Tax W/H    = tax % of what was paid (none for Charge to Company accounts, or when its Tax W/H switch is off)
-//   Receivable = Amount - Tax W/H - Provider Excess - Concern Amount - Disc + Surcharge - Rebate (Tax W/H and each deduction only while its switch is on)
+//   Receivable = Amount - Tax W/H - Provider Excess - Concern Amount - Disc + Surcharge - Settled
+//   ("Settled" is the amount written off on entries settled earlier. It can no longer be added or changed.)
 //   Balance    = Receivable - Paid, never below 0 (an unpaid difference stays outstanding until it is paid)
-//   Variance   = Paid above Receivable (an overpayment). It is NOT a rebate and NOT outstanding: it stays flagged until someone fixes the payment or enters a real rebate.
-function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
+//   Variance   = Paid above Receivable (an overpayment). It is NOT outstanding: it stays flagged until someone fixes the payment.
+function deriveRow(e, taxPct, amountOverride, paidOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
-  const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
   // Provider Excess, Concern Amount and Disc are deducted from the Amount.
   const deduct = (Number(e.provider_excess) || 0) + (Number(e.concern_amount) || 0) + (Number(e.disc_amount) || 0);
   // Tax W/H is withheld on what was PAID (nothing on the part still unpaid): the payments entered with a net amount carry their
@@ -54,8 +54,14 @@ function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const typedRecv = Math.max(0, paid - (Number(e.pay_recv) || 0));
   const tax = e.account_type === 'CHARGE' ? 0
     : r2((Number(e.pay_tax) || 0) + (e.tax_off ? 0 : typedTax(typedRecv, typedRoom(amount, deduct, e.pay_base), taxPct)));
-  const receivable = r2(amount - tax - deduct + (Number(e.surcharge) || 0) - rebate);
+  const receivable = r2(amount - tax - deduct + (Number(e.surcharge) || 0) - (Number(e.rebate) || 0));
   return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
+}
+
+// An entry that was settled earlier: this part of it was written off, which is why it can be Paid with less money
+function SettledNote({ amount }) {
+  if (!(Number(amount) > 0.009)) return null;
+  return <span className="settled-note" title="Settled earlier: this amount is not owed. It is already taken off the Receivable.">Settled {peso(amount)}</span>;
 }
 
 function EditableText({ value, onSave, onLive, type = 'text', align, row, col }) {
@@ -124,7 +130,6 @@ export default function Ledger() {
   const { user } = useAuth();
   const staff = isStaff(user); // staff can edit only the highlighted Payment Date / Check Ref / Paid cells
   const exec = isExecutive(user); // executives edit and delete like Admin
-  const canSettle = !staff; // everyone who can edit the Rebate (not Staff) can settle a short-paid entry
   const canDelete = !!user?.is_admin || exec; // only Admin and Executive can delete; Staff and Branch cannot
   const [params, setParams] = useSearchParams();
   const companyId = params.get('company_id') || '';
@@ -134,9 +139,6 @@ export default function Ledger() {
   const [err, setErr] = useState('');
   const [search, setSearch] = useState('');
   const [highlightId, setHighlightId] = useState(null);
-  const [settleFor, setSettleFor] = useState(null); // ledger row whose Settle popup is open
-  const [settleBusy, setSettleBusy] = useState(false);
-  const [settleErr, setSettleErr] = useState('');
   const [viewCard, setViewCard] = useState(null); // { id, x, y } company card whose View popup is open
   const viewTimer = useRef(null);
   const [payFor, setPayFor] = useState(null); // ledger row whose payments popup is open
@@ -190,35 +192,32 @@ export default function Ledger() {
   // While a Paid amount is being typed, the row balance, the Paid / Outstanding
   // totals and the aging badges update on every keystroke (before it is saved).
   const [live, setLive] = useState(null); // { id, field, value }
-  // Tax W/H, Receivable and Balance are computed for every row (view only) -- see deriveRow. Rebate is only what was entered.
+  // Tax W/H, Receivable and Balance are computed for every row (view only) -- see deriveRow.
   const taxPct = Number(data?.tax_percent ?? 2);
   const liveEntries = useMemo(() => entries.map((e) => {
     const isLive = live && e.id === live.id;
     const ao = isLive && live.field === 'amount' ? Number(live.value) || 0 : undefined;
     const po = isLive && live.field === 'paid_amount' ? Number(live.value) || 0 : undefined;
-    const ro = isLive && live.field === 'rebate' ? Number(live.value) || 0 : undefined;
     return {
       ...e,
       ...(ao !== undefined ? { live_amount: ao } : {}),
       ...(po !== undefined ? { live_paid: po } : {}),
-      ...(ro !== undefined ? { live_rebate: ro } : {}),
-      ...deriveRow(e, taxPct, ao, po, ro),
+      ...deriveRow(e, taxPct, ao, po),
     };
   }), [entries, live, taxPct]);
   const liveTotals = useMemo(() => {
-    let amount = 0, paid = 0, balance = 0, rebate = 0, tax = 0, variance = 0, varianceCount = 0;
+    let amount = 0, paid = 0, balance = 0, tax = 0, variance = 0, varianceCount = 0;
     const tally = {};
     for (const e of liveEntries) {
       amount += e.live_amount !== undefined ? e.live_amount : Number(e.amount) || 0;
       paid += e.live_paid !== undefined ? e.live_paid : Number(e.paid_amount) || 0;
-      rebate += e.live_rebate !== undefined ? e.live_rebate : Number(e.rebate) || 0;
       tax += Number(e.tax_withheld) || 0;
       const b = Number(e.balance) || 0;
       balance += b;
       if (e.variance > 0.009) { variance += e.variance; varianceCount++; }
       if (b > 0.009 && e.aging_bucket && e.aging_bucket !== 'Paid') tally[e.aging_bucket] = (tally[e.aging_bucket] || 0) + b;
     }
-    return { amount, paid, balance, rebate, tax, variance, varianceCount, tally };
+    return { amount, paid, balance, tax, variance, varianceCount, tally };
   }, [liveEntries]);
 
   const filtered = useMemo(() => {
@@ -256,7 +255,7 @@ export default function Ledger() {
     ctx.font = `${BASE_FONT}px ${fam}`;
     const SAFE = 1.12; // tabular figures + 100% zoom render a bit wider than the canvas measures
     const tw = (v) => ctx.measureText(String(v ?? '')).width * SAFE;
-    const rows = entries.map((e) => ({ ...e, ...deriveRow(e, taxPct) })); // measure the computed Tax W/H, Rebate and Receivable too
+    const rows = entries.map((e) => ({ ...e, ...deriveRow(e, taxPct) })); // measure the computed Tax W/H and Receivable too
     const widest = (key, fmt = (v) => v, min = '') =>
       rows.reduce((m, r) => Math.max(m, tw(fmt(r[key]))), tw(min));
     ctx.font = `600 ${BASE_FONT}px ${fam}`;
@@ -271,7 +270,7 @@ export default function Ledger() {
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Rebate', 'Net Amount Processed', 'Receivable',
+    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Net Amount Processed', 'Receivable',
       'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
@@ -285,7 +284,6 @@ export default function Ledger() {
       Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
       Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
       widest('surcharge', money, '0.00') + RO,
-      widest('rebate', money, '0.00') + RO,
       Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_nets || []).map((a) => tw(money(a)) + (r.pay_nets.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Net Amount Processed (one line per payment)
       widest('receivable_amount', peso, '₱0.00') + CELL,
       DATE,                                                   // Payment Date
@@ -296,7 +294,7 @@ export default function Ledger() {
       Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_amounts || []).map((a) => tw(money(a)) + (r.pay_amounts.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Amount Received (one line per payment)
       balanceW + CELL,
       Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
-      Math.max(tw('Unpaid') + 46, (canSettle ? tw('Settle') + 76 : 0), rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
+      Math.max(tw('Unpaid') + 46, rows.reduce((m, r) => (Number(r.rebate) > 0.009 ? Math.max(m, tw(`Settled ${peso(r.rebate)}`)) : m), 0) + 40, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
@@ -349,7 +347,7 @@ export default function Ledger() {
       ),
     }));
     // Paid / amounts change the aging buckets and Paid status: refresh them quietly.
-    if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'rebate', 'provider_excess', 'concern_amount', 'disc_amount', 'pe_on', 'ca_on', 'dc_on'].includes(field)) reload();
+    if (companyId && ['paid_amount', 'amount', 'tax_withheld', 'surcharge', 'provider_excess', 'concern_amount', 'disc_amount', 'pe_on', 'ca_on', 'dc_on'].includes(field)) reload();
   }
 
   // Switch the automatic Tax W/H off (or back on) for the chosen entries only.
@@ -376,34 +374,6 @@ export default function Ledger() {
       setTaxBusy(false);
     }
   }
-
-  // Settle: the client paid something but less than the receivable and the entry is closed. The leftover
-  // difference is saved as a Rebate (the existing Rebate column), which brings the Balance to 0. Clear the Rebate to undo.
-  function settleRow(r) {
-    if (r2(Number(r.balance) || 0) <= 0.009) return;
-    setSettleErr('');
-    setSettleFor(r);
-  }
-  async function confirmSettle() {
-    const r = settleFor;
-    if (!r || settleBusy) return;
-    const left = r2(Number(r.balance) || 0);
-    setSettleBusy(true); setSettleErr('');
-    try {
-      await saveField(r.id, 'rebate', r2((Number(r.rebate) || 0) + left));
-      setSettleFor(null);
-    } catch (e) {
-      setSettleErr(e.message || 'Could not settle this entry.');
-    } finally {
-      setSettleBusy(false);
-    }
-  }
-  useEffect(() => {
-    if (!settleFor) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape' && !settleBusy) setSettleFor(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [settleFor, settleBusy]);
 
   async function deleteRow(r) {
     const label = `${r.soa_number ? `SOA ${r.soa_number}` : 'this entry'} (${peso(r.amount)})`;
@@ -480,14 +450,13 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(liveTotals.amount)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num totals-live">{peso(liveTotals.paid)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Tax W/H</div><strong className="num totals-live">{peso(liveTotals.tax)}</strong></div>
-              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Rebate</div><strong className="num totals-live">{peso(liveTotals.rebate)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>
           {liveTotals.varianceCount > 0 && (
             <div className="flash flash-warning" style={{ marginTop: 12 }}>
               <b>{liveTotals.varianceCount} unresolved variance{liveTotals.varianceCount === 1 ? '' : 's'} ({peso(liveTotals.variance)} overpaid).</b>{' '}
-              Paid is more than the receivable. It is not counted as a rebate or as outstanding. Correct the payment, or enter a real Rebate if one was given.
+              Paid is more than the receivable. It is not counted as outstanding. Correct the payment if it was typed wrong.
             </div>
           )}
           {Object.keys(liveTotals.tally).length > 0 && (
@@ -696,7 +665,7 @@ export default function Ledger() {
                     Tax W/H
                   </th>
                   <th className="text-right">Provider Excess</th><th className="text-right">Concern Amount</th><th className="text-right">Disc</th>
-                  <th className="text-right">Surcharge</th><th className="text-right">Rebate</th>
+                  <th className="text-right">Surcharge</th>
                   <th className="text-right">Net Amount Processed</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
@@ -709,7 +678,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 21 : 20} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 20 : 19} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -729,7 +698,6 @@ export default function Ledger() {
                         <td><div className="ro-cell ro-num">{money(r.concern_amount)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.disc_amount)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                       </>
                     ) : (
                       <>
@@ -751,11 +719,10 @@ export default function Ledger() {
                             <span className="tax-amt">{money(r.tax_withheld)}</span>
                           </div>
                         </td>
-                        <td><ExtraCell row={rowIdx} col={5} amount={r.provider_excess} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} /></td>
-                        <td><ExtraCell row={rowIdx} col={6} amount={r.concern_amount} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} /></td>
-                        <td><ExtraCell row={rowIdx} col={7} amount={r.disc_amount} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} /></td>
-                        <td><EditableText row={rowIdx} col={8} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                        <td><EditableText row={rowIdx} col={9} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={4} amount={r.provider_excess} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={5} amount={r.concern_amount} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={6} amount={r.disc_amount} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} /></td>
+                        <td><EditableText row={rowIdx} col={7} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
                       </>
                     )}
                     <td className="text-right num recv-cell" title="Net amount processed: one value per payment, read-only">
@@ -771,13 +738,13 @@ export default function Ledger() {
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
                     {(
                       <>
-                        <td className="cell-glow"><DateCell row={rowIdx} col={10} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={11} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                        <td className="cell-glow"><DateCell row={rowIdx} col={8} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
                         <td className="cell-glow">
                           <div className="paid-cell">
                             {r.payment_count > 1
                               ? <div className="ro-cell ro-num" title={`${r.payment_count} payments - use the + button`}>{money(r.paid_amount)}</div>
-                              : <EditableText row={rowIdx} col={12} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
+                              : <EditableText row={rowIdx} col={10} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
                             {data?.payments_enabled && (
                               <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => { setSheetFirst(false); setPayFor(r); }}>
                                 {r.payment_count > 1 ? `×${r.payment_count}` : '+'}
@@ -807,11 +774,12 @@ export default function Ledger() {
                     <td>{Number(r.balance) > 0.009
                       ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                         <span className="badge badge-danger ic-unpaid" title="Still has a balance">Unpaid</span>
-                        {canSettle && Number(r.paid_amount) > 0.009 && <button type="button" className="settle-btn" title="Client paid less and this entry is closed: save the remaining balance as a Rebate" onClick={() => settleRow(r)}>Settle</button>}</div>
+                        <SettledNote amount={r.rebate} /></div>
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                         <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
-                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Not a rebate: fix the payment or enter a real Rebate.">Overpaid {peso(r.variance)}</span>}</div>}</td>
-                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={13} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
+                        <SettledNote amount={r.rebate} />
+                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Fix the payment if it was typed wrong.">Overpaid {peso(r.variance)}</span>}</div>}</td>
+                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={11} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
                 ))}
@@ -820,32 +788,6 @@ export default function Ledger() {
           </div>
         )}
       </div>
-      {settleFor && (
-        <div className="pm-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !settleBusy) setSettleFor(null); }}>
-          <div className="pm-card settle-card" role="dialog" aria-modal="true" aria-label="Settle entry">
-            <div className="pm-head">
-              <div>
-                <h2>Settle {settleFor.soa_number ? `SOA ${settleFor.soa_number}` : 'this entry'}?</h2>
-                <div className="pm-sub">The client paid less than the receivable and this entry is closed.</div>
-              </div>
-            </div>
-            <div className="pm-summary">
-              <div><span>Receivable</span><strong className="num">{peso(settleFor.receivable_amount)}</strong></div>
-              <div><span>Paid</span><strong className="num">{peso(settleFor.paid_amount)}</strong></div>
-              <div className="is-due"><span>Remaining</span><strong className="num">{peso(settleFor.balance)}</strong></div>
-            </div>
-            <div className="settle-note">
-              The remaining <b>{peso(settleFor.balance)}</b> will be saved as a <b>Rebate</b> and the Balance becomes <b>₱0.00</b>.
-              To undo, clear the Rebate cell.
-            </div>
-            {settleErr && <div className="flash flash-error" style={{ margin: '12px 0 0' }}>{settleErr}</div>}
-            <div className="settle-actions">
-              <button type="button" className="btn btn-secondary" disabled={settleBusy} onClick={() => setSettleFor(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={settleBusy} onClick={confirmSettle} autoFocus>{settleBusy ? 'Settling…' : 'Settle & close'}</button>
-            </div>
-          </div>
-        </div>
-      )}
       {payFor && (
         <PaymentsModal
           entry={payFor}

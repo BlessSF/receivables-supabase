@@ -1466,7 +1466,7 @@ const actions = {
   },
 
   async inline_update_ledger(input, auth) {
-    const allowed = ['billing_date', 'period_date', 'covered_period', 'soa_number', 'amount', 'tax_withheld', 'surcharge', 'rebate',
+    const allowed = ['billing_date', 'period_date', 'covered_period', 'soa_number', 'amount', 'tax_withheld', 'surcharge',
       'payment_date', 'check_ref', 'check_date', 'paid_amount', 'due_date', 'remarks', 'deduction_remarks',
       'payment_method', 'payment_method_bank', 'payment_method_other',
       'provider_excess', 'concern_amount', 'disc_amount', 'pe_on', 'ca_on', 'dc_on'];
@@ -1499,7 +1499,7 @@ const actions = {
       return { ok: true, receivable_amount: row.receivable_amount, balance: row.balance };
     }
 
-    if (['amount', 'tax_withheld', 'surcharge', 'rebate', 'paid_amount', 'provider_excess', 'concern_amount', 'disc_amount'].includes(field)) {
+    if (['amount', 'tax_withheld', 'surcharge', 'paid_amount', 'provider_excess', 'concern_amount', 'disc_amount'].includes(field)) {
       value = value === '' || value === null ? 0 : toFloat(value);
     } else if (['pe_on', 'ca_on', 'dc_on'].includes(field)) {
       value = truthy(value);

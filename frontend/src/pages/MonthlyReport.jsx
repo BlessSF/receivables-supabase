@@ -334,7 +334,7 @@ export default function MonthlyReport() {
           const bits = [];
           if (r.paid <= 0.009) bits.push('Nothing paid yet');
           else bits.push(`Paid ${peso(r.paid)} of ${peso(r.receivable)}`);
-          if (r.rebate > 0.009) bits.push(`after ${peso(r.rebate)} rebate`);
+          if (r.rebate > 0.009) bits.push(`${peso(r.rebate)} already settled`);
           bits.push(`due ${r.due} (${r.due_basis})`);
           return bits.join(' · ');
         };
@@ -344,7 +344,7 @@ export default function MonthlyReport() {
               <div className="pm-head">
                 <div>
                   <h2>{whyFor.company}</h2>
-                  <div className="pm-sub">Total remaining balance <b>{peso(sum)}</b>: the unpaid entries in the report columns that are switched on (Overdue and the ticked months). Remaining = Amount − Tax W/H + Surcharge − Rebate − Paid.</div>
+                  <div className="pm-sub">Total remaining balance <b>{peso(sum)}</b>: the unpaid entries in the report columns that are switched on (Overdue and the ticked months). Remaining = Amount − Tax W/H − deductions + Surcharge − any settled amount − Paid.</div>
                 </div>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setWhyFor(null)}>Close</button>
               </div>

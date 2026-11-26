@@ -183,7 +183,7 @@ export default function Combined() {
                 </tbody>
               </table>
             </div>
-            <div className="cb-note">Amount is the billed amount. Receivable is the Amount after Tax W/H, surcharge and rebate. Balance = Receivable − Paid.</div>
+            <div className="cb-note">Amount is the billed amount. Receivable is the Amount after Tax W/H, deductions, surcharge and any settled amount. Balance = Receivable − Paid.</div>
           </div>
         </>
       )}

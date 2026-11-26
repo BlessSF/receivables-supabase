@@ -120,7 +120,7 @@ export async function handleCsv(req, res) {
     paymentMethodLabel(r), r.due_date, r.remarks,
   ]);
   return send(companyId ? `ledger_company_${companyId}.csv` : 'full_receivable_ledger.csv', csv([
-    'Company', 'Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Rebate',
+    'Company', 'Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax Withheld', 'Surcharge', 'Settled',
     'Receivable', 'Payment Date', 'Check #', 'Check Date', 'Paid', 'Balance', 'Payment Method', 'Due Date', 'Remarks',
   ], rows));
 }
@@ -483,7 +483,7 @@ export async function handleXlsx(req, res) {
     { header: 'Amount', width: 13, type: 'money' },
     { header: 'Tax Withheld', width: 13, type: 'money' },
     { header: 'Surcharge', width: 12, type: 'money' },
-    { header: 'Rebate', width: 12, type: 'money' },
+    { header: 'Settled', width: 12, type: 'money' },
     { header: 'Receivable', width: 13, type: 'money' },
     { header: 'Payment Date', width: 13, type: 'date' },
     { header: 'Check #', width: 18, type: 'string' },
