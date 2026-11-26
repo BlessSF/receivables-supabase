@@ -4,6 +4,7 @@ import { peso, formatLongDate } from './utils';
 import MoneyInput, { rawNum } from './MoneyInput';
 import { IconEdit, IconTrash, IconPrinter, IconPdf, IconExcel } from './icons';
 import { printSheet, downloadSheetXlsx } from './soaSheet';
+import { typedRoom, typedTax, paymentBreakdown } from './taxMath';
 
 // The payments of ONE ledger row (one SOA): every payment keeps its own date, amount and check ref.
 // The row's Paid is the total of these, so a part payment leaves the rest outstanding until the next one.
@@ -97,18 +98,19 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     const received = r2(baseThis - taxThis);
     // ---- the entry now / after
     const oldNet = old && old.net_amount !== null && old.net_amount !== undefined;
-    // what was typed straight into Paid (received) has its tax worked out from it: received x tax% / (100 - tax%)
-    const typedTaxOf = (recv) => ((isCharge || e.tax_off || pct <= 0 || pct >= 100) ? 0 : r2((Math.max(0, recv) * pct) / (100 - pct)));
     const typedRecvNow = Math.max(0, n(e.paid_amount) - n(e.pay_recv));
     const typedRecvAfter = Math.max(0, typedRecvNow - (old && !oldNet ? n(old.amount) : 0));
     const nowRaw = { pe: n(e.provider_excess), ca: n(e.concern_amount), dc: n(e.disc_amount) };
     const was = { pe: n(old?.pe_amount), ca: n(old?.ca_amount), dc: n(old?.dc_amount) };
     const afterRaw = { pe: nowRaw.pe - was.pe + typed.pe, ca: nowRaw.ca - was.ca + typed.ca, dc: nowRaw.dc - was.dc + typed.dc };
-    const taxNow = r2(n(e.pay_tax) + typedTaxOf(typedRecvNow));
-    const taxAfter = r2(n(e.pay_tax) - (oldNet ? n(old.tax_amount) : 0) + taxThis + typedTaxOf(typedRecvAfter));
     const sur = n(e.surcharge) - n(e.rebate);
     const dedNow = has('pe', nowRaw.pe) + has('ca', nowRaw.ca) + has('dc', nowRaw.dc);
     const dedAfter = has('pe', afterRaw.pe) + has('ca', afterRaw.ca) + has('dc', afterRaw.dc);
+    // money typed straight into Paid has its tax worked back from it, never more than tax % of what is left of the SOA
+    const oldBase = oldNet ? n(old.net_amount) - was.pe - was.ca - was.dc : 0;
+    const typedTaxOf = (recv, ded, netBase) => ((isCharge || e.tax_off) ? 0 : typedTax(recv, typedRoom(gross, ded, netBase), pct));
+    const taxNow = r2(n(e.pay_tax) + typedTaxOf(typedRecvNow, dedNow, n(e.pay_base)));
+    const taxAfter = r2(n(e.pay_tax) - (oldNet ? n(old.tax_amount) : 0) + taxThis + typedTaxOf(typedRecvAfter, dedAfter, n(e.pay_base) - oldBase + baseThis));
     const recNow = r2(gross - taxNow - dedNow + sur);
     const recAfter = r2(gross - taxAfter - dedAfter + sur);
     const paidNow = n(e.paid_amount);
@@ -305,16 +307,11 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   const r2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
   const isCharge = entry.account_type === 'CHARGE';
   const soa = r2(n(e.amount) + n(e.surcharge) - n(e.rebate)); // Amount in SOA
+  const lines = paymentBreakdown(e, payments, taxPercent, isCharge);
   let cum = 0;
   const blocks = payments.map((p, i) => {
-    const ded = n(p.pe_amount) + n(p.ca_amount) + n(p.dc_amount);
-    const modern = p.net_amount !== null && p.net_amount !== undefined;
-    // an older payment only knows what was received: its tax is worked out from it (received x tax% / (100 - tax%))
-    const tax = modern ? n(p.tax_amount)
-      : ((isCharge || e.tax_off || taxPercent <= 0 || taxPercent >= 100) ? 0 : r2((n(p.amount) * taxPercent) / (100 - taxPercent)));
-    const net = modern ? n(p.net_amount) : r2(n(p.amount) + ded + tax);
-    cum = r2(cum + net);
-    return { p, i, net, tax, remaining: Math.max(0, r2(soa - cum)) };
+    cum = r2(cum + lines[i].net);
+    return { p, i, ...lines[i], remaining: Math.max(0, r2(soa - cum)) };
   });
   const shown = only === null ? blocks : blocks.filter((b) => b.p.id === only);
   const month = (() => {
@@ -327,12 +324,12 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   // exactly what is on screen, for Print / PDF / Excel
   const sheetData = () => ({
     month, soaNumber: entry.soa_number || '', company: entry.company_name || '', soa,
-    blocks: shown.map(({ p, i, net, tax, remaining }) => ({
+    blocks: shown.map(({ p, i, net, pe, ca, dc, tax, over, remaining }) => ({
       title: `${ORD[i] || `${i + 1}TH`} PAYMENT`,
       date: p.payment_date ? formatLongDate(p.payment_date) : '',
       rows: [
-        ['NET AMOUNT PROCESSED', net], ['DISCOUNT', n(p.dc_amount)], ['PROVIDED EXCESS', n(p.pe_amount)], ['CONCERN AMOUNT', n(p.ca_amount)], ['TAX', tax],
-        ['AMOUNT RECEIVED', n(p.amount), 'recv'], ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
+        ['NET AMOUNT PROCESSED', net], ['DISCOUNT', dc], ['PROVIDED EXCESS', pe], ['CONCERN AMOUNT', ca], ['TAX', tax],
+        ['AMOUNT RECEIVED', n(p.amount), 'recv'], ...(over > 0 ? [['OVERPAID', over]] : []), ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
       ],
     })),
   });
@@ -363,16 +360,17 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
             <tr><td>Amount in SOA</td><td className="num">{money(soa)}</td></tr>
           </tbody>
         </table>
-        {shown.map(({ p, i, net, tax, remaining }) => (
+        {shown.map(({ p, i, net, pe, ca, dc, tax, over, remaining }) => (
           <table className="pm-sheet" key={p.id}>
             <thead><tr><th colSpan={2}>{(ORD[i] || `${i + 1}TH`)} PAYMENT{p.payment_date ? <span> · {formatLongDate(p.payment_date)}</span> : null}</th></tr></thead>
             <tbody>
               <tr><td>NET AMOUNT PROCESSED</td><td className="num">{money(net)}</td></tr>
-              <tr><td>DISCOUNT</td><td className="num">{money(n(p.dc_amount))}</td></tr>
-              <tr><td>PROVIDED EXCESS</td><td className="num">{money(n(p.pe_amount))}</td></tr>
-              <tr><td>CONCERN AMOUNT</td><td className="num">{money(n(p.ca_amount))}</td></tr>
+              <tr><td>DISCOUNT</td><td className="num">{money(dc)}</td></tr>
+              <tr><td>PROVIDED EXCESS</td><td className="num">{money(pe)}</td></tr>
+              <tr><td>CONCERN AMOUNT</td><td className="num">{money(ca)}</td></tr>
               <tr><td>TAX</td><td className="num">{money(tax)}</td></tr>
               <tr className="pm-sheet-recv"><td>AMOUNT RECEIVED</td><td className="num">{money(n(p.amount))}</td></tr>
+              {over > 0 && <tr><td>OVERPAID</td><td className="num">{money(over)}</td></tr>}
               <tr className={remaining > 0.009 ? 'pm-sheet-due' : 'pm-sheet-ok'}><td>REMAINING BALANCE</td><td className="num">{money(remaining)}</td></tr>
             </tbody>
           </table>

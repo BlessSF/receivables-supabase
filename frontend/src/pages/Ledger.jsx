@@ -7,6 +7,7 @@ import MoneyInput, { fmtNum } from '../MoneyInput';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
 import PaymentsModal from '../PaymentsModal';
 import { followHeader } from '../stickyHead';
+import { typedRoom, typedTax, paymentBreakdown } from '../taxMath';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -44,15 +45,15 @@ function ExtraCell({ row, col, amount, onSaveAmount }) {
 function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
   const amount = amountOverride !== undefined ? amountOverride : Number(e.amount) || 0;
   const paid = paidOverride !== undefined ? paidOverride : Number(e.paid_amount) || 0;
+  const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
+  // Provider Excess, Concern Amount and Disc are deducted from the Amount.
+  const deduct = (Number(e.provider_excess) || 0) + (Number(e.concern_amount) || 0) + (Number(e.disc_amount) || 0);
   // Tax W/H is withheld on what was PAID (nothing on the part still unpaid): the payments entered with a net amount carry their
-  // own tax, and an amount typed straight into Paid is "received" so its tax = received x tax% / (100 - tax%)
-  //   e.g. 17,485.16 received -> base 17,842.00 -> tax 356.84
+  // own tax, and an amount typed straight into Paid is "received" so its tax is worked back from it, never more than
+  // tax % of the SOA (see src/taxMath.js)
   const typedRecv = Math.max(0, paid - (Number(e.pay_recv) || 0));
   const tax = e.account_type === 'CHARGE' ? 0
-    : r2((Number(e.pay_tax) || 0) + ((e.tax_off || taxPct <= 0 || taxPct >= 100) ? 0 : (typedRecv * taxPct) / (100 - taxPct)));
-  const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
-  // Provider Excess, Concern Amount and Disc are deducted from the Amount while their switch is on.
-  const deduct = (Number(e.provider_excess) || 0) + (Number(e.concern_amount) || 0) + (Number(e.disc_amount) || 0);
+    : r2((Number(e.pay_tax) || 0) + (e.tax_off ? 0 : typedTax(typedRecv, typedRoom(amount, deduct, e.pay_base), taxPct)));
   const receivable = r2(amount - tax - deduct + (Number(e.surcharge) || 0) - rebate);
   return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
 }
@@ -763,8 +764,8 @@ export default function Ledger() {
                           <div key={i} className="recv-line">{r.pay_nets.length > 1 && <small>{['1st', '2nd', '3rd'][i] || `${i + 1}th`}</small>}{money(a)}</div>
                         ))
                         : (Number(r.paid_amount) > 0
-                          // no payment records: everything paid so far is one payment (received + tax + the amounts taken off)
-                          ? <div className="recv-line">{money((Number(r.paid_amount) || 0) + (Number(r.tax_withheld) || 0) + (Number(r.provider_excess) || 0) + (Number(r.concern_amount) || 0) + (Number(r.disc_amount) || 0))}</div>
+                          // no payment records: everything paid so far is one payment
+                          ? <div className="recv-line">{money(paymentBreakdown(r, [{ amount: r.paid_amount }], taxPct, r.account_type === 'CHARGE')[0].net)}</div>
                           : <span style={{ color: 'var(--slate)' }}>—</span>)}
                     </td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>

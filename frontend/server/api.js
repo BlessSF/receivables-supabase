@@ -13,6 +13,7 @@ import { combinedAllowed, combinedNames, combinedReport, isExcludedHmo, saveHmoS
 import { HttpError, jsonExit, getQuery, getJsonBody, sendJson } from './http.js';
 import { readSession, sessionCookie, renewCookie, clearCookie, attemptLogin, makeAuth } from './auth.js';
 import { toInt, toFloat, trim, truthy, elvis, round } from './php.js';
+import { typedRoom, typedTax, paymentBreakdown } from '../src/taxMath.js';
 import { monthKey, addMonthsKey, currentMonthKey, billingMonthKey, monthLabel } from './dates.js';
 import { todayYmd, todayMs, parseDate, normalizePeriod, coveredPeriodForBilling, normalizeCoveredRules, DEFAULT_COVERED_RULES } from './dates.js';
 import { buildMonthlyReport } from './monthly.js';
@@ -227,25 +228,30 @@ async function paymentsEnabled() {
  * tax = tax % x (net - Provider Excess - Concern Amount - Disc). { n: how many, tax: their total tax }
  */
 async function netPaymentsInfo(entryId) {
-  if (!(await paymentsEnabled())) return { n: 0, tax: 0, recv: 0 };
-  const r = await one('SELECT COUNT(*) AS n, COALESCE(SUM(tax_amount), 0) AS t, COALESCE(SUM(amount), 0) AS a FROM ledger_payments WHERE ledger_entry_id = ? AND net_amount IS NOT NULL', [entryId]);
-  return { n: toInt(r?.n), tax: round(toFloat(r?.t), 2), recv: round(toFloat(r?.a), 2) };
+  if (!(await paymentsEnabled())) return { n: 0, tax: 0, recv: 0, base: 0 };
+  const r = await one(`SELECT COUNT(*) AS n, COALESCE(SUM(tax_amount), 0) AS t, COALESCE(SUM(amount), 0) AS a,
+    COALESCE(SUM(net_amount - pe_amount - ca_amount - dc_amount), 0) AS b FROM ledger_payments WHERE ledger_entry_id = ? AND net_amount IS NOT NULL`, [entryId]);
+  return { n: toInt(r?.n), tax: round(toFloat(r?.t), 2), recv: round(toFloat(r?.a), 2), base: round(toFloat(r?.b), 2) };
 }
 
 /**
  * Tax W/H of an entry = the tax withheld on what was PAID so far (nothing is withheld on the part that is still unpaid):
  *  - a payment entered in the Payments popup carries its own tax = tax % x (net amount processed - deductions);
- *  - an amount typed straight into Paid is the amount received, so its tax is the part of the base that was withheld:
- *      received = base - tax and tax = tax % x base   =>   tax = received x tax% / (100 - tax%)
- *    (e.g. 17,485.16 received -> base 17,842.00 -> tax 356.84). That tax follows the entry's own Tax W/H switch.
- * Needs row.paid_amount (the amount received so far). Charge to Company entries never have Tax W/H.
+ *  - an amount typed straight into Paid is the amount received: its tax is worked back from it, never more than
+ *    tax % of the SOA (see src/taxMath.js). That tax follows the entry's own Tax W/H switch.
+ * Needs the row's amount, paid_amount and deductions. Charge to Company entries never have Tax W/H.
  */
+function taxFromTotals(row, isCharge, pct, net) {
+  if (isCharge) return 0;
+  const received = Math.max(0, round(toFloat(row.paid_amount) - net.recv, 2));
+  const deductions = toFloat(row.provider_excess) + toFloat(row.concern_amount) + toFloat(row.disc_amount);
+  const onTyped = row.tax_off ? 0 : typedTax(received, typedRoom(toFloat(row.amount), deductions, net.base), pct);
+  return round(net.tax + onTyped, 2);
+}
+
 async function entryTaxFor(row, isCharge, pct) {
   if (isCharge) return 0;
-  const info = await netPaymentsInfo(row.id);
-  const typedRecv = Math.max(0, round(toFloat(row.paid_amount) - info.recv, 2));
-  const typedTax = (row.tax_off || pct <= 0 || pct >= 100) ? 0 : round(typedRecv * pct / (100 - pct), 2);
-  return round(info.tax + typedTax, 2);
+  return taxFromTotals(row, false, pct, await netPaymentsInfo(row.id));
 }
 
 /**
@@ -290,20 +296,24 @@ async function ensureTaxOffColumn() {
       receivable_amount = ROUND(amount - tax_withheld - provider_excess - concern_amount - disc_amount + surcharge - rebate, 2)
     WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0`);
   await exec('UPDATE ledger_entries SET balance = GREATEST(0, ROUND(receivable_amount - paid_amount, 2)) WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0');
-  // Tax W/H is now withheld on what was paid (see entryTaxFor). Re-derive what is stored, once.
-  if ((await getSetting('tax_model', '')) !== 'paid-v1') {
+  // Tax W/H is withheld on what was paid, capped at the SOA (see entryTaxFor). Re-derive what is stored, once.
+  if ((await getSetting('tax_model', '')) !== 'paid-v2') {
     const pct = await taxWithheldPercent();
-    const hasPays = !!(await scalar("SELECT to_regclass('public.ledger_payments')"));
-    const noNet = hasPays ? 'AND NOT EXISTS (SELECT 1 FROM ledger_payments p WHERE p.ledger_entry_id = l.id AND p.net_amount IS NOT NULL)' : '';
-    if (pct > 0 && pct < 100) {
-      await exec(
-        `UPDATE ledger_entries l SET tax_withheld = CASE WHEN l.tax_off OR c.account_type = 'CHARGE' THEN 0 ELSE ROUND(l.paid_amount * ? / (100 - ?), 2) END
-         FROM companies c WHERE c.id = l.company_id ${noNet}`, [pct, pct]);
+    const hasPays = await paymentsEnabled();
+    const rows = await all(
+      `SELECT l.id, l.amount, l.paid_amount, l.surcharge, l.rebate, l.tax_off, l.tax_withheld, l.receivable_amount, l.balance,
+              l.provider_excess, l.concern_amount, l.disc_amount, c.account_type,
+              ${hasPays ? 'COALESCE(p.t, 0) AS net_tax, COALESCE(p.a, 0) AS net_recv, COALESCE(p.b, 0) AS net_base' : '0 AS net_tax, 0 AS net_recv, 0 AS net_base'}
+       FROM ledger_entries l JOIN companies c ON c.id = l.company_id
+       ${hasPays ? `LEFT JOIN (SELECT ledger_entry_id, SUM(tax_amount) AS t, SUM(amount) AS a, SUM(net_amount - pe_amount - ca_amount - dc_amount) AS b
+                  FROM ledger_payments WHERE net_amount IS NOT NULL GROUP BY ledger_entry_id) p ON p.ledger_entry_id = l.id` : ''}`);
+    for (const r of rows) {
+      const tax = taxFromTotals(r, r.account_type === 'CHARGE', pct, { tax: toFloat(r.net_tax), recv: toFloat(r.net_recv), base: toFloat(r.net_base) });
+      const [receivable, balance] = recalcRow({ ...r, tax_withheld: tax });
+      if (Math.abs(tax - toFloat(r.tax_withheld)) < 0.001 && Math.abs(receivable - toFloat(r.receivable_amount)) < 0.001 && Math.abs(balance - toFloat(r.balance)) < 0.001) continue;
+      await exec('UPDATE ledger_entries SET tax_withheld = ?, receivable_amount = ?, balance = ? WHERE id = ?', [tax, receivable, balance, r.id]);
     }
-    await exec(`UPDATE ledger_entries SET
-        receivable_amount = ROUND(amount - tax_withheld - provider_excess - concern_amount - disc_amount + surcharge - rebate, 2)`);
-    await exec('UPDATE ledger_entries SET balance = GREATEST(0, ROUND(receivable_amount - paid_amount, 2))');
-    await setSetting('tax_model', 'paid-v1');
+    await setSetting('tax_model', 'paid-v2');
   }
   taxOffReady = true;
 }
@@ -403,6 +413,7 @@ async function paymentsReply(entryId) {
     const net = payments.filter((x) => x.net_amount !== null && x.net_amount !== undefined);
     e.pay_tax = round(net.reduce((t, x) => t + toFloat(x.tax_amount), 0), 2);
     e.pay_recv = round(net.reduce((t, x) => t + toFloat(x.amount), 0), 2);
+    e.pay_base = round(net.reduce((t, x) => t + toFloat(x.net_amount) - toFloat(x.pe_amount) - toFloat(x.ca_amount) - toFloat(x.dc_amount), 0), 2);
     e.pay_net = net.length;
   }
   return { enabled: true, entry: e, payments, payment_count: payments.length, tax_percent: await taxWithheldPercent() };
@@ -1239,8 +1250,8 @@ const actions = {
     }
     const payTaxes = new Map();
     if (paymentsOn && entries.length) {
-      const sums = await all('SELECT ledger_entry_id, COUNT(*) AS n, COALESCE(SUM(tax_amount), 0) AS t, COALESCE(SUM(amount), 0) AS a FROM ledger_payments WHERE net_amount IS NOT NULL GROUP BY ledger_entry_id');
-      sums.forEach((c) => payTaxes.set(String(c.ledger_entry_id), { n: toInt(c.n), t: toFloat(c.t), a: toFloat(c.a) }));
+      const sums = await all('SELECT ledger_entry_id, COUNT(*) AS n, COALESCE(SUM(tax_amount), 0) AS t, COALESCE(SUM(amount), 0) AS a, COALESCE(SUM(net_amount - pe_amount - ca_amount - dc_amount), 0) AS b FROM ledger_payments WHERE net_amount IS NOT NULL GROUP BY ledger_entry_id');
+      sums.forEach((c) => payTaxes.set(String(c.ledger_entry_id), { n: toInt(c.n), t: toFloat(c.t), a: toFloat(c.a), b: toFloat(c.b) }));
     }
     // the amount received by each payment of a row, oldest first (the Ledger's "Amount Received" column)
     // ...and the net amount processed of each payment (never added together: one value per payment)
@@ -1248,23 +1259,19 @@ const actions = {
     const payNets = new Map();
     if (paymentsOn && entries.length) {
       const pct = await taxWithheldPercent();
-      const byId = new Map(entries.map((r) => [String(r.id), r]));
-      const list = await all("SELECT ledger_entry_id, amount, net_amount, pe_amount, ca_amount, dc_amount FROM ledger_payments ORDER BY COALESCE(payment_date, '') ASC, id ASC");
+      const list = await all("SELECT ledger_entry_id, amount, net_amount, tax_amount, pe_amount, ca_amount, dc_amount FROM ledger_payments ORDER BY COALESCE(payment_date, '') ASC, id ASC");
+      const grouped = new Map();
       for (const x of list) {
         const k = String(x.ledger_entry_id);
-        const ent = byId.get(k);
-        if (!ent) continue;
-        if (!payAmounts.has(k)) { payAmounts.set(k, []); payNets.set(k, []); }
-        payAmounts.get(k).push(toFloat(x.amount));
-        let net;
-        if (x.net_amount !== null && x.net_amount !== undefined) {
-          net = toFloat(x.net_amount);
-        } else {
-          // an older payment only knows what was received: net = received + deductions + the tax withheld on it
-          const typedTax = (ent.account_type === 'CHARGE' || ent.tax_off || pct <= 0 || pct >= 100) ? 0 : round(toFloat(x.amount) * pct / (100 - pct), 2);
-          net = round(toFloat(x.amount) + toFloat(x.pe_amount) + toFloat(x.ca_amount) + toFloat(x.dc_amount) + typedTax, 2);
-        }
-        payNets.get(k).push(net);
+        if (!grouped.has(k)) grouped.set(k, []);
+        grouped.get(k).push(x);
+      }
+      for (const ent of entries) {
+        const k = String(ent.id);
+        const mine = grouped.get(k);
+        if (!mine) continue;
+        payAmounts.set(k, mine.map((x) => toFloat(x.amount)));
+        payNets.set(k, paymentBreakdown(ent, mine, pct, ent.account_type === 'CHARGE').map((line) => line.net));
       }
     }
     for (const r of entries) {
@@ -1274,6 +1281,7 @@ const actions = {
       r.pay_net = pt ? pt.n : 0; // payments entered with a net amount (their taxes replace the automatic Tax W/H)
       r.pay_tax = pt ? pt.t : 0;
       r.pay_recv = pt ? pt.a : 0; // what those payments received
+      r.pay_base = pt ? pt.b : 0; // the part of the SOA they cover after deductions
     }
     for (const r of entries) r.payment_count = payCounts.get(String(r.id)) || 0;
 
