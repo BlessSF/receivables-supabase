@@ -85,9 +85,13 @@ export const IconUndo = () => (
 export const IconPrinter = () => (
   <svg {...common}><path d="M7 8V3h10v5" /><path d="M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="7" y="14" width="10" height="7" rx="1" /></svg>
 );
-export const IconPdf = () => (
-  <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="M12 12v5.5" /><path d="m9.5 15 2.5 2.5 2.5-2.5" /></svg>
+// A page with a coloured name tag, so the file type is readable at a glance (the tag takes the button's colour)
+const FileTypeIcon = ({ label }) => (
+  <svg {...common}>
+    <path d="M5 10V4.5A1.5 1.5 0 0 1 6.5 3H14l5 5v2" /><path d="M14 3v5h5" /><path d="M5 20v.5A1.5 1.5 0 0 0 6.5 22h11a1.5 1.5 0 0 0 1.5-1.5V20" />
+    <rect x="1" y="10" width="22" height="10" rx="2" fill="currentColor" stroke="none" />
+    <text x="12" y="17.6" textAnchor="middle" fontSize="7.5" fontWeight="800" fontFamily="Arial, Helvetica, sans-serif" fill="#fff" stroke="none">{label}</text>
+  </svg>
 );
-export const IconExcel = () => (
-  <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="m9 12 6 6" /><path d="m15 12-6 6" /></svg>
-);
+export const IconPdf = () => <FileTypeIcon label="PDF" />;
+export const IconExcel = () => <FileTypeIcon label="XLS" />;
