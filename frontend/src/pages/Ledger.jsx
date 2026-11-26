@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext';
 import MoneyInput, { fmtNum } from '../MoneyInput';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
 import PaymentsModal from '../PaymentsModal';
+import { followHeader } from '../stickyHead';
 
 let measureCtx = null;
 function getMeasureCtx() {
@@ -325,6 +326,9 @@ export default function Ledger() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [colPx, data]);
+
+  // The header row follows the page scroll. Runs after every render because the table can be swapped in and out.
+  useLayoutEffect(() => followHeader(gridWrapRef.current));
 
   async function saveField(id, field, value) {
     let r;
