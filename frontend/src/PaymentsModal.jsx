@@ -85,8 +85,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     const pct = n(info.tax_percent);
     const isCharge = entry.account_type === 'CHARGE';
     const gross = n(e.amount);
-    const flags = { pe: e.pe_on !== false, ca: e.ca_on !== false, dc: e.dc_on !== false };
-    const has = (k, v) => (flags[k] ? n(v) : 0); // a deduction counts only while its switch is on
+    const has = (k, v) => n(v); // the three deductions always count
     const typed = { pe: n(rawNum(form.provider_excess)), ca: n(rawNum(form.concern_amount)), dc: n(rawNum(form.disc_amount)) };
     const net = n(rawNum(form.amount));
     // ---- this payment
@@ -115,7 +114,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     const paidAfter = r2(paidNow - n(old?.amount) + received);
     const row = (nowV, afterV) => ({ now: r2(nowV), add: r2(afterV - nowV), after: r2(afterV) });
     return {
-      pct, isCharge, flags, net, typed, dedThis, taxThis, received, amount: gross,
+      pct, isCharge, net, typed, dedThis, taxThis, received, amount: gross,
       tax: row(taxNow, taxAfter),
       pe: row(has('pe', nowRaw.pe), has('pe', afterRaw.pe)),
       ca: row(has('ca', nowRaw.ca), has('ca', afterRaw.ca)),
@@ -217,7 +216,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                   )}
                 </div>
                 <div className="pm-deduct">
-                  <div className="pm-deduct-head">Deductions <span>taken off this payment (a deduction counts while its switch is on in the ledger)</span></div>
+                  <div className="pm-deduct-head">Deductions <span>taken off this payment</span></div>
                   <div className="form-grid">
                     <div className="form-group"><label>Provider Excess</label>
                       <MoneyInput className="num" value={form.provider_excess} placeholder="0.00" onChange={(v) => setForm({ ...form, provider_excess: v })} />
@@ -249,7 +248,6 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                       <td className="num">{minus ? (r.after > 0.005 ? '− ' + peso(r.after) : '—') : peso(r.after)}</td>
                     </tr>
                   );
-                  const off = <span className="pm-calc-off"> · switch off in ledger</span>;
                   const dash = (v) => (v > 0.005 ? '− ' + peso(v) : '—');
                   return (
                     <div className="pm-calc" aria-live="polite">
@@ -257,9 +255,9 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                       <table className="pm-calc-one">
                         <tbody>
                           <tr><td>Net amount processed</td><td className="num">{peso(calc.net)}</td></tr>
-                          <tr><td>Provider Excess{calc.flags.pe ? null : off}</td><td className="num">{dash(calc.flags.pe ? calc.typed.pe : 0)}</td></tr>
-                          <tr><td>Concern Amount{calc.flags.ca ? null : off}</td><td className="num">{dash(calc.flags.ca ? calc.typed.ca : 0)}</td></tr>
-                          <tr><td>Disc{calc.flags.dc ? null : off}</td><td className="num">{dash(calc.flags.dc ? calc.typed.dc : 0)}</td></tr>
+                          <tr><td>Provider Excess</td><td className="num">{dash(calc.typed.pe)}</td></tr>
+                          <tr><td>Concern Amount</td><td className="num">{dash(calc.typed.ca)}</td></tr>
+                          <tr><td>Disc</td><td className="num">{dash(calc.typed.dc)}</td></tr>
                           {!calc.isCharge && <tr><td>Tax W/H ({calc.pct}% of {peso(Math.max(0, calc.net - calc.dedThis))}){form.pay_tax ? null : <span className="pm-calc-off"> · off</span>}</td><td className="num">{dash(calc.taxThis)}</td></tr>}
                           <tr className="pm-calc-total is-ok"><td>Amount received</td><td className="num">{peso(calc.received)}</td></tr>
                         </tbody>
@@ -271,9 +269,9 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                         <tbody>
                           <tr><td>Amount in SOA</td><td className="num">{peso(calc.amount)}</td><td className="num pm-calc-add">—</td><td className="num">{peso(calc.amount)}</td></tr>
                           {!calc.isCharge && line(`Tax W/H (${calc.pct}%)`, calc.tax, true)}
-                          {line('Provider Excess', calc.pe, true, calc.flags.pe ? null : off)}
-                          {line('Concern Amount', calc.ca, true, calc.flags.ca ? null : off)}
-                          {line('Disc', calc.dc, true, calc.flags.dc ? null : off)}
+                          {line('Provider Excess', calc.pe, true)}
+                          {line('Concern Amount', calc.ca, true)}
+                          {line('Disc', calc.dc, true)}
                           <tr className="pm-calc-total"><td>Receivable</td><td className="num">{peso(calc.receivable.now)}</td><td className="num pm-calc-add">{sign(calc.receivable.add, false)}</td><td className="num">{peso(calc.receivable.after)}</td></tr>
                           <tr><td>Paid (amount received)</td><td className="num">{peso(calc.paid.now)}</td><td className="num pm-calc-add">{sign(calc.paid.add, false)}</td><td className="num">{peso(calc.paid.after)}</td></tr>
                           <tr className={`pm-calc-total${calc.balance.after > 0.009 ? ' is-due' : ' is-ok'}`}><td>Remaining balance</td><td className="num">{peso(calc.balance.now)}</td><td className="num pm-calc-add">{sign(calc.balance.add, false)}</td><td className="num">{peso(calc.balance.after)}</td></tr>

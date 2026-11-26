@@ -27,15 +27,11 @@ function TrashIcon() {
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
-// Provider Excess / Concern Amount / Disc: an amount you type, plus a switch that adds it to (or leaves it out of) the Receivable.
-function ExtraCell({ row, col, label, amount, on, onSaveAmount, onToggle }) {
+// Provider Excess / Concern Amount / Disc: just an amount you type. It is always taken off the Receivable.
+function ExtraCell({ row, col, amount, onSaveAmount }) {
   return (
-    <div className={`xtra-cell${on ? '' : ' is-off'}`}>
+    <div className="xtra-cell">
       <EditableText row={row} col={col} value={amount} type="number" align="right" onSave={onSaveAmount} />
-      <button type="button" className={`tax-switch${on ? ' on' : ''}`}
-        title={on ? `${label} is added to the Receivable. Click to leave it out.` : `${label} is NOT counted. Click to add it to the Receivable.`}
-        aria-label={`${on ? 'Turn off' : 'Turn on'} ${label}`}
-        onClick={(e) => { e.stopPropagation(); onToggle(!on); }}><span /></button>
     </div>
   );
 }
@@ -55,7 +51,7 @@ function deriveRow(e, taxPct, amountOverride, paidOverride, rebateOverride) {
     : r2((Number(e.pay_tax) || 0) + ((e.tax_off || taxPct <= 0 || taxPct >= 100) ? 0 : (typedRecv * taxPct) / (100 - taxPct)));
   const rebate = rebateOverride !== undefined ? rebateOverride : Number(e.rebate) || 0;
   // Provider Excess, Concern Amount and Disc are deducted from the Amount while their switch is on.
-  const deduct = (e.pe_on !== false ? Number(e.provider_excess) || 0 : 0) + (e.ca_on !== false ? Number(e.concern_amount) || 0 : 0) + (e.dc_on !== false ? Number(e.disc_amount) || 0 : 0);
+  const deduct = (Number(e.provider_excess) || 0) + (Number(e.concern_amount) || 0) + (Number(e.disc_amount) || 0);
   const receivable = r2(amount - tax - deduct + (Number(e.surcharge) || 0) - rebate);
   return { tax_withheld: tax, receivable_amount: receivable, balance: Math.max(0, r2(receivable - paid)), variance: Math.max(0, r2(paid - receivable)) };
 }
@@ -283,9 +279,9 @@ export default function Ledger() {
       cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
       widest('amount', money, '0.00') + RO,
       widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
-      Math.max(widest('provider_excess', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,   // input + on/off switch
-      Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,
-      Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 36,
+      Math.max(widest('provider_excess', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,   // input only
+      Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
+      Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
       widest('surcharge', money, '0.00') + RO,
       widest('rebate', money, '0.00') + RO,
       widest('receivable_amount', peso, '₱0.00') + CELL,
@@ -722,9 +718,9 @@ export default function Ledger() {
                         <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
                         <td><div className="ro-cell ro-num">{r.tax_off && <span className="tax-off-tag" title="Tax W/H is turned off for this entry">OFF</span>}{money(r.tax_withheld)}</div></td>
-                        <td><div className="ro-cell ro-num">{r.pe_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.provider_excess)}</div></td>
-                        <td><div className="ro-cell ro-num">{r.ca_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.concern_amount)}</div></td>
-                        <td><div className="ro-cell ro-num">{r.dc_on === false && <span className="tax-off-tag" title="Not counted in the Receivable">OFF</span>}{money(r.disc_amount)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.provider_excess)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.concern_amount)}</div></td>
+                        <td><div className="ro-cell ro-num">{money(r.disc_amount)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.rebate)}</div></td>
                       </>
@@ -748,9 +744,9 @@ export default function Ledger() {
                             <span className="tax-amt">{money(r.tax_withheld)}</span>
                           </div>
                         </td>
-                        <td><ExtraCell row={rowIdx} col={5} label="Provider Excess" amount={r.provider_excess} on={r.pe_on !== false} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} onToggle={(v) => saveField(r.id, 'pe_on', v).catch(() => {})} /></td>
-                        <td><ExtraCell row={rowIdx} col={6} label="Concern Amount" amount={r.concern_amount} on={r.ca_on !== false} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} onToggle={(v) => saveField(r.id, 'ca_on', v).catch(() => {})} /></td>
-                        <td><ExtraCell row={rowIdx} col={7} label="Disc" amount={r.disc_amount} on={r.dc_on !== false} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} onToggle={(v) => saveField(r.id, 'dc_on', v).catch(() => {})} /></td>
+                        <td><ExtraCell row={rowIdx} col={5} amount={r.provider_excess} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={6} amount={r.concern_amount} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} /></td>
+                        <td><ExtraCell row={rowIdx} col={7} amount={r.disc_amount} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} /></td>
                         <td><EditableText row={rowIdx} col={8} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
                         <td><EditableText row={rowIdx} col={9} value={r.rebate} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'rebate', value: v })} onSave={(v) => saveField(r.id, 'rebate', v)} /></td>
                       </>

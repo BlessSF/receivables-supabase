@@ -193,9 +193,7 @@ function recalcRow(d) {
   const rebate = toFloat(d.rebate);
   const paid = toFloat(d.paid_amount);
   // Provider Excess, Concern Amount and Disc are deducted from the Amount, each one only while its switch is on.
-  const deduct = (d.pe_on !== false ? toFloat(d.provider_excess) : 0)
-    + (d.ca_on !== false ? toFloat(d.concern_amount) : 0)
-    + (d.dc_on !== false ? toFloat(d.disc_amount) : 0);
+  const deduct = toFloat(d.provider_excess) + toFloat(d.concern_amount) + toFloat(d.disc_amount);
   // Receivable = Amount - Tax W/H (when its switch is on) - Provider Excess - Concern Amount - Disc + Surcharge - Rebate.
   const receivable = round(amount - tax - deduct + surcharge - rebate, 2);
   // Balance = Receivable - Paid. An overpayment is shown as 0 outstanding, never as a negative amount in the totals.
@@ -257,9 +255,9 @@ async function entryTaxFor(row, isCharge, pct) {
  * A deduction only counts while its switch is on in the ledger row.
  */
 async function paymentMath(entryId, p) {
-  const e = await one('SELECT l.pe_on, l.ca_on, l.dc_on, c.account_type FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.id = ?', [entryId]);
+  const e = await one('SELECT c.account_type FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.id = ?', [entryId]);
   const pct = await taxWithheldPercent();
-  const ded = (e.pe_on !== false ? p.pe_amount : 0) + (e.ca_on !== false ? p.ca_amount : 0) + (e.dc_on !== false ? p.dc_amount : 0);
+  const ded = p.pe_amount + p.ca_amount + p.dc_amount;
   const base = round(p.net - ded, 2);
   if (!(base > 0)) jsonExit({ ok: false, error: 'The deductions are as much as the net amount processed. Check the amounts.' }, 400);
   const tax = (e.account_type === 'CHARGE' || !p.pay_tax) ? 0 : round(base * pct / 100, 2);
@@ -289,7 +287,7 @@ async function ensureTaxOffColumn() {
   // The three amounts are now DEDUCTED from the Receivable (they used to be added). Re-derive stored rows that have one;
   // it is computed from the entry's own columns, so running it again changes nothing.
   await exec(`UPDATE ledger_entries SET
-      receivable_amount = ROUND(amount - tax_withheld - (CASE WHEN pe_on THEN provider_excess ELSE 0 END) - (CASE WHEN ca_on THEN concern_amount ELSE 0 END) - (CASE WHEN dc_on THEN disc_amount ELSE 0 END) + surcharge - rebate, 2)
+      receivable_amount = ROUND(amount - tax_withheld - provider_excess - concern_amount - disc_amount + surcharge - rebate, 2)
     WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0`);
   await exec('UPDATE ledger_entries SET balance = GREATEST(0, ROUND(receivable_amount - paid_amount, 2)) WHERE provider_excess <> 0 OR concern_amount <> 0 OR disc_amount <> 0');
   // Tax W/H is now withheld on what was paid (see entryTaxFor). Re-derive what is stored, once.
@@ -303,7 +301,7 @@ async function ensureTaxOffColumn() {
          FROM companies c WHERE c.id = l.company_id ${noNet}`, [pct, pct]);
     }
     await exec(`UPDATE ledger_entries SET
-        receivable_amount = ROUND(amount - tax_withheld - (CASE WHEN pe_on THEN provider_excess ELSE 0 END) - (CASE WHEN ca_on THEN concern_amount ELSE 0 END) - (CASE WHEN dc_on THEN disc_amount ELSE 0 END) + surcharge - rebate, 2)`);
+        receivable_amount = ROUND(amount - tax_withheld - provider_excess - concern_amount - disc_amount + surcharge - rebate, 2)`);
     await exec('UPDATE ledger_entries SET balance = GREATEST(0, ROUND(receivable_amount - paid_amount, 2))');
     await setSetting('tax_model', 'paid-v1');
   }
@@ -1953,7 +1951,7 @@ const actions = {
       for (const r of rows) {
         const amount = toFloat(r.amount);
         const tax = await entryTaxFor(r, recalcIsCharge, percent);
-        const deduct = (r.pe_on !== false ? toFloat(r.provider_excess) : 0) + (r.ca_on !== false ? toFloat(r.concern_amount) : 0) + (r.dc_on !== false ? toFloat(r.disc_amount) : 0);
+        const deduct = toFloat(r.provider_excess) + toFloat(r.concern_amount) + toFloat(r.disc_amount);
         const base = amount - tax - deduct + toFloat(r.surcharge) - toFloat(r.rebate);
         const paid = toFloat(r.paid_amount); // what was received stays as typed; the tax is re-derived from it
         const receivable = round(base, 2);
