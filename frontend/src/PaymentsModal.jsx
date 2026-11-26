@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import { peso, formatLongDate } from './utils';
 import MoneyInput, { rawNum } from './MoneyInput';
-import { IconEdit, IconTrash } from './icons';
+import { IconEdit, IconTrash, IconPrinter, IconPdf, IconExcel } from './icons';
 import { printSheet, downloadSheetXlsx } from './soaSheet';
 
 // The payments of ONE ledger row (one SOA): every payment keeps its own date, amount and check ref.
@@ -352,9 +352,9 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
           <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
         </div>
         <div className="pm-sheet-tools">
-          <button type="button" className="btn btn-sm" onClick={() => printSheet(sheetData())}>Print</button>
-          <button type="button" className="btn btn-secondary btn-sm" title="In the print window, set the printer to Save as PDF" onClick={() => printSheet(sheetData())}>Save as PDF</button>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={exporting} onClick={toExcel}>{exporting ? 'Preparing…' : 'Download Excel'}</button>
+          <button type="button" className="btn btn-sm icon-btn" title="Print" aria-label="Print" onClick={() => printSheet(sheetData())}><IconPrinter /></button>
+          <button type="button" className="btn btn-secondary btn-sm icon-btn" title="Save as PDF (choose Save as PDF as the printer)" aria-label="Save as PDF" onClick={() => printSheet(sheetData())}><IconPdf /></button>
+          <button type="button" className="btn btn-secondary btn-sm icon-btn" title={exporting ? 'Preparing the Excel file…' : 'Download Excel'} aria-label="Download Excel" aria-busy={exporting} disabled={exporting} onClick={toExcel}><IconExcel /></button>
         </div>
         <div className="pm-sheet-hint">For a PDF, choose <b>Save as PDF</b> as the printer in the window that opens.</div>
         {exportErr && <div className="flash flash-error" style={{ margin: '0 0 12px' }}>{exportErr}</div>}

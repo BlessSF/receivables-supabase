@@ -82,3 +82,12 @@ export const IconAudit = () => (
 export const IconUndo = () => (
   <svg {...common}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
 );
+export const IconPrinter = () => (
+  <svg {...common}><path d="M7 8V3h10v5" /><path d="M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="7" y="14" width="10" height="7" rx="1" /></svg>
+);
+export const IconPdf = () => (
+  <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="M12 12v5.5" /><path d="m9.5 15 2.5 2.5 2.5-2.5" /></svg>
+);
+export const IconExcel = () => (
+  <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="m9 12 6 6" /><path d="m15 12-6 6" /></svg>
+);
