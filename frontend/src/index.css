@@ -2296,17 +2296,17 @@ select.rec-input { min-width: 112px; }
 
 /* Ledger: Tax W/H + Provider Excess + Concern Amount + Disc read as one tinted group, each column with its own divider */
 td:has(> .tax-cell), td:has(> .xtra-cell),
-table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) {
+table:has(.xtra-cell) thead th:nth-child(n+7):nth-child(-n+10) {
   background-image: linear-gradient(rgba(18, 117, 106, .055), rgba(18, 117, 106, .055));
 }
 td:has(> .tax-cell), td:has(> .xtra-cell),
-table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) {
+table:has(.xtra-cell) thead th:nth-child(n+7):nth-child(-n+10) {
   box-shadow: inset 1px 0 0 #cfdcd9;
   padding-left: 14px; padding-right: 14px;
 }
-td:has(> .xtra-cell):nth-child(8), table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9; }
-table:has(.xtra-cell) thead th:nth-child(n+5):nth-child(-n+8) { box-shadow: inset 1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); color: var(--teal-strong); }
-table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); }
+td:has(> .xtra-cell):nth-child(10), table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9; }
+table:has(.xtra-cell) thead th:nth-child(n+7):nth-child(-n+10) { box-shadow: inset 1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); color: var(--teal-strong); }
+table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9, inset -1px 0 0 #cfdcd9, inset 0 3px 0 var(--teal); }
 /* the amount and its switch: the switch sits in its own small slot with a divider, so the next column's amount can't run into it */
 .xtra-cell { gap: 10px; }
 .xtra-cell .tax-switch { margin-left: 2px; }
@@ -2471,3 +2471,11 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 .pm-proof-pick { margin-top: 10px; cursor: pointer; }
 .pm-sheet td.txt { text-align: left; font-size: 13px; overflow-wrap: anywhere; width: 38%; }
 .pm-sheet td.txt a { color: #0645ad; }
+
+/* Ledger: Proof column */
+.proof-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.proof-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: #e7f3f1; color: var(--teal-strong, #0d5a52); font-size: .82em; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.proof-chip:hover { background: #d3ebe7; }
+.proof-add { border: 1px dashed #9fbab6; background: #fff; color: var(--teal-strong, #0d5a52); border-radius: 999px; padding: 2px 9px; font-size: .82em; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.proof-add:hover:not(:disabled) { background: #f0f8f6; }
+.proof-err { color: var(--brick, #b3261e); flex-basis: 100%; }

@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext';
 import MoneyInput, { fmtNum } from '../MoneyInput';
 import { GRID_ID, gridKeyDown, DateCell, RemarksCell, CoveredCell } from '../gridCells';
 import PaymentsModal from '../PaymentsModal';
+import { PROOF_FILES, prepareProof } from '../proofFiles';
 import { followHeader } from '../stickyHead';
 import { typedRoom, typedTax, paymentBreakdown } from '../taxMath';
 
@@ -28,6 +29,48 @@ function TrashIcon() {
 }
 
 const r2 = (n) => Math.round(n * 100) / 100;
+
+// Total = Amount Received + Tax + Discount + Provider Excess (what the payment settled)
+function rowTotal(r) {
+  const recv = (r.pay_amounts || []).length ? r.pay_amounts.reduce((a, b) => a + (Number(b) || 0), 0) : (Number(r.paid_amount) || 0);
+  return r2(recv + (Number(r.tax_withheld) || 0) + (Number(r.disc_amount) || 0) + (Number(r.provider_excess) || 0));
+}
+
+// Proof of payment: links to the photo / PDF files of this row's payments, and a button to add one (photo or PDF only)
+function ProofCell({ entry, staff, canAdd, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const input = useRef(null);
+  const files = entry.proofs || [];
+  const pick = async (e) => {
+    const list = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!list.length) return;
+    if (files.length + list.length > PROOF_FILES) { setMsg(`Up to ${PROOF_FILES} files.`); return; }
+    setBusy(true); setMsg('');
+    try {
+      for (const f of list) { const p = await prepareProof(f); await api.addLedgerProof(entry.id, p.name, p.data); }
+      onDone();
+    } catch (err) { setMsg(err.message || 'Upload failed.'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="proof-cell">
+      {files.map((f, i) => (
+        <a key={f.id} className="proof-chip" href={api.paymentProofUrl(f.id)} target="_blank" rel="noreferrer" title={f.file_name}>
+          {f.mime === 'application/pdf' ? 'PDF' : 'Photo'}{files.length > 1 ? ` ${i + 1}` : ''}
+        </a>
+      ))}
+      {!staff && canAdd && files.length < PROOF_FILES && (
+        <>
+          <button type="button" className="proof-add" disabled={busy} title="Attach a photo (JPG, PNG) or a PDF as proof of payment" onClick={() => input.current && input.current.click()}>{busy ? '…' : '+ Proof'}</button>
+          <input ref={input} type="file" hidden multiple accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" onChange={pick} />
+        </>
+      )}
+      {!files.length && (staff || !canAdd) && <span style={{ color: 'var(--slate)' }}>—</span>}
+      {msg && <small className="proof-err" title={msg}>{msg}</small>}
+    </div>
+  );
+}
 
 // Provider Excess / Concern Amount / Disc: just an amount you type. It is always taken off the Receivable.
 function ExtraCell({ row, col, amount, onSaveAmount }) {
@@ -270,8 +313,8 @@ export default function Ledger() {
     const cap = (px, maxChars) => Math.min(px, tw('0'.repeat(maxChars)));
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
-    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Tax W/H', 'Provider Excess', 'Concern Amount', 'Disc', 'Surcharge', 'Net Amount Processed', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Remarks', ...(canDelete ? ['Action'] : [])];
+    const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Net Amount Processed', 'Total Tax', 'Tax', 'Discount', 'Concern Amount', 'Provider Excess', 'Total', 'Receivable',
+      'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Proof', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
@@ -279,12 +322,13 @@ export default function Ledger() {
       PERIOD - 14,                                            // Covered Period
       cap(widest('soa_number', undefined, 'SOA #0'), 22) + RO,
       widest('amount', money, '0.00') + RO,
-      widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
-      Math.max(widest('provider_excess', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,   // input only
-      Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
-      Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
-      widest('surcharge', money, '0.00') + RO,
       Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_nets || []).map((a) => tw(money(a)) + (r.pay_nets.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Net Amount Processed (one line per payment)
+      widest('amount', money, '0.00') + RO,                                  // Total Tax (never wider than Amount)
+      widest('tax_withheld', money, '0.00') + RO + (staff ? 30 : 40), // room for the on/off switch
+      Math.max(widest('disc_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
+      Math.max(widest('concern_amount', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,
+      Math.max(widest('provider_excess', fmtNum, '0.00'), tw('0'.repeat(11))) + INPUT + 8,   // input only
+      Math.max(tw('0'.repeat(11)), widest('receivable_amount', peso, '₱0.00')) + CELL + 6,                  // Total
       widest('receivable_amount', peso, '₱0.00') + CELL,
       DATE,                                                   // Payment Date
       // Check Ref always has room for a long check number (14 digits) and grows past that if a longer one is saved
@@ -295,6 +339,7 @@ export default function Ledger() {
       balanceW + CELL,
       Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
       Math.max(tw('Unpaid') + 46, rows.reduce((m, r) => (Number(r.rebate) > 0.009 ? Math.max(m, tw(`Settled ${peso(r.rebate)}`)) : m), 0) + 40, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
+      tw('+ Proof') + tw('Photo') * 2 + 60,                                   // Proof (links + upload button)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));
@@ -656,29 +701,31 @@ export default function Ledger() {
                 <tr>
                   <th>Billing Date</th><th>Covered Period</th><th>SOA #</th>
                   <th className="text-right">Amount</th>
+                  <th className="text-right">Net Amount Processed</th>
+                  <th className="text-right">Total Tax</th>
                   <th className="text-right">
                     {taxSel && (
                       <input type="checkbox" className="tax-check" title="Select every entry shown" aria-label="Select every entry shown"
                         checked={filtered.filter((r) => r.account_type !== 'CHARGE').length > 0 && filtered.filter((r) => r.account_type !== 'CHARGE').every((r) => taxSel.has(r.id))}
                         onChange={(e) => setTaxSel(e.target.checked ? new Set(filtered.filter((r) => r.account_type !== 'CHARGE').map((r) => r.id)) : new Set())} />
                     )}
-                    Tax W/H
+                    Tax
                   </th>
-                  <th className="text-right">Provider Excess</th><th className="text-right">Concern Amount</th><th className="text-right">Disc</th>
-                  <th className="text-right">Surcharge</th>
-                  <th className="text-right">Net Amount Processed</th>
+                  <th className="text-right">Discount</th><th className="text-right">Concern Amount</th><th className="text-right">Provider Excess</th>
+                  <th className="text-right">Total</th>
                   <th className="text-right">Receivable</th>
                   <th>Payment Date</th><th>Check Ref</th>
                   <th className="text-right">Paid</th><th className="text-right">Amount Received</th><th className="text-right">Balance</th>
                   <th>Aging</th>
                   <th>Paid Status</th>
+                  <th>Proof</th>
                   <th>Remarks</th>
                   {canDelete && <th className="text-center col-sticky-r">Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 20 : 19} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 22 : 21} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -693,11 +740,6 @@ export default function Ledger() {
                         <td><div className="ro-cell">{coveredLabel(r.period_from, r.period_to, r.period_date) || '—'}</div></td>
                         <td><div className="ro-cell">{r.soa_number || '—'}</div></td>
                         <td><div className="ro-cell ro-num">{money(r.amount)}</div></td>
-                        <td><div className="ro-cell ro-num">{r.tax_off && <span className="tax-off-tag" title="Tax W/H is turned off for this entry">OFF</span>}{money(r.tax_withheld)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.provider_excess)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.concern_amount)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.disc_amount)}</div></td>
-                        <td><div className="ro-cell ro-num">{money(r.surcharge)}</div></td>
                       </>
                     ) : (
                       <>
@@ -705,6 +747,22 @@ export default function Ledger() {
                         <td><CoveredCell row={rowIdx} col={1} from={r.period_from} to={r.period_to} periodDate={r.period_date} onSave={(v) => saveCovered(r.id, v)} /></td>
                         <td><EditableText row={rowIdx} col={2} value={r.soa_number} onSave={(v) => saveField(r.id, 'soa_number', v)} /></td>
                         <td><EditableText row={rowIdx} col={3} value={r.amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'amount', value: v })} onSave={(v) => saveField(r.id, 'amount', v)} /></td>
+                      </>
+                    )}
+                    <td className="text-right num recv-cell" title="Net amount processed: one value per payment, read-only">
+                      {(r.pay_nets || []).length > 0
+                        ? r.pay_nets.map((a, i) => (
+                          <div key={i} className="recv-line">{r.pay_nets.length > 1 && <small>{['1st', '2nd', '3rd'][i] || `${i + 1}th`}</small>}{money(a)}</div>
+                        ))
+                        : (Number(r.paid_amount) > 0
+                          // no payment records: everything paid so far is one payment
+                          ? <div className="recv-line">{money(paymentBreakdown(r, [{ amount: r.paid_amount }], taxPct, r.account_type === 'CHARGE')[0].net)}</div>
+                          : <span style={{ color: 'var(--slate)' }}>—</span>)}
+                    </td>
+                    <td><div className="ro-cell ro-num" title="Amount x tax %">{money(r.account_type === 'CHARGE' ? 0 : r2((Number(r.amount) || 0) * taxPct / 100))}</div></td>
+                    {staff ? (
+                        <td><div className="ro-cell ro-num">{r.tax_off && <span className="tax-off-tag" title="Tax W/H is turned off for this entry">OFF</span>}{money(r.tax_withheld)}</div></td>
+                    ) : (
                         <td>
                           <div className={`ro-cell ro-num tax-cell${r.tax_off ? ' is-off' : ''}`} title={r.tax_off ? 'Tax W/H is turned off for this entry' : 'Automatic: Amount x tax %'}>
                             {r.account_type !== 'CHARGE' && (taxSel ? (
@@ -719,32 +777,33 @@ export default function Ledger() {
                             <span className="tax-amt">{money(r.tax_withheld)}</span>
                           </div>
                         </td>
-                        <td><ExtraCell row={rowIdx} col={4} amount={r.provider_excess} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} /></td>
-                        <td><ExtraCell row={rowIdx} col={5} amount={r.concern_amount} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} /></td>
-                        <td><ExtraCell row={rowIdx} col={6} amount={r.disc_amount} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} /></td>
-                        <td><EditableText row={rowIdx} col={7} value={r.surcharge} type="number" align="right" onSave={(v) => saveField(r.id, 'surcharge', v)} /></td>
-                      </>
                     )}
-                    <td className="text-right num recv-cell" title="Net amount processed: one value per payment, read-only">
-                      {(r.pay_nets || []).length > 0
-                        ? r.pay_nets.map((a, i) => (
-                          <div key={i} className="recv-line">{r.pay_nets.length > 1 && <small>{['1st', '2nd', '3rd'][i] || `${i + 1}th`}</small>}{money(a)}</div>
-                        ))
-                        : (Number(r.paid_amount) > 0
-                          // no payment records: everything paid so far is one payment
-                          ? <div className="recv-line">{money(paymentBreakdown(r, [{ amount: r.paid_amount }], taxPct, r.account_type === 'CHARGE')[0].net)}</div>
-                          : <span style={{ color: 'var(--slate)' }}>—</span>)}
-                    </td>
+                    {staff ? (
+                        <td><div className="ro-cell ro-num">{money(r.disc_amount)}</div></td>
+                    ) : (
+                        <td><ExtraCell row={rowIdx} col={4} amount={r.disc_amount} onSaveAmount={(v) => saveField(r.id, 'disc_amount', v)} /></td>
+                    )}
+                    {staff ? (
+                        <td><div className="ro-cell ro-num">{money(r.concern_amount)}</div></td>
+                    ) : (
+                        <td><ExtraCell row={rowIdx} col={5} amount={r.concern_amount} onSaveAmount={(v) => saveField(r.id, 'concern_amount', v)} /></td>
+                    )}
+                    {staff ? (
+                        <td><div className="ro-cell ro-num">{money(r.provider_excess)}</div></td>
+                    ) : (
+                        <td><ExtraCell row={rowIdx} col={6} amount={r.provider_excess} onSaveAmount={(v) => saveField(r.id, 'provider_excess', v)} /></td>
+                    )}
+                    <td className="text-right num" style={{ fontWeight: 600 }} title="Amount Received + Tax + Discount + Provider Excess">{peso(rowTotal(r))}</td>
                     <td className="text-right num">{peso(r.receivable_amount)}</td>
                     {(
                       <>
-                        <td className="cell-glow"><DateCell row={rowIdx} col={8} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
-                        <td className="cell-glow"><EditableText row={rowIdx} col={9} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
+                        <td className="cell-glow"><DateCell row={rowIdx} col={7} value={r.payment_date} onSave={(v) => saveField(r.id, 'payment_date', v)} /></td>
+                        <td className="cell-glow"><EditableText row={rowIdx} col={8} value={r.check_ref} onSave={(v) => saveField(r.id, 'check_ref', v)} /></td>
                         <td className="cell-glow">
                           <div className="paid-cell">
                             {r.payment_count > 1
                               ? <div className="ro-cell ro-num" title={`${r.payment_count} payments - use the + button`}>{money(r.paid_amount)}</div>
-                              : <EditableText row={rowIdx} col={10} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
+                              : <EditableText row={rowIdx} col={9} value={r.paid_amount} type="number" align="right" onLive={(v) => setLive(v === null ? null : { id: r.id, field: 'paid_amount', value: v })} onSave={(v) => saveField(r.id, 'paid_amount', v)} />}
                             {data?.payments_enabled && (
                               <button type="button" className="pay-btn" title={r.payment_count > 1 ? `${r.payment_count} payments - open the list` : 'Add another payment / see payments'} aria-label="Payments" onClick={() => { setSheetFirst(false); setPayFor(r); }}>
                                 {r.payment_count > 1 ? `×${r.payment_count}` : '+'}
@@ -779,7 +838,8 @@ export default function Ledger() {
                         <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
                         <SettledNote amount={r.rebate} />
                         {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Fix the payment if it was typed wrong.">Overpaid {peso(r.variance)}</span>}</div>}</td>
-                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={11} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
+                    <td><ProofCell entry={r} staff={staff} canAdd={!!data?.payments_enabled} onDone={reload} /></td>
+                    <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
                   </tr>
                 ))}

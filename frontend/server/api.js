@@ -1334,6 +1334,19 @@ const actions = {
       r.pay_base = pt ? pt.b : 0; // the part of the SOA they cover after deductions
     }
     for (const r of entries) r.payment_count = payCounts.get(String(r.id)) || 0;
+    // proof of payment files of each row (names only; the file itself opens through get_payment_proof)
+    for (const r of entries) r.proofs = [];
+    if (paymentsOn && entries.length) {
+      await ensureProofTable();
+      const pf = await all('SELECT f.id, f.file_name, f.mime, f.size, p.ledger_entry_id FROM payment_proofs f JOIN ledger_payments p ON p.id = f.payment_id ORDER BY f.id');
+      const byEntry = new Map();
+      for (const f of pf) {
+        const k = String(f.ledger_entry_id);
+        if (!byEntry.has(k)) byEntry.set(k, []);
+        byEntry.get(k).push({ id: toInt(f.id), file_name: f.file_name, mime: f.mime, size: toInt(f.size) });
+      }
+      for (const r of entries) r.proofs = byEntry.get(String(r.id)) || [];
+    }
 
     const agingTally = {};
     for (const r of entries) {
@@ -1487,7 +1500,16 @@ const actions = {
 
   // Proof of payment: attach / remove a photo or PDF on one payment (opened with get_payment_proof)
   async add_payment_proof(input, auth) {
-    const pid = toInt(input.payment_id);
+    let pid = toInt(input.payment_id);
+    if (!pid && toInt(input.ledger_entry_id)) {
+      // uploaded straight from the Ledger row: attach to the latest payment of that entry (a typed Paid amount becomes a payment first)
+      const eid = toInt(input.ledger_entry_id);
+      await requireCompanyAccess(auth, toInt(await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [eid])));
+      if (await paymentsEnabled()) await mirrorRowToPayments(eid);
+      const latest = await scalar("SELECT id FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, '') DESC, id DESC LIMIT 1", [eid]);
+      if (!latest) jsonExit({ ok: false, error: 'Add a payment first (type the Paid amount), then attach the proof.' }, 400);
+      pid = toInt(latest);
+    }
     const pay = await one('SELECT id, ledger_entry_id FROM ledger_payments WHERE id = ?', [pid]);
     if (!pay) jsonExit({ ok: false, error: 'Payment not found. Save the payment first.' }, 404);
     await requireCompanyAccess(auth, toInt(await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [pay.ledger_entry_id])));

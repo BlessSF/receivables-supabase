@@ -77,6 +77,7 @@ export const api = {
   updatePayment: (id, body) => call('update_payment', { method: 'POST', body: { ...body, id } }),
   deletePayment: (id) => call('delete_payment', { method: 'POST', body: { id } }),
   addPaymentProof: (paymentId, fileName, data) => call('add_payment_proof', { method: 'POST', body: { payment_id: paymentId, file_name: fileName, data } }),
+  addLedgerProof: (entryId, fileName, data) => call('add_payment_proof', { method: 'POST', body: { ledger_entry_id: entryId, file_name: fileName, data } }),
   deletePaymentProof: (id) => call('delete_payment_proof', { method: 'POST', body: { id } }),
   paymentProofUrl: (id) => `${BASE}?action=get_payment_proof&id=${encodeURIComponent(id)}`,
   chargeEntryToCompany: (id) => call('charge_entry_to_company', { method: 'POST', body: { id } }),
