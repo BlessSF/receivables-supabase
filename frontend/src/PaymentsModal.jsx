@@ -59,7 +59,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
   function startAdd() {
     setStaged([]);
     setErr('');
-    setForm({ amount: balance > 0.009 ? balance.toFixed(2) : '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '',
+    setForm({ recv: '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '',
       provider_excess: '', concern_amount: '', disc_amount: '', pay_tax: entry.account_type !== 'CHARGE' });
   }
   function startEdit(p) {
@@ -69,7 +69,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     const net = p.net_amount !== null && p.net_amount !== undefined
       ? Number(p.net_amount)
       : Number(p.amount) + (Number(p.pe_amount) || 0) + (Number(p.ca_amount) || 0) + (Number(p.dc_amount) || 0) + (Number(p.tax_amount) || 0);
-    setForm({ id: p.id, amount: String(net.toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
+    setForm({ id: p.id, recv: String(Number(p.amount).toFixed(2)), payment_date: p.payment_date || '', check_ref: p.check_ref || '', check_date: p.check_date || '',
       payment_method: p.payment_method || '', payment_method_bank: p.payment_method_bank || '', payment_method_other: p.payment_method_other || '', remarks: p.remarks || '',
       provider_excess: Number(p.pe_amount) ? String(Number(p.pe_amount).toFixed(2)) : '', concern_amount: Number(p.ca_amount) ? String(Number(p.ca_amount).toFixed(2)) : '',
       disc_amount: Number(p.dc_amount) ? String(Number(p.dc_amount).toFixed(2)) : '', pay_tax: entry.account_type === 'CHARGE' ? false : (p.net_amount === null || p.net_amount === undefined ? true : Number(p.tax_amount) > 0) });
@@ -79,7 +79,7 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     ev.preventDefault();
     setBusy(true); setErr('');
     try {
-      const body = { ...form, amount: rawNum(form.amount), provider_excess: rawNum(form.provider_excess), concern_amount: rawNum(form.concern_amount), disc_amount: rawNum(form.disc_amount),
+      const body = { ...form, mode: 'received', amount: rawNum(form.recv), provider_excess: rawNum(form.provider_excess), concern_amount: rawNum(form.concern_amount), disc_amount: rawNum(form.disc_amount),
         pay_tax: entry.account_type === 'CHARGE' ? 0 : (form.pay_tax ? 1 : 0) };
       const r = form.id ? await api.updatePayment(form.id, body) : await api.addPayment(entry.id, body);
       setInfo(r.data);
@@ -124,13 +124,14 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
     const gross = n(e.amount);
     const has = (k, v) => n(v); // the three deductions always count
     const typed = { pe: n(rawNum(form.provider_excess)), ca: n(rawNum(form.concern_amount)), dc: n(rawNum(form.disc_amount)) };
-    const net = n(rawNum(form.amount));
-    // ---- this payment
+    // What is typed is the amount RECEIVED (Paid). Tax is worked back from it, and the Net amount processed follows (read-only):
+    //   tax = received x tax% / (100 - tax%)     net = received + tax + deductions
+    const received = n(rawNum(form.recv));
     const dedThis = has('pe', typed.pe) + has('ca', typed.ca) + has('dc', typed.dc);
-    const baseThis = r2(net - dedThis);
-    const taxFor = (on) => (isCharge || !on || baseThis <= 0 ? 0 : r2((baseThis * pct) / 100));
+    const taxFor = (on) => (isCharge || !on || received <= 0 || pct <= 0 || pct >= 100 ? 0 : r2((received * pct) / (100 - pct)));
     const taxThis = taxFor(form.pay_tax);
-    const received = r2(baseThis - taxThis);
+    const baseThis = r2(received + taxThis);
+    const net = r2(baseThis + dedThis);
     // ---- the entry now / after
     const oldNet = old && old.net_amount !== null && old.net_amount !== undefined;
     const typedRecvNow = Math.max(0, n(e.paid_amount) - n(e.pay_recv));
@@ -234,9 +235,6 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
               <form className="pm-form" onSubmit={save}>
                 <h3>{form.id ? 'Edit payment' : 'New payment'}</h3>
                 <div className="form-grid">
-                  <div className="form-group"><label>Net amount processed *</label>
-                    <MoneyInput className="num" value={form.amount} placeholder="0.00" onChange={(v) => setForm({ ...form, amount: v })} autoFocus />
-                  </div>
                   <div className="form-group"><label>Payment date</label>
                     <input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(form.payment_date || '') ? form.payment_date : ''} onChange={setF('payment_date')} />
                   </div>
@@ -246,6 +244,12 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                       <option value="">—</option>
                       {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
+                  </div>
+                  <div className="form-group"><label>Paid (amount received) *</label>
+                    <MoneyInput className="num" value={form.recv} placeholder="0.00" onChange={(v) => setForm({ ...form, recv: v })} autoFocus />
+                  </div>
+                  <div className="form-group"><label>Net amount processed <small style={{ fontWeight: 400, color: 'var(--slate)' }}>(automatic)</small></label>
+                    <input className="num" readOnly tabIndex={-1} style={{ background: '#f2f6f5' }} value={calc ? Number(calc.net).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'} />
                   </div>
                   {showBank && (
                     <div className="form-group"><label>Bank</label>

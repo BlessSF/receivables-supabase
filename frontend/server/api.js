@@ -264,6 +264,11 @@ async function paymentMath(entryId, p) {
   const e = await one('SELECT c.account_type FROM ledger_entries l JOIN companies c ON c.id = l.company_id WHERE l.id = ?', [entryId]);
   const pct = await taxWithheldPercent();
   const ded = p.pe_amount + p.ca_amount + p.dc_amount;
+  if (p.recv) {
+    // Paid (received) typed: tax = received x tax% / (100 - tax%), net = received + tax + deductions (same as the Excel)
+    const tax = (e.account_type === 'CHARGE' || !p.pay_tax || pct <= 0 || pct >= 100) ? 0 : round(p.amount * pct / (100 - pct), 2);
+    return { net: round(p.amount + tax + ded, 2), tax, received: p.amount };
+  }
   const base = round(p.net - ded, 2);
   if (!(base > 0)) jsonExit({ ok: false, error: 'The deductions are as much as the net amount processed. Check the amounts.' }, 400);
   const tax = (e.account_type === 'CHARGE' || !p.pay_tax) ? 0 : round(base * pct / 100, 2);
@@ -384,7 +389,7 @@ async function paymentsByEntry(entryIds = null) {
 function cleanPayment(input) {
   const out = {};
   const amount = toFloat(input.amount);
-  if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter the net amount processed (more than 0).' }, 400);
+  if (!(amount > 0)) jsonExit({ ok: false, error: 'Enter the Paid amount (more than 0).' }, 400);
   out.amount = round(amount, 2);
   const txt = (v) => { v = trim(v ?? ''); return v === '' ? null : v; };
   out.payment_date = txt(input.payment_date);
@@ -402,7 +407,8 @@ function cleanPayment(input) {
   out.ca_amount = ded(input.concern_amount);
   out.dc_amount = ded(input.disc_amount);
   out.pay_tax = input.pay_tax === undefined || input.pay_tax === null ? true : truthy(input.pay_tax);
-  out.net = out.amount; // what the person typed is the NET amount processed
+  out.recv = input.mode === 'received'; // the amount typed is what was RECEIVED (Paid); the net amount processed is worked out from it
+  out.net = out.amount; // otherwise what was typed is the NET amount processed
   return out;
 }
 
