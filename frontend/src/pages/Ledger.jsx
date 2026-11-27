@@ -30,6 +30,14 @@ function TrashIcon() {
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
+// Overpaid shown like the Excel: all net amounts processed minus the SOA amount (the Excel's negative "Remaining Balance").
+// Falls back to the received-based figure when the row has no payments with a net amount.
+function overNet(r) {
+  const nets = (r.pay_nets || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  const d = r2(nets - (Number(r.amount) || 0));
+  return nets > 0 && d > 0.009 ? d : r.variance;
+}
+
 // Total = Amount Received + Tax + Discount + Provider Excess (what the payment settled)
 function rowTotal(r) {
   const recv = (r.pay_amounts || []).length ? r.pay_amounts.reduce((a, b) => a + (Number(b) || 0), 0) : (Number(r.paid_amount) || 0);
@@ -883,7 +891,7 @@ export default function Ledger() {
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                         <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
                         <SettledNote amount={r.rebate} />
-                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Paid is more than the receivable. Fix the payment if it was typed wrong.">Overpaid {peso(r.variance)}</span>}</div>}</td>
+                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Net amounts processed are more than the SOA amount (same as the Excel's negative Remaining Balance). Fix the payment if it was typed wrong.">Overpaid {peso(overNet(r))}</span>}</div>}</td>
                     <td><ProofCell entry={r} staff={staff} canAdd={!!data?.payments_enabled} onDone={reload} /></td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
