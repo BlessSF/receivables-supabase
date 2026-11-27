@@ -387,7 +387,7 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
       ...(prev !== null ? [['PREVIOUS AMOUNT', prev]] : []),
       ['NET AMOUNT PROCESSED', net], ['DISCOUNT', dc], ['PROVIDED EXCESS', pe], ['CONCERN AMOUNT', ca], ['TAX', tax],
       ['AMOUNT RECEIVED', n(p.amount), 'recv'], ...(over > 0 ? [['OVERPAID', over]] : []),
-      ['TOTAL (Received + Tax + Deductions = Net)', total, Math.abs(total - net) < 0.011 ? 'ok' : 'due'],
+      ['TOTAL', total, Math.abs(total - net) < 0.011 ? 'ok' : 'due'],
       ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
       ...(p.remarks ? [['REMARKS', p.remarks, 'text']] : []),
       ...(proofs.length ? [['PROOF OF PAYMENT', proofs, 'links']] : []),
