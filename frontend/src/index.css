@@ -2485,3 +2485,17 @@ table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9
 .proof-add { border: 1.5px solid var(--teal); background: var(--teal); color: #fff; padding: 6px 14px; font-size: .95em; min-height: 32px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
 .proof-add:hover:not(:disabled) { background: var(--teal-strong, #0d5a52); }
 .proof-chip { padding: 5px 12px; font-size: .92em; }
+
+/* Ledger: proof preview on hover */
+.proof-wrap { display: inline-block; }
+.proof-pop { position: fixed; z-index: 60; width: 280px; background: #fff; border: 1px solid #cfdcd9; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.22); padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.proof-pop-view { display: block; border-radius: 8px; overflow: hidden; background: #f2f6f5; text-align: center; }
+.proof-pop-view img { display: block; max-width: 100%; max-height: 240px; margin: 0 auto; object-fit: contain; }
+.proof-pop-pdf { padding: 34px 10px; display: flex; flex-direction: column; gap: 4px; color: var(--teal-strong, #0d5a52); }
+.proof-pop-pdf b { font-size: 22px; }
+.proof-pop-name { color: var(--slate); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proof-del { border: 0; background: #c0392b; color: #fff; border-radius: 8px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.proof-del:hover:not(:disabled) { background: #a32f23; }
+.proof-keep { border: 1px solid #cfdcd9; background: #fff; color: #333; border-radius: 8px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.proof-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.proof-confirm > span { flex-basis: 100%; font-weight: 600; }

@@ -36,6 +36,54 @@ function rowTotal(r) {
   return r2(recv + (Number(r.tax_withheld) || 0) + (Number(r.disc_amount) || 0) + (Number(r.provider_excess) || 0));
 }
 
+// One proof file: hover for a preview; Admin / Accounting can remove it (after a confirmation)
+function ProofChip({ file, label, canRemove, onDone }) {
+  const [pos, setPos] = useState(null);
+  const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const timer = useRef(null);
+  const isPdf = file.mime === 'application/pdf';
+  const url = api.paymentProofUrl(file.id);
+  const open = (e) => {
+    clearTimeout(timer.current);
+    const r = e.currentTarget.getBoundingClientRect();
+    const w = 280;
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left));
+    const below = r.bottom + 330 < window.innerHeight;
+    setPos({ left, top: below ? r.bottom + 4 : undefined, bottom: below ? undefined : window.innerHeight - r.top + 4 });
+  };
+  const close = () => { timer.current = setTimeout(() => { setPos(null); setAsk(false); setErr(''); }, 180); };
+  const keep = () => clearTimeout(timer.current);
+  const remove = async () => {
+    setBusy(true); setErr('');
+    try { await api.deletePaymentProof(file.id); setPos(null); setAsk(false); onDone(); }
+    catch (e) { setErr(e.message || 'Could not remove the file.'); } finally { setBusy(false); }
+  };
+  return (
+    <span className="proof-wrap" onMouseEnter={open} onMouseLeave={close}>
+      <a className="proof-chip" href={url} target="_blank" rel="noreferrer" title={file.file_name}>{label}</a>
+      {pos && (
+        <div className="proof-pop" style={{ left: pos.left, top: pos.top, bottom: pos.bottom }} onMouseEnter={keep} onMouseLeave={close}>
+          <a href={url} target="_blank" rel="noreferrer" className="proof-pop-view" title="Open full size">
+            {isPdf ? <div className="proof-pop-pdf"><b>PDF</b><span>Click to open</span></div> : <img src={url} alt={file.file_name} />}
+          </a>
+          <div className="proof-pop-name" title={file.file_name}>{file.file_name}</div>
+          {err && <div className="proof-err">{err}</div>}
+          {canRemove && !ask && <button type="button" className="proof-del" onClick={() => setAsk(true)}>Remove</button>}
+          {canRemove && ask && (
+            <div className="proof-confirm">
+              <span>Remove this file?</span>
+              <button type="button" className="proof-del" disabled={busy} onClick={remove}>{busy ? '…' : 'Yes, remove'}</button>
+              <button type="button" className="proof-keep" disabled={busy} onClick={() => setAsk(false)}>Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
 // Proof of payment: links to the photo / PDF files of this row's payments, and a button to add one (photo or PDF only)
 function ProofCell({ entry, staff, canAdd, onDone }) {
   const [busy, setBusy] = useState(false);
@@ -56,9 +104,7 @@ function ProofCell({ entry, staff, canAdd, onDone }) {
   return (
     <div className="proof-cell">
       {files.map((f, i) => (
-        <a key={f.id} className="proof-chip" href={api.paymentProofUrl(f.id)} target="_blank" rel="noreferrer" title={f.file_name}>
-          {f.mime === 'application/pdf' ? 'PDF' : 'Photo'}{files.length > 1 ? ` ${i + 1}` : ''}
-        </a>
+        <ProofChip key={f.id} file={f} label={`${f.mime === 'application/pdf' ? 'PDF' : 'Photo'}${files.length > 1 ? ` ${i + 1}` : ''}`} canRemove={!staff} onDone={onDone} />
       ))}
       {!staff && canAdd && files.length < PROOF_FILES && (
         <>
