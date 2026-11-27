@@ -2554,3 +2554,7 @@ table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9
 /* Ledger: the company bar (name + totals) stays under the page banner while scrolling */
 .co-sticky { position: sticky; top: calc(var(--ph-h, 86px) + 8px); z-index: 29; padding: 12px 20px; box-shadow: 0 6px 16px -8px rgba(19, 32, 58, .35); }
 @media print { .co-sticky { position: static; box-shadow: none; } }
+
+/* SOA sheet: switch to print the proof photos */
+.pm-photo-toggle { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 13px; color: #334; cursor: pointer; }
+.pm-photo-toggle b { color: var(--teal-strong, #0d5a52); }

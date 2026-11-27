@@ -9,8 +9,14 @@ const heading = (s) => s.month || 'Payment sheet';
 const subHeading = (s) => [s.company, s.soaNumber].filter(Boolean).join(' · ');
 const fileName = (s) => ['SOA', s.soaNumber, s.month].filter(Boolean).join(' ').replace(/[\\/:*?"<>|]+/g, '-');
 
+// The proof photos (PDF files can't be drawn here, they stay as links) of one block, printed under its table
+const photosOf = (b) => {
+  const imgs = b.rows.filter((r) => r[2] === 'links').flatMap((r) => r[1]).filter((f) => f.image);
+  return imgs.length ? `<div class="photos">${imgs.map((f) => `<div class="cap">Proof of payment: ${esc(f.name)}</div><img src="${esc(f.url)}" alt="">`).join('')}</div>` : '';
+};
+
 // Opens the browser's print window with only the sheet on the page. "Save as PDF" there makes the PDF file.
-export function printSheet(sheet) {
+export function printSheet(sheet, opts = {}) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fileName(sheet))}</title><style>
     @page { size: A4 portrait; margin: 16mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -27,6 +33,9 @@ export function printSheet(sheet) {
     tr.recv td { font-weight: 700; }
     tr.due td.num { background: #ff6b6b; font-weight: 700; }
     tr.ok td.num { background: #7ee787; font-weight: 700; }
+    .photos { margin: -6px 0 16px; break-inside: avoid; }
+    .photos .cap { font-size: 9.5pt; margin: 0 0 4px; }
+    .photos img { display: block; max-width: 100%; max-height: 105mm; margin: 0 auto 8px; border: 1px solid #000; object-fit: contain; }
   </style></head><body>
     <h1>${esc(heading(sheet))}</h1>
     <div class="sub">${esc(subHeading(sheet))}</div>
@@ -36,7 +45,7 @@ export function printSheet(sheet) {
         kind === 'text' ? `<td class="txt">${esc(value)}</td>`
           : kind === 'links' ? `<td class="txt">${value.map((f) => `<div><a href="${esc(f.url)}">${esc(f.name)}</a></div>`).join('')}</td>`
             : `<td class="num">${money(value)}</td>`}</tr>`).join('')}
-    </tbody></table>`).join('')}
+    </tbody></table>${opts.photos ? photosOf(b) : ''}`).join('')}
   </body></html>`;
 
   // A hidden frame (not a new tab), so no pop-up blocker gets in the way
@@ -52,7 +61,10 @@ export function printSheet(sheet) {
   document.title = fileName(sheet); // suggested file name when saving as PDF
   const done = () => { document.title = oldTitle; frame.remove(); };
   frame.contentWindow.addEventListener('afterprint', () => setTimeout(done, 0), { once: true });
-  setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); }, 100);
+  // wait until the photos are loaded, so they are on the printed page
+  const waits = Array.from(doc.images).map((im) => (im.complete ? Promise.resolve() : new Promise((ok) => { im.onload = ok; im.onerror = ok; })));
+  const ready = Promise.race([Promise.all(waits), new Promise((ok) => setTimeout(ok, 8000))]);
+  ready.then(() => setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); }, 100));
 }
 
 // A real .xlsx laid out like the sheet. The Excel library is only downloaded when this is first used.

@@ -386,7 +386,7 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   // The rows of one block, used by the screen, Print / PDF and Excel so all three always show the same thing.
   const rowsOf = ({ p, net, pe, ca, dc, tax, over, prev, remaining }) => {
     const total = r2(n(p.amount) - over + tax + dc + pe + ca); // Received + Tax + deductions: must equal the Net amount
-    const proofs = (p.proofs || []).map((f, k) => ({ name: `${f.mime === 'application/pdf' ? 'PDF' : 'Photo'} ${k + 1} · ${f.file_name}`, url: new URL(api.paymentProofUrl(f.id), window.location.origin).href }));
+    const proofs = (p.proofs || []).map((f, k) => ({ name: `${f.mime === 'application/pdf' ? 'PDF' : 'Photo'} ${k + 1} · ${f.file_name}`, url: new URL(api.paymentProofUrl(f.id), window.location.origin).href, image: f.mime !== 'application/pdf' }));
     return [
       ...(prev !== null ? [['PREVIOUS AMOUNT', prev]] : []),
       ['NET AMOUNT PROCESSED', net], ['DISCOUNT', dc], ['PROVIDED EXCESS', pe], ['CONCERN AMOUNT', ca], ['TAX', tax],
@@ -405,6 +405,8 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   const money = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState('');
+  const [withPhotos, setWithPhotos] = useState(true); // print the proof photos inside the sheet
+  const hasPhotos = shown.some((b) => (b.p.proofs || []).some((f) => f.mime !== 'application/pdf'));
   // exactly what is on screen, for Print / PDF / Excel
   const sheetData = () => ({
     month, soaNumber: entry.soa_number || '', company: entry.company_name || '', soa,
@@ -430,10 +432,16 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
           <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
         </div>
         <div className="pm-sheet-tools">
-          <button type="button" className="sheet-tool sheet-tool-print" title="Print" aria-label="Print" onClick={() => printSheet(sheetData())}><IconPrinter /></button>
-          <button type="button" className="sheet-tool sheet-tool-pdf" title="Save as PDF (choose Save as PDF as the printer)" aria-label="Save as PDF" onClick={() => printSheet(sheetData())}><IconPdf /></button>
+          <button type="button" className="sheet-tool sheet-tool-print" title="Print" aria-label="Print" onClick={() => printSheet(sheetData(), { photos: withPhotos && hasPhotos })}><IconPrinter /></button>
+          <button type="button" className="sheet-tool sheet-tool-pdf" title="Save as PDF (choose Save as PDF as the printer)" aria-label="Save as PDF" onClick={() => printSheet(sheetData(), { photos: withPhotos && hasPhotos })}><IconPdf /></button>
           <button type="button" className="sheet-tool sheet-tool-excel" title={exporting ? 'Preparing the Excel file…' : 'Download Excel'} aria-label="Download Excel" aria-busy={exporting} disabled={exporting} onClick={toExcel}><IconExcel /></button>
         </div>
+        {hasPhotos && (
+          <label className="pm-photo-toggle" title="Turn off to print the sheet without the proof photos">
+            <button type="button" role="switch" aria-checked={withPhotos} className={`tax-switch${withPhotos ? ' on' : ''}`} onClick={() => setWithPhotos((v) => !v)}><span /></button>
+            <span>Print the proof photos on the sheet <b>{withPhotos ? 'ON' : 'OFF'}</b></span>
+          </label>
+        )}
         <div className="pm-sheet-hint">For a PDF, choose <b>Save as PDF</b> as the printer in the window that opens.</div>
         {exportErr && <div className="flash flash-error" style={{ margin: '0 0 12px' }}>{exportErr}</div>}
         <table className="pm-sheet">
