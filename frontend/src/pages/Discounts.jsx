@@ -40,30 +40,34 @@ export default function Discounts() {
   if (err) return <div className="flash flash-error">{err}</div>;
   if (!data) return <div className="loading-state">Loading discounts…</div>;
 
+  const pct = (v, total) => (total > 0 ? Math.round((v / total) * 1000) / 10 : 0);
   const CompanyTable = ({ title, rows, total }) => (
-    <div className="panel">
-      <h2>{title} <span className="disc-total">{peso(total)}</span></h2>
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead><tr><th>Name</th><th className="text-right">Entries</th><th className="text-right">Total Discount</th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><td colSpan={3} className="empty-state">No discounts for this filter.</td></tr>}
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td><Link className="rep-link" to={`/ledger?company_id=${r.id}`} title="Open this account's ledger">{r.name}</Link></td>
-                <td className="text-right num">{r.entries}</td>
-                <td className="text-right num" style={{ fontWeight: 600 }}>{peso(r.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-          {rows.length > 0 && <tfoot><tr><td><strong>Total</strong></td><td className="text-right num">{rows.reduce((t, r) => t + r.entries, 0)}</td><td className="text-right num"><strong>{peso(total)}</strong></td></tr></tfoot>}
-        </table>
-      </div>
+    <div className="panel disc-panel">
+      <div className="disc-ph"><h2>{title}</h2><strong className="num">{peso(total)}</strong></div>
+      {rows.length === 0 ? <div className="disc-none">No discounts for this filter.</div> : (
+        <div className="table-wrap">
+          <table className="data-table disc-table">
+            <thead><tr><th>Name</th><th className="text-right">Entries</th><th className="text-right">Share</th><th className="text-right">Total Discount</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td><Link className="rep-link" to={`/ledger?company_id=${r.id}`} title="Open this account's ledger">{r.name}</Link></td>
+                  <td className="text-right num">{r.entries}</td>
+                  <td className="text-right num disc-share"><span>{pct(r.total, total)}%</span></td>
+                  <td className="text-right num disc-amt">{peso(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr><td>Total</td><td className="text-right num">{rows.reduce((t, r) => t + r.entries, 0)}</td><td /><td className="text-right num disc-amt">{peso(total)}</td></tr></tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 
+  const periodName = group === 'day' ? 'day' : group === 'month' ? 'month' : 'year';
   return (
-    <div>
+    <div className="disc-page">
       <div className="page-header">
         <div>
           <h1>Discounts</h1>
@@ -71,15 +75,15 @@ export default function Discounts() {
         </div>
       </div>
 
-      <div className="panel disc-filters">
+      <div className="disc-filters">
         <div className="disc-seg" role="group" aria-label="Group by">
-          {[['day', 'Every day'], ['month', 'Every month'], ['year', 'Every year']].map(([k, label]) => (
+          {[['day', 'Day'], ['month', 'Month'], ['year', 'Year']].map(([k, label]) => (
             <button key={k} type="button" className={group === k ? 'on' : ''} onClick={() => setGroup(k)}>{label}</button>
           ))}
         </div>
-        <label>From <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label>To <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <label>Show
+        <label><span>From</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label><span>To</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        <label><span>Show</span>
           <select value={type} onChange={(e) => setType(e.target.value)}>
             <option value="all">HMOs and Company Charges</option>
             <option value="hmo">HMOs only</option>
@@ -87,41 +91,58 @@ export default function Discounts() {
           </select>
         </label>
         <div className="disc-presets">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => preset('today')}>Today</button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => preset('month')}>This month</button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => preset('year')}>This year</button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => preset('all')}>All time</button>
+          {[['today', 'Today'], ['month', 'This month'], ['year', 'This year'], ['all', 'All time']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => preset(k)}>{label}</button>
+          ))}
         </div>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card accent-red"><div className="kpi-label">Total Discount</div><div className="kpi-value">{peso(data.total)}</div><div className="kpi-sub">{data.count} entr{data.count === 1 ? 'y' : 'ies'} with a discount</div></div>
-        <div className="kpi-card"><div className="kpi-label">HMOs</div><div className="kpi-value">{peso(data.hmo_total)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Company Charges</div><div className="kpi-value">{peso(data.charge_total)}</div></div>
-      </div>
-
-      <div className="panel">
-        <h2>{group === 'day' ? 'Discount per day' : group === 'month' ? 'Discount per month' : 'Discount per year'}</h2>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>{group === 'day' ? 'Day' : group === 'month' ? 'Month' : 'Year'}</th><th>&nbsp;</th><th className="text-right">Total Discount</th></tr></thead>
-            <tbody>
-              {data.series.length === 0 && <tr><td colSpan={3} className="empty-state">No discounts for this filter.</td></tr>}
-              {data.series.map((x) => (
-                <tr key={x.key}>
-                  <td>{seriesLabel(x.key, data.group)}</td>
-                  <td style={{ width: '45%' }}><div className="disc-bar"><span style={{ width: `${Math.max(2, (x.total / maxSeries) * 100)}%` }} /></div></td>
-                  <td className="text-right num" style={{ fontWeight: 600 }}>{peso(x.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="disc-kpis">
+        <div className="disc-kpi main">
+          <span>Total discount</span>
+          <strong>{peso(data.total)}</strong>
+          <small>{data.count} entr{data.count === 1 ? 'y' : 'ies'} with a discount</small>
+        </div>
+        <div className="disc-kpi">
+          <span>HMOs</span>
+          <strong>{peso(data.hmo_total)}</strong>
+          <small>{pct(data.hmo_total, data.total)}% of the total</small>
+        </div>
+        <div className="disc-kpi">
+          <span>Company Charges</span>
+          <strong>{peso(data.charge_total)}</strong>
+          <small>{pct(data.charge_total, data.total)}% of the total</small>
         </div>
       </div>
 
-      {type !== 'charge' && <CompanyTable title="HMOs" rows={data.hmos} total={data.hmo_total} />}
-      {type !== 'hmo' && <CompanyTable title="Company Charges" rows={data.charges} total={data.charge_total} />}
-      <div className="subtitle" style={{ color: 'var(--slate)', margin: '4px 2px 18px' }}>A discount is counted on the entry's payment date (its billing date while nothing is paid yet).</div>
+      <div className="disc-grid">
+        <div className="panel disc-panel">
+          <div className="disc-ph"><h2>By {periodName}</h2><span>{data.series.length} {periodName}{data.series.length === 1 ? '' : 's'}</span></div>
+          {data.series.length === 0 ? <div className="disc-none">No discounts for this filter.</div> : (
+            <div className="table-wrap">
+              <table className="data-table disc-table">
+                <thead><tr><th>{periodName[0].toUpperCase() + periodName.slice(1)}</th><th className="text-right">Total Discount</th></tr></thead>
+                <tbody>
+                  {data.series.map((x) => (
+                    <tr key={x.key}>
+                      <td>
+                        <div className="disc-period">{seriesLabel(x.key, data.group)}</div>
+                        <div className="disc-bar"><span style={{ width: `${Math.max(2, (x.total / maxSeries) * 100)}%` }} /></div>
+                      </td>
+                      <td className="text-right num disc-amt">{peso(x.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="disc-side">
+          {type !== 'charge' && <CompanyTable title="HMOs" rows={data.hmos} total={data.hmo_total} />}
+          {type !== 'hmo' && <CompanyTable title="Company Charges" rows={data.charges} total={data.charge_total} />}
+        </div>
+      </div>
+      <p className="disc-note">A discount is counted on the entry's payment date (its billing date while nothing is paid yet).</p>
     </div>
   );
 }
