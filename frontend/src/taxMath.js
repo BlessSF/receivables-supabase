@@ -3,9 +3,9 @@
 // What is typed there is the amount RECEIVED, so the tax is worked back from it:
 //     received = base - tax   and   tax = tax% x base     =>     tax = received x tax% / (100 - tax%)
 //     e.g. 17,485.16 received -> base 17,842.00 -> tax 356.84
-// But tax can only be withheld on the SOA itself. Once the SOA is fully paid the tax is exactly tax% of it,
-// and anything received on top is a plain overpayment (it carries no tax).
-//     e.g. SOA 10,900.00, received 10,700.00 -> tax 218.00 (not 218.37), overpaid 18.00
+// It is NOT capped at the SOA (same as the Excel): extra money just makes the nets add up to more than the SOA,
+// and the difference is the Overpaid amount.
+//     e.g. SOA 10,900.00, received 10,700.00 -> tax 218.37, net 10,918.37, overpaid 18.37
 
 const n = (v) => Number(v) || 0;
 const r2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
@@ -18,16 +18,13 @@ export function typedRoom(amount, deductions, netBase) {
   return Math.max(0, r2(n(amount) - n(deductions) - n(netBase)));
 }
 
-// Received amount that settles `room` in full (within a centavo, so rounding never leaves 0.01 open)
-const settles = (received, room, fullTax) => received >= r2(room - fullTax) - 0.011;
-
 export function typedTax(received, room, pct) {
   const recv = n(received);
   const base = n(room);
   const p = n(pct);
-  if (p <= 0 || p >= 100 || recv <= 0 || base <= 0) return 0;
-  const fullTax = percentOf(base, p);
-  return settles(recv, base, fullTax) ? fullTax : r2((recv * p) / (100 - p));
+  if (p <= 0 || p >= 100 || recv <= 0) return 0;
+  // Same as the Excel: never capped at the SOA. Money received above the SOA shows up as Overpaid (sum of nets - SOA).
+  return r2((recv * p) / (100 - p));
 }
 
 /**
@@ -43,7 +40,6 @@ export function paymentBreakdown(entry, payments, pct, isCharge) {
   const netBase = payments.filter(isNet).reduce((t, p) => t + n(p.net_amount) - dedOf(p), 0);
   const room = typedRoom(entry.amount, entryDed, netBase);
   const taxable = !isCharge && !entry.tax_off && n(pct) > 0 && n(pct) < 100;
-  const fullTax = taxable ? percentOf(room, n(pct)) : 0;
   const rowOnly = (field, column) => Math.max(0, r2(n(entry[column]) - payments.reduce((t, p) => t + n(p[field]), 0)));
 
   let first = true;
@@ -61,7 +57,7 @@ export function paymentBreakdown(entry, payments, pct, isCharge) {
     }
     received = r2(received + n(p.amount));
     const tax = taxable ? typedTax(received, room, pct) : 0;
-    const base = settles(received, room, fullTax) ? room : r2(received + tax);
+    const base = r2(received + tax);
     const share = r2(base - baseSoFar);
     const shareTax = r2(tax - taxSoFar);
     const over = Math.max(0, r2(n(p.amount) - (share - shareTax)));
