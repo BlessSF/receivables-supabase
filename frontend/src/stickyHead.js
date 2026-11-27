@@ -15,6 +15,11 @@ export function followHeader(wrap) {
       const r = el.getBoundingClientRect();
       if (r.height && r.top <= 1) edge = Math.max(edge, r.bottom);
     });
+    // the company bar that sticks under the banner (Ledger of one company)
+    document.querySelectorAll('.co-sticky').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.height && r.top <= edge + 12) edge = Math.max(edge, r.bottom);
+    });
     const r = table.getBoundingClientRect();
     const max = Math.max(0, r.height - head.offsetHeight - 40); // never past the last row
     const shift = Math.min(max, Math.max(0, edge - r.top));

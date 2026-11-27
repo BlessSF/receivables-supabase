@@ -2550,3 +2550,7 @@ table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9
 .disc-bar span { display: block; height: 100%; background: var(--teal); border-radius: 999px; }
 .disc-note { color: var(--slate); font-size: 13px; margin: 14px 2px 20px; }
 @media (max-width: 980px) { .disc-accounts, .disc-kpis { grid-template-columns: 1fr; } .disc-presets { margin-left: 0; } }
+
+/* Ledger: the company bar (name + totals) stays under the page banner while scrolling */
+.co-sticky { position: sticky; top: calc(var(--ph-h, 86px) + 8px); z-index: 29; padding: 12px 20px; box-shadow: 0 6px 16px -8px rgba(19, 32, 58, .35); }
+@media print { .co-sticky { position: static; box-shadow: none; } }

@@ -428,6 +428,16 @@ export default function Ledger() {
 
   // The header row follows the page scroll. Runs after every render because the table can be swapped in and out.
   useLayoutEffect(() => followHeader(gridWrapRef.current));
+  // the company bar sticks right under the page banner: tell the CSS how tall the banner is
+  useLayoutEffect(() => {
+    const set = () => {
+      const h = document.querySelector('.page-header');
+      document.documentElement.style.setProperty('--ph-h', `${h ? Math.round(h.getBoundingClientRect().height) : 0}px`);
+    };
+    set();
+    window.addEventListener('resize', set);
+    return () => window.removeEventListener('resize', set);
+  });
 
   async function saveField(id, field, value) {
     let r;
@@ -532,7 +542,8 @@ export default function Ledger() {
       </div>
 
       {company && (
-        <div className="panel">
+        <>
+        <div className="panel co-sticky">
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>
@@ -555,8 +566,11 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>
+        </div>
+        {(liveTotals.varianceCount > 0 || Object.keys(liveTotals.tally).length > 0) && (
+        <div className="panel">
           {liveTotals.varianceCount > 0 && (
-            <div className="flash flash-warning" style={{ marginTop: 12 }}>
+            <div className="flash flash-warning">
               <b>{liveTotals.varianceCount} unresolved variance{liveTotals.varianceCount === 1 ? '' : 's'} ({peso(liveTotals.variance)} overpaid).</b>{' '}
               Paid is more than the receivable. It is not counted as outstanding. Correct the payment if it was typed wrong.
             </div>
@@ -569,6 +583,8 @@ export default function Ledger() {
             </div>
           )}
         </div>
+        )}
+        </>
       )}
 
       {!company && data.company_summary && data.company_summary.length > 0 && [
