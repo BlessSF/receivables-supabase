@@ -56,7 +56,7 @@ const NAV_PAGE_ACTIONS = {
   '/hmos': ['get_hmos', 'get_hmo', 'get_companies'],
   '/company-charges': ['get_companies'],
   '/billing': ['get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', 'get_companies'],
-  '/ledger': ['get_ledger', 'inline_update_ledger', 'get_companies', 'get_payments', 'add_payment', 'update_payment', 'delete_payment'],
+  '/ledger': ['get_ledger', 'inline_update_ledger', 'get_companies', 'get_payments', 'add_payment', 'update_payment', 'delete_payment', 'add_payment_proof', 'delete_payment_proof', 'get_payment_proof'],
   '/aging': ['get_aging', 'get_companies'],
   '/past-due': ['get_past_due', 'get_companies'],
   '/soa-tracker': ['get_soa_tracker', 'soa_generate', 'soa_update_entry', 'soa_delete', 'soa_check', 'get_companies'],
@@ -170,7 +170,7 @@ async function userPayload(u) {
 // and edit only the three payment fields of a ledger row.
 const STAFF_ACTIONS = new Set([
   'get_dashboard', 'get_company_dashboard', 'get_companies', 'get_ledger', 'inline_update_ledger', 'get_monthly_report',
-  'get_payments', 'add_payment', 'update_payment', 'delete_payment',
+  'get_payments', 'add_payment', 'update_payment', 'delete_payment', 'add_payment_proof', 'delete_payment_proof', 'get_payment_proof',
   'get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', // Billing: open, import SOA, post (no void)
   'get_hmos', 'get_hmo', // Companies / HMOs pages are view-only for staff
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item', // Payables: each action still checks Sidebar access
@@ -181,7 +181,7 @@ const STAFF_EDITABLE_FIELDS = ['payment_date', 'check_ref', 'paid_amount'];
 const EXECUTIVE_ACTIONS = new Set([
   'get_exec_dashboard', 'get_summary', 'get_companies', 'get_aging', 'get_past_due', 'get_settings',
   'get_monthly_report', 'get_ledger', 'inline_update_ledger', 'quick_add_ledger', 'set_tax_off', 'delete_ledger',
-  'get_payments', 'add_payment', 'update_payment', 'delete_payment',
+  'get_payments', 'add_payment', 'update_payment', 'delete_payment', 'add_payment_proof', 'delete_payment_proof', 'get_payment_proof',
   'get_users', 'create_user', 'update_user', 'delete_user', 'get_audit', 'get_deleted', 'restore_deleted',
   'get_branch_sites', 'save_branch_sites', 'get_nav_access', 'save_nav_access', 'change_user_role', 'save_user_modules',
   'get_payables', 'save_payable', 'get_main_fund', 'get_main_day', 'save_main_fund', 'get_cash_position', 'save_cash_position', 'save_account_titles', 'add_payables_bulk', 'set_payable_status', 'set_payable_release', 'clear_released_payable', 'delete_payable', 'clear_payables', 'get_pdc_tracker', 'save_pdc_amount', 'save_pdc_item', 'save_pdc_bulk', 'set_pdc_paid', 'manage_pdc_item',
@@ -406,6 +406,52 @@ function cleanPayment(input) {
   return out;
 }
 
+// ---- Proof of payment: photos (JPG / PNG / WebP / GIF) and PDF files attached to ONE payment.
+// The table creates itself the first time it is needed. The file itself is kept in the database (bytea).
+const PROOF_MAX_BYTES = 3 * 1024 * 1024; // 3 MB per file (a web request can carry about 4.5 MB)
+const PROOF_MAX_FILES = 5; // per payment
+let proofsReady = false;
+async function ensureProofTable() {
+  if (proofsReady) return;
+  await exec(`CREATE TABLE IF NOT EXISTS payment_proofs (
+    id SERIAL PRIMARY KEY,
+    payment_id INTEGER NOT NULL REFERENCES ledger_payments(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    data BYTEA NOT NULL,
+    uploaded_by TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Manila')
+  )`);
+  await exec('CREATE INDEX IF NOT EXISTS payment_proofs_pay ON payment_proofs (payment_id)');
+  proofsReady = true;
+}
+/** What the file really is, from its first bytes (the name or the type the browser sent is not trusted). null = not allowed. */
+function sniffProof(b) {
+  if (!b || b.length < 12) return null;
+  if (b.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (b.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif';
+  return null;
+}
+/** Sends one proof file to the browser (opened in a new tab). */
+async function sendProof(res, auth, id) {
+  await ensureProofTable();
+  const r = await one('SELECT f.file_name, f.mime, f.data, p.ledger_entry_id FROM payment_proofs f JOIN ledger_payments p ON p.id = f.payment_id WHERE f.id = ?', [id]);
+  if (!r) return sendJson(res, 404, { ok: false, error: 'File not found.' });
+  await requireCompanyAccess(auth, toInt(await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [r.ledger_entry_id])));
+  res.statusCode = 200;
+  res.setHeader('Content-Type', r.mime);
+  res.setHeader('Content-Length', String(r.data.length));
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(r.file_name)}`);
+  res.setHeader('Cache-Control', 'private, max-age=600');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
+  res.end(r.data);
+}
+
 async function paymentsReply(entryId) {
   const e = await one('SELECT id, soa_number, amount, receivable_amount, paid_amount, balance, payment_date, surcharge, rebate, tax_off, tax_withheld, provider_excess, concern_amount, disc_amount, pe_on, ca_on, dc_on FROM ledger_entries WHERE id = ?', [entryId]);
   const payments = await all('SELECT * FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY COALESCE(payment_date, \'\') ASC, id ASC', [entryId]);
@@ -416,6 +462,10 @@ async function paymentsReply(entryId) {
     e.pay_base = round(net.reduce((t, x) => t + toFloat(x.net_amount) - toFloat(x.pe_amount) - toFloat(x.ca_amount) - toFloat(x.dc_amount), 0), 2);
     e.pay_net = net.length;
   }
+  // attach the proof files (names only, not the files) to their payments
+  await ensureProofTable();
+  const proofs = payments.length ? await all(`SELECT id, payment_id, file_name, mime, size FROM payment_proofs WHERE payment_id IN (${payments.map(() => '?').join(',')}) ORDER BY id`, payments.map((x) => x.id)) : [];
+  for (const x of payments) x.proofs = proofs.filter((f) => String(f.payment_id) === String(x.id)).map((f) => ({ id: toInt(f.id), file_name: f.file_name, mime: f.mime, size: toInt(f.size) }));
   return { enabled: true, entry: e, payments, payment_count: payments.length, tax_percent: await taxWithheldPercent() };
 }
 
@@ -1430,8 +1480,39 @@ const actions = {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, p.payment_date, math.received, p.check_ref, p.check_date, p.payment_method, p.payment_method_bank, p.payment_method_other, p.remarks, p.pe_amount, p.ca_amount, p.dc_amount, math.tax, math.net]);
     await shiftEntryDeductions(id, p.pe_amount, p.ca_amount, p.dc_amount);
+    const newId = toInt(await scalar('SELECT id FROM ledger_payments WHERE ledger_entry_id = ? ORDER BY id DESC LIMIT 1', [id]));
     const row = await syncRowFromPayments(id);
-    return { ok: true, row, data: await paymentsReply(id) };
+    return { ok: true, row, payment_id: newId, data: await paymentsReply(id) };
+  },
+
+  // Proof of payment: attach / remove a photo or PDF on one payment (opened with get_payment_proof)
+  async add_payment_proof(input, auth) {
+    const pid = toInt(input.payment_id);
+    const pay = await one('SELECT id, ledger_entry_id FROM ledger_payments WHERE id = ?', [pid]);
+    if (!pay) jsonExit({ ok: false, error: 'Payment not found. Save the payment first.' }, 404);
+    await requireCompanyAccess(auth, toInt(await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [pay.ledger_entry_id])));
+    await ensureProofTable();
+    const buf = Buffer.from(String(input.data ?? '').replace(/^data:[^,]*,/, ''), 'base64');
+    if (!buf.length) jsonExit({ ok: false, error: 'The file is empty.' }, 400);
+    if (buf.length > PROOF_MAX_BYTES) jsonExit({ ok: false, error: `That file is too big (max ${PROOF_MAX_BYTES / 1024 / 1024} MB). Photos are shrunk automatically; for a PDF, send a smaller one.` }, 400);
+    const mime = sniffProof(buf);
+    if (!mime) jsonExit({ ok: false, error: 'Only photos (JPG, PNG, WebP, GIF) and PDF files are allowed.' }, 400);
+    if (toInt(await scalar('SELECT COUNT(*) FROM payment_proofs WHERE payment_id = ?', [pid])) >= PROOF_MAX_FILES) {
+      jsonExit({ ok: false, error: `A payment can have up to ${PROOF_MAX_FILES} proof files. Remove one first.` }, 400);
+    }
+    const name = trim(input.file_name ?? '').replace(/[\\/:*?"<>|\r\n]+/g, '-').slice(0, 120) || (mime === 'application/pdf' ? 'proof.pdf' : 'proof');
+    await exec('INSERT INTO payment_proofs (payment_id, file_name, mime, size, data, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [pid, name, mime, buf.length, buf, auth.user?.username ?? null]);
+    return { ok: true, data: await paymentsReply(toInt(pay.ledger_entry_id)) };
+  },
+
+  async delete_payment_proof(input, auth) {
+    await ensureProofTable();
+    const f = await one('SELECT f.id, p.ledger_entry_id FROM payment_proofs f JOIN ledger_payments p ON p.id = f.payment_id WHERE f.id = ?', [toInt(input.id)]);
+    if (!f) jsonExit({ ok: false, error: 'File not found.' }, 404);
+    await requireCompanyAccess(auth, toInt(await scalar('SELECT company_id FROM ledger_entries WHERE id = ?', [f.ledger_entry_id])));
+    await exec('DELETE FROM payment_proofs WHERE id = ?', [toInt(f.id)]);
+    return { ok: true, data: await paymentsReply(toInt(f.ledger_entry_id)) };
   },
 
   async update_payment(input, auth) {
@@ -2930,6 +3011,8 @@ export default async function handleApi(req, res) {
     if (action === 'get_exec_dashboard' && user.role !== 'executive' && user.role !== 'admin' && user.role !== 'accounting') {
       return sendJson(res, 403, { ok: false, error: 'Not available for this account.' });
     }
+
+    if (action === 'get_payment_proof') return await sendProof(res, makeAuth(user), toInt(input.id));
 
     const fn = typeof action === 'string' && Object.hasOwn(actions, action) ? actions[action] : null;
     if (!fn) return sendJson(res, 400, { ok: false, error: 'Unknown action: ' + action });

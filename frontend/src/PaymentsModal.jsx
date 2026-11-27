@@ -12,12 +12,41 @@ const METHODS = ['Cash', 'Card', 'Check'];
 const BANKS = ['Metrobank', 'BPI', 'PBB', 'Maya', 'Other'];
 const today = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // Manila date
 
+// Proof of payment: a photo or a PDF. Photos are shrunk in the browser first (so a phone picture of 8 MB becomes a few hundred KB).
+const PROOF_MAX = 3 * 1024 * 1024; // must match the server
+const PROOF_FILES = 5;
+const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const readDataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('Could not read the file.')); r.readAsDataURL(blob); });
+async function prepareProof(file) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  const isImg = /^image\//.test(file.type);
+  if (!isPdf && !isImg) throw new Error(`"${file.name}" is not allowed. Only photos and PDF files can be attached.`);
+  let blob = file;
+  let name = file.name;
+  if (isImg && file.type !== 'image/gif' && (file.size > 700 * 1024)) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const scale = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+      const g = cv.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+      g.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const out = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', 0.82));
+      if (out && out.size < file.size) { blob = out; name = name.replace(/\.[^.]+$/, '') + '.jpg'; }
+    } catch { /* keep the original */ }
+  }
+  if (blob.size > PROOF_MAX) throw new Error(`"${file.name}" is too big (${kb(blob.size)}). The limit is ${kb(PROOF_MAX)} per file.`);
+  return { name, size: blob.size, data: await readDataUrl(blob) };
+}
+
 export default function PaymentsModal({ entry, onClose, onChanged, openSheet = false }) {
   const [info, setInfo] = useState(null); // { enabled, entry, payments }
   const [form, setForm] = useState(null); // null = hidden, object = add / edit
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sheet, setSheet] = useState(openSheet ? 'all' : null); // null = closed, 'all' = every payment, or one payment id
+  const [staged, setStaged] = useState([]); // proof files picked in the form, uploaded when the payment is saved
 
   useEffect(() => {
     api.getPayments(entry.id).then((r) => setInfo(r.data)).catch((e) => setErr(e.message));
@@ -33,12 +62,34 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
   const balance = Number(e?.balance) || 0;
   const setF = (k) => (ev) => setForm({ ...form, [k]: ev.target.value });
 
+  async function pickProofs(ev) {
+    const files = Array.from(ev.target.files || []);
+    ev.target.value = '';
+    if (!files.length) return;
+    setErr('');
+    const have = (form?.id ? (info.payments.find((x) => x.id === form.id)?.proofs || []).length : 0) + staged.length;
+    if (have + files.length > PROOF_FILES) { setErr(`A payment can have up to ${PROOF_FILES} proof files.`); return; }
+    try {
+      const ready = [];
+      for (const f of files) ready.push(await prepareProof(f));
+      setStaged((cur) => [...cur, ...ready]);
+    } catch (x) { setErr(x.message); }
+  }
+  async function removeProof(f) {
+    if (!window.confirm(`Remove the proof file "${f.file_name}"?`)) return;
+    setBusy(true); setErr('');
+    try { const r = await api.deletePaymentProof(f.id); setInfo(r.data); } catch (x) { setErr(x.message); }
+    setBusy(false);
+  }
+
   function startAdd() {
+    setStaged([]);
     setErr('');
     setForm({ amount: balance > 0.009 ? balance.toFixed(2) : '', payment_date: today(), check_ref: '', check_date: '', payment_method: '', payment_method_bank: '', payment_method_other: '', remarks: '',
       provider_excess: '', concern_amount: '', disc_amount: '', pay_tax: entry.account_type !== 'CHARGE' });
   }
   function startEdit(p) {
+    setStaged([]);
     setErr('');
     // an older payment only knows what was received: net = received + what was deducted
     const net = p.net_amount !== null && p.net_amount !== undefined
@@ -60,6 +111,16 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
       setInfo(r.data);
       setForm(null);
       onChanged(r.row);
+      // the payment is saved: now attach the proof files that were picked
+      const payId = form.id || r.payment_id;
+      const todo = staged;
+      setStaged([]);
+      for (let i = 0; i < todo.length; i++) {
+        try {
+          const up = await api.addPaymentProof(payId, todo[i].name, todo[i].data);
+          setInfo(up.data);
+        } catch (x) { setErr(`The payment was saved, but "${todo[i].name}" could not be attached: ${x.message} Open the payment with Edit to try again.`); break; }
+      }
     } catch (x) { setErr(x.message); }
     setBusy(false);
   }
@@ -159,9 +220,9 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
 
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Date</th><th className="text-right">Net processed</th><th className="text-right">Deducted</th><th className="text-right">Tax W/H</th><th className="text-right">Received</th><th>Check ref</th><th>Method</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th className="text-right">Net processed</th><th className="text-right">Deducted</th><th className="text-right">Tax W/H</th><th className="text-right">Received</th><th>Check ref</th><th>Method</th><th>Proof</th><th></th></tr></thead>
                 <tbody>
-                  {info.payments.length === 0 && <tr><td colSpan={8} className="empty-state">No payments yet.</td></tr>}
+                  {info.payments.length === 0 && <tr><td colSpan={9} className="empty-state">No payments yet.</td></tr>}
                   {info.payments.map((p) => (
                     <tr key={p.id}>
                       <td>{p.payment_date ? formatLongDate(p.payment_date) : '—'}</td>
@@ -171,6 +232,12 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                       <td className="text-right num"><b>{peso(p.amount)}</b></td>
                       <td>{p.check_ref || '—'}</td>
                       <td>{[p.payment_method, p.payment_method_bank === 'Other' ? p.payment_method_other : p.payment_method_bank].filter(Boolean).join(' · ') || '—'}</td>
+                      <td>{(p.proofs || []).length === 0 ? '—' : (
+                        <span className="pm-proof-list">{p.proofs.map((f, i) => (
+                          <a key={f.id} className="pm-proof" href={api.paymentProofUrl(f.id)} target="_blank" rel="noopener noreferrer" title={`${f.file_name} (${kb(f.size)})`}>
+                            {f.mime === 'application/pdf' ? 'PDF' : 'Photo'} {i + 1}
+                          </a>))}
+                        </span>)}</td>
                       <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                         <button type="button" className="btn btn-secondary btn-sm" title="Show this payment like the SOA sheet" disabled={busy} onClick={() => setSheet(p.id)} style={{ marginRight: 4 }}>Sheet</button>
                         <button type="button" className="btn btn-secondary btn-sm icon-btn" title="Edit" aria-label="Edit" disabled={busy} onClick={() => startEdit(p)}><IconEdit /></button>
@@ -283,6 +350,30 @@ export default function PaymentsModal({ entry, onClose, onChanged, openSheet = f
                     </div>
                   );
                 })()}
+                <div className="form-group" style={{ marginTop: 14 }}><label>Remarks <small>(shown on the SOA sheet)</small></label>
+                  <input value={form.remarks} maxLength={200} placeholder="e.g. PAID" onChange={setF('remarks')} />
+                </div>
+                <div className="pm-proof-box">
+                  <div className="pm-deduct-head">Proof of payment <span>photo or PDF only · up to {PROOF_FILES} files · {kb(PROOF_MAX)} each</span></div>
+                  {form.id && (info.payments.find((x) => x.id === form.id)?.proofs || []).map((f) => (
+                    <div className="pm-proof-row" key={f.id}>
+                      <a href={api.paymentProofUrl(f.id)} target="_blank" rel="noopener noreferrer">{f.mime === 'application/pdf' ? 'PDF' : 'Photo'} · {f.file_name}</a>
+                      <span>{kb(f.size)}</span>
+                      <button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={() => removeProof(f)}>Remove</button>
+                    </div>
+                  ))}
+                  {staged.map((f, i) => (
+                    <div className="pm-proof-row is-new" key={`${f.name}-${i}`}>
+                      <span className="pm-proof-new">{f.name}</span>
+                      <span>{kb(f.size)} · will be attached when you save</span>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStaged((cur) => cur.filter((_, k) => k !== i))}>Remove</button>
+                    </div>
+                  ))}
+                  <label className="btn btn-secondary btn-sm pm-proof-pick">
+                    + Add photo or PDF
+                    <input type="file" accept="image/*,application/pdf" multiple hidden onChange={pickProofs} />
+                  </label>
+                </div>
                 <div className="form-actions">
                   <button className="btn" type="submit" disabled={busy}>{form.id ? 'Save changes' : 'Save payment'}</button>
                   <button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>Cancel</button>
@@ -310,9 +401,24 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   const lines = paymentBreakdown(e, payments, taxPercent, isCharge);
   let cum = 0;
   const blocks = payments.map((p, i) => {
+    const prev = i === 0 ? null : Math.max(0, r2(soa - cum)); // "Previous Amount": what was still open before this payment
     cum = r2(cum + lines[i].net);
-    return { p, i, ...lines[i], remaining: Math.max(0, r2(soa - cum)) };
+    return { p, i, ...lines[i], prev, remaining: Math.max(0, r2(soa - cum)) };
   });
+  // The rows of one block, used by the screen, Print / PDF and Excel so all three always show the same thing.
+  const rowsOf = ({ p, net, pe, ca, dc, tax, over, prev, remaining }) => {
+    const total = r2(n(p.amount) - over + tax + dc + pe + ca); // Received + Tax + deductions: must equal the Net amount
+    const proofs = (p.proofs || []).map((f, k) => ({ name: `${f.mime === 'application/pdf' ? 'PDF' : 'Photo'} ${k + 1} · ${f.file_name}`, url: new URL(api.paymentProofUrl(f.id), window.location.origin).href }));
+    return [
+      ...(prev !== null ? [['PREVIOUS AMOUNT', prev]] : []),
+      ['NET AMOUNT PROCESSED', net], ['DISCOUNT', dc], ['PROVIDED EXCESS', pe], ['CONCERN AMOUNT', ca], ['TAX', tax],
+      ['AMOUNT RECEIVED', n(p.amount), 'recv'], ...(over > 0 ? [['OVERPAID', over]] : []),
+      ['TOTAL (Received + Tax + Deductions = Net)', total, Math.abs(total - net) < 0.011 ? 'ok' : 'due'],
+      ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
+      ...(p.remarks ? [['REMARKS', p.remarks, 'text']] : []),
+      ...(proofs.length ? [['PROOF OF PAYMENT', proofs, 'links']] : []),
+    ];
+  };
   const shown = only === null ? blocks : blocks.filter((b) => b.p.id === only);
   const month = (() => {
     const d = entry.period_date ? new Date(`${String(entry.period_date).slice(0, 10)}T00:00:00`) : null;
@@ -324,13 +430,10 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
   // exactly what is on screen, for Print / PDF / Excel
   const sheetData = () => ({
     month, soaNumber: entry.soa_number || '', company: entry.company_name || '', soa,
-    blocks: shown.map(({ p, i, net, pe, ca, dc, tax, over, remaining }) => ({
-      title: `${ORD[i] || `${i + 1}TH`} PAYMENT`,
-      date: p.payment_date ? formatLongDate(p.payment_date) : '',
-      rows: [
-        ['NET AMOUNT PROCESSED', net], ['DISCOUNT', dc], ['PROVIDED EXCESS', pe], ['CONCERN AMOUNT', ca], ['TAX', tax],
-        ['AMOUNT RECEIVED', n(p.amount), 'recv'], ...(over > 0 ? [['OVERPAID', over]] : []), ['REMAINING BALANCE', remaining, remaining > 0.009 ? 'due' : 'ok'],
-      ],
+    blocks: shown.map((b) => ({
+      title: `${ORD[b.i] || `${b.i + 1}TH`} PAYMENT`,
+      date: b.p.payment_date ? formatLongDate(b.p.payment_date) : '',
+      rows: rowsOf(b),
     })),
   });
   async function toExcel() {
@@ -360,18 +463,18 @@ function PaymentSheet({ entry, e, taxPercent, payments, only, onClose }) {
             <tr><td>Amount in SOA</td><td className="num">{money(soa)}</td></tr>
           </tbody>
         </table>
-        {shown.map(({ p, i, net, pe, ca, dc, tax, over, remaining }) => (
-          <table className="pm-sheet" key={p.id}>
-            <thead><tr><th colSpan={2}>{(ORD[i] || `${i + 1}TH`)} PAYMENT{p.payment_date ? <span> · {formatLongDate(p.payment_date)}</span> : null}</th></tr></thead>
+        {shown.map((b) => (
+          <table className="pm-sheet" key={b.p.id}>
+            <thead><tr><th colSpan={2}>{(ORD[b.i] || `${b.i + 1}TH`)} PAYMENT{b.p.payment_date ? <span> · {formatLongDate(b.p.payment_date)}</span> : null}</th></tr></thead>
             <tbody>
-              <tr><td>NET AMOUNT PROCESSED</td><td className="num">{money(net)}</td></tr>
-              <tr><td>DISCOUNT</td><td className="num">{money(dc)}</td></tr>
-              <tr><td>PROVIDED EXCESS</td><td className="num">{money(pe)}</td></tr>
-              <tr><td>CONCERN AMOUNT</td><td className="num">{money(ca)}</td></tr>
-              <tr><td>TAX</td><td className="num">{money(tax)}</td></tr>
-              <tr className="pm-sheet-recv"><td>AMOUNT RECEIVED</td><td className="num">{money(n(p.amount))}</td></tr>
-              {over > 0 && <tr><td>OVERPAID</td><td className="num">{money(over)}</td></tr>}
-              <tr className={remaining > 0.009 ? 'pm-sheet-due' : 'pm-sheet-ok'}><td>REMAINING BALANCE</td><td className="num">{money(remaining)}</td></tr>
+              {rowsOf(b).map(([label, value, kind]) => (
+                <tr key={label} className={kind === 'recv' ? 'pm-sheet-recv' : kind === 'due' ? 'pm-sheet-due' : kind === 'ok' ? 'pm-sheet-ok' : ''}>
+                  <td>{label}</td>
+                  {kind === 'text' ? <td className="txt">{value}</td>
+                    : kind === 'links' ? <td className="txt">{value.map((f) => <div key={f.url}><a href={f.url} target="_blank" rel="noopener noreferrer">{f.name}</a></div>)}</td>
+                    : <td className="num">{money(value)}</td>}
+                </tr>
+              ))}
             </tbody>
           </table>
         ))}

@@ -1,6 +1,7 @@
 // Print / PDF / Excel of the SOA sheet shown in the Payments popup (one block per payment).
 // `sheet` = { month, soaNumber, company, soa, blocks: [{ title, date, rows: [[label, amount, kind]] }] }
-// kind: 'recv' (Amount Received, bold) | 'due' (balance still open, red) | 'ok' (settled, green) | undefined
+// kind: 'recv' (Amount Received, bold) | 'due' (balance still open, red) | 'ok' (settled, green) | 'text' (value is a text, e.g. Remarks)
+//       | 'links' (value is [{ name, url }], e.g. Proof of Payment) | undefined
 
 const money = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,6 +22,8 @@ export function printSheet(sheet) {
     th { font-size: 12.5pt; font-weight: 400; }
     th span { font-size: 9.5pt; }
     td.num { width: 34%; text-align: right; white-space: nowrap; }
+    td.txt { width: 34%; text-align: left; font-size: 10pt; word-break: break-word; }
+    td.txt a { color: #0645ad; }
     tr.recv td { font-weight: 700; }
     tr.due td.num { background: #ff6b6b; font-weight: 700; }
     tr.ok td.num { background: #7ee787; font-weight: 700; }
@@ -29,7 +32,10 @@ export function printSheet(sheet) {
     <div class="sub">${esc(subHeading(sheet))}</div>
     <table><tbody><tr><td>Amount in SOA</td><td class="num">${money(sheet.soa)}</td></tr></tbody></table>
     ${sheet.blocks.map((b) => `<table><thead><tr><th colspan="2">${esc(b.title)}${b.date ? ` <span>· ${esc(b.date)}</span>` : ''}</th></tr></thead><tbody>
-      ${b.rows.map(([label, value, kind]) => `<tr class="${kind || ''}"><td>${esc(label)}</td><td class="num">${money(value)}</td></tr>`).join('')}
+      ${b.rows.map(([label, value, kind]) => `<tr class="${kind || ''}"><td>${esc(label)}</td>${
+        kind === 'text' ? `<td class="txt">${esc(value)}</td>`
+          : kind === 'links' ? `<td class="txt">${value.map((f) => `<div><a href="${esc(f.url)}">${esc(f.name)}</a></div>`).join('')}</td>`
+            : `<td class="num">${money(value)}</td>`}</tr>`).join('')}
     </tbody></table>`).join('')}
   </body></html>`;
 
@@ -55,7 +61,7 @@ export async function downloadSheetXlsx(sheet) {
   const ExcelJS = mod.default || mod;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('SOA', { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-  ws.columns = [{ width: 40 }, { width: 20 }];
+  ws.columns = [{ width: 44 }, { width: 34 }];
   const side = { style: 'thin', color: { argb: 'FF000000' } };
   const border = { top: side, left: side, bottom: side, right: side };
 
@@ -67,6 +73,17 @@ export async function downloadSheetXlsx(sheet) {
     return row;
   };
   const line = (label, value, kind) => {
+    if (kind === 'text' || kind === 'links') {
+      // text rows: Remarks / Proof of Payment (one row per file, each a clickable link)
+      const items = kind === 'links' ? value : [{ name: String(value ?? '') }];
+      items.forEach((f, k) => {
+        const row = ws.addRow([k === 0 ? label : '', f.url ? { text: f.name, hyperlink: f.url } : f.name]);
+        [1, 2].forEach((c) => { row.getCell(c).border = border; });
+        row.getCell(2).alignment = { horizontal: 'left', wrapText: true };
+        if (f.url) row.getCell(2).font = { color: { argb: 'FF0645AD' }, underline: true };
+      });
+      return;
+    }
     const row = ws.addRow([label, Number(value || 0)]);
     [1, 2].forEach((c) => { row.getCell(c).border = border; });
     row.getCell(2).numFmt = '#,##0.00';

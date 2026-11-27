@@ -197,6 +197,22 @@ const RULES = {
     },
     text: (i, o, b) => `Edited payment ${b ? `${peso(b.amount)} → ${peso(i.amount)}` : peso(i.amount)}${b?.d !== (i.payment_date || null) && i.payment_date ? ` · date ${b?.d || 'empty'} → ${i.payment_date}` : ''} · ${b?.who || ''}`,
   },
+  add_payment_proof: {
+    area: 'Ledger', kind: 'edit',
+    before: async (i) => {
+      const p = await one('SELECT ledger_entry_id FROM ledger_payments WHERE id = ?', [num(i.payment_id)]);
+      return p ? ledgerWho(num(p.ledger_entry_id)) : '';
+    },
+    text: (i, o, b) => `Attached proof of payment "${String(i.file_name || 'file').slice(0, 80)}" · ${b || ''}`,
+  },
+  delete_payment_proof: {
+    area: 'Ledger', kind: 'delete',
+    before: async (i) => {
+      const f = await one('SELECT f.file_name, p.ledger_entry_id FROM payment_proofs f JOIN ledger_payments p ON p.id = f.payment_id WHERE f.id = ?', [num(i.id)]);
+      return f ? { name: f.file_name, who: await ledgerWho(num(f.ledger_entry_id)) } : null;
+    },
+    text: (i, o, b) => `Removed proof of payment ${b ? `"${b.name}" · ${b.who}` : `#${i.id}`}`,
+  },
   delete_payment: {
     area: 'Ledger', kind: 'delete',
     before: async (i) => {

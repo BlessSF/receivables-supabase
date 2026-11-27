@@ -2458,3 +2458,16 @@ table:has(.xtra-cell) thead th:nth-child(8) { box-shadow: inset 1px 0 0 #cfdcd9,
 
 /* Ledger: note on entries that were settled earlier */
 .settled-note { font-size: .86em; color: var(--slate); white-space: nowrap; border-bottom: 1px dotted var(--line-strong); cursor: help; }
+
+/* Payments popup: proof of payment (photo / PDF) */
+.pm-proof-list { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.pm-proof { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #e6f1ef; color: #0d6048; border: 1px solid #b6d9d1; font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.pm-proof:hover { background: #d3e9e4; }
+.pm-proof-box { margin-top: 14px; padding: 12px 14px; border: 1px dashed #b9c6cc; border-radius: 10px; background: #fafcfc; }
+.pm-proof-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid #eef1f3; font-size: 13px; }
+.pm-proof-row > :first-child { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
+.pm-proof-row span { color: var(--slate); font-size: 12px; }
+.pm-proof-row.is-new .pm-proof-new { color: var(--ink); font-weight: 600; }
+.pm-proof-pick { margin-top: 10px; cursor: pointer; }
+.pm-sheet td.txt { text-align: left; font-size: 13px; overflow-wrap: anywhere; width: 38%; }
+.pm-sheet td.txt a { color: #0645ad; }
