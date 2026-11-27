@@ -338,8 +338,8 @@ export default function Ledger() {
       Math.max(tw('0'.repeat(11)), rows.reduce((m, r) => Math.max(m, ...(r.pay_amounts || []).map((a) => tw(money(a)) + (r.pay_amounts.length > 1 ? tw('2nd ') : 0))), 0)) + CELL + 6, // Amount Received (one line per payment)
       balanceW + CELL,
       Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
-      Math.max(tw('Unpaid') + 46, rows.reduce((m, r) => (Number(r.rebate) > 0.009 ? Math.max(m, tw(`Settled ${peso(r.rebate)}`)) : m), 0) + 40, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
-      tw('+ Proof') + tw('Photo') * 2 + 60,                                   // Proof (links + upload button)
+      Math.max(tw('Unpaid') + 86, rows.reduce((m, r) => (Number(r.rebate) > 0.009 ? Math.max(m, tw(`Settled ${peso(r.rebate)}`)) : m), 0) + 40, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
+      tw('+ Proof') + tw('Photo') * 2 + 90,                                   // Proof (links + upload button)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
     ].map((px, i) => Math.max(px, headerMin[i]));

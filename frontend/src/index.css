@@ -2479,3 +2479,9 @@ table:has(.xtra-cell) thead th:nth-child(10) { box-shadow: inset 1px 0 0 #cfdcd9
 .proof-add { border: 1px dashed #9fbab6; background: #fff; color: var(--teal-strong, #0d5a52); border-radius: 999px; padding: 2px 9px; font-size: .82em; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .proof-add:hover:not(:disabled) { background: #f0f8f6; }
 .proof-err { color: var(--brick, #b3261e); flex-basis: 100%; }
+
+/* Ledger: Paid Status badge never cut off; Proof button easy to see and click */
+.ledger-table .badge.ic-unpaid, .ledger-table .badge.ic-paid { white-space: nowrap; overflow: visible; padding-right: 14px; }
+.proof-add { border: 1.5px solid var(--teal); background: var(--teal); color: #fff; padding: 6px 14px; font-size: .95em; min-height: 32px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.proof-add:hover:not(:disabled) { background: var(--teal-strong, #0d5a52); }
+.proof-chip { padding: 5px 12px; font-size: .92em; }
