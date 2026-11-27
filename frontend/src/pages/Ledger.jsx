@@ -368,7 +368,7 @@ export default function Ledger() {
     // A column is never narrower than the longest word of its header
     ctx.font = `600 ${BASE_FONT * 0.9}px ${fam}`;
     const HEADERS = ['Billing Date', 'Covered Period', 'SOA #', 'Amount', 'Net Amount Processed', 'Total Tax', 'Tax', 'Discount', 'Concern Amount', 'Provider Excess', 'Total', 'Receivable',
-      'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Proof', 'Remarks', ...(canDelete ? ['Action'] : [])];
+      'Payment Date', 'Check Ref', 'Paid', 'Amount Received', 'Balance', 'Aging', 'Paid Status', 'Overpaid', 'Proof', 'Remarks', ...(canDelete ? ['Action'] : [])];
     const headerMin = HEADERS.map((h) => Math.max(0, ...h.split(' ').map((word) => ctx.measureText(word).width * SAFE)) + 22);
     ctx.font = `${BASE_FONT}px ${fam}`;
     return [
@@ -393,6 +393,7 @@ export default function Ledger() {
       balanceW + CELL,
       Math.max(tw('0,000 days'), tw('Not Yet Due'), tw('Overdue 90+')) * 1.2 + 70, // Aging badge (wide enough for "Not Yet Due" on one line)
       Math.max(tw('Unpaid') + 86, rows.reduce((m, r) => (Number(r.rebate) > 0.009 ? Math.max(m, tw(`Settled ${peso(r.rebate)}`)) : m), 0) + 40, rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(`Overpaid ${peso(r.variance)}`)) : m), 0) + 58), // Paid Status badge (an "Overpaid" flag sits under it)
+      Math.max(tw('Overpaid'), rows.reduce((m, r) => (r.variance > 0.009 ? Math.max(m, tw(peso(overNet(r)))) : m), 0)) + CELL + 10, // Overpaid (blank unless overpaid)
       tw('+ Proof') + tw('Photo') * 2 + 90,                                   // Proof (links + upload button)
       cap(widest('remarks', undefined, 'Remarks'), 14) + INPUT,
       ...(canDelete ? [58] : []),             // Delete button (Admin / Executive only)
@@ -549,6 +550,8 @@ export default function Ledger() {
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Billed</div><strong className="num">{peso(liveTotals.amount)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Paid</div><strong className="num totals-live">{peso(liveTotals.paid)}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Tax W/H</div><strong className="num totals-live">{peso(liveTotals.tax)}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Discounts</div><strong className="num totals-live">{peso(liveEntries.reduce((a, e) => a + (Number(e.disc_amount) || 0), 0))}</strong></div>
+              <div><div style={{ fontSize: 11, color: 'var(--slate)' }}>Overpaid</div><strong className="num totals-live">{peso(liveEntries.reduce((a, e) => a + (e.variance > 0.009 ? overNet(e) : 0), 0))}</strong></div>
               <div><div style={{ fontSize: 11, color: 'var(--teal)' }}>Outstanding</div><strong className="num totals-live" style={{ color: 'var(--teal)' }}>{peso(liveTotals.balance)}</strong></div>
             </div>
           </div>
@@ -772,6 +775,7 @@ export default function Ledger() {
                   <th className="text-right">Paid</th><th className="text-right">Amount Received</th><th className="text-right">Balance</th>
                   <th>Aging</th>
                   <th>Paid Status</th>
+                  <th className="text-right">Overpaid</th>
                   <th>Proof</th>
                   <th>Remarks</th>
                   {canDelete && <th className="text-center col-sticky-r">Action</th>}
@@ -779,7 +783,7 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={canDelete ? 22 : 21} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
+                  <tr><td colSpan={canDelete ? 23 : 22} className="empty-state">No ledger entries{staff ? '.' : ' — click "+ New Entry" to add one.'}</td></tr>
                 )}
                 {filtered.map((r, rowIdx) => (
                   <tr
@@ -891,7 +895,8 @@ export default function Ledger() {
                       : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
                         <span className="badge badge-success ic-paid" title="Balance is zero">Paid</span>
                         <SettledNote amount={r.rebate} />
-                        {r.variance > 0.009 && <span className="badge badge-warning ic-over" style={{ whiteSpace: 'nowrap' }} title="Net amounts processed are more than the SOA amount (same as the Excel's negative Remaining Balance). Fix the payment if it was typed wrong.">Overpaid {peso(overNet(r))}</span>}</div>}</td>
+                        </div>}</td>
+                    <td className="text-right num" style={{ fontWeight: 600, color: 'var(--amber, #b26a00)' }} title="Overpaid: all net amounts processed minus the SOA amount">{r.variance > 0.009 ? peso(overNet(r)) : ''}</td>
                     <td><ProofCell entry={r} staff={staff} canAdd={!!data?.payments_enabled} onDone={reload} /></td>
                     <td>{staff ? <div className="ro-cell">{r.remarks || '—'}</div> : <RemarksCell row={rowIdx} col={10} value={r.remarks} onSave={(v) => saveField(r.id, 'remarks', v)} />}</td>
                     {canDelete && <td className="text-center col-sticky-r cell-action"><button type="button" className="btn btn-danger btn-sm" style={{ width: 34, padding: 0, justifyContent: 'center' }} title="Delete entry" aria-label="Delete entry" onClick={() => deleteRow(r)}><TrashIcon /></button></td>}
