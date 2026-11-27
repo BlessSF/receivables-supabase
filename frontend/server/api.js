@@ -2204,7 +2204,17 @@ const actions = {
       const key = r.date ? (group === 'year' ? r.date.slice(0, 4) : group === 'month' ? r.date.slice(0, 7) : r.date) : 'No date';
       bySeries.set(key, round((bySeries.get(key) || 0) + r.amount, 2));
     }
-    const cs = [...byCompany.values()].sort((a, b) => b.total - a.total);
+    // every HMO / company charge is listed, the ones without a discount with 0 (so you can see who has none)
+    const allCo = await all(`SELECT c.id, c.name, c.account_type FROM companies c WHERE 1=1 ${bw}`, bp);
+    for (const co of allCo) {
+      const k = String(co.id);
+      if (byCompany.has(k)) continue;
+      const charge = co.account_type === 'CHARGE';
+      if ((type === 'hmo' && charge) || (type === 'charge' && !charge)) continue;
+      if (companyId && toInt(co.id) !== companyId) continue;
+      byCompany.set(k, { id: toInt(co.id), name: co.name, charge, total: 0, entries: 0 });
+    }
+    const cs = [...byCompany.values()].sort((a, b) => (b.total - a.total) || String(a.name).localeCompare(String(b.name)));
     const series = [...bySeries.entries()].map(([key, total]) => ({ key, total })).sort((a, b) => (a.key < b.key ? 1 : -1));
     return {
       ok: true,
