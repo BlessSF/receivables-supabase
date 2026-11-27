@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
       { to: '/billing', label: 'Billing', Icon: IconReceipt },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
+      { to: '/discounts', label: 'Discounts', Icon: IconCoins },
     ],
   },
   {
@@ -94,6 +95,7 @@ const STAFF_NAV_GROUPS = [
       { to: '/company-charges', label: 'Company Charges', Icon: IconCoins },
       { to: '/billing', label: 'Billing', Icon: IconReceipt },
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
+      { to: '/discounts', label: 'Discounts', Icon: IconCoins },
     ],
   },
 ];
@@ -118,6 +120,7 @@ const EXEC_NAV_GROUPS = [
     label: 'Accounts',
     items: [
       { to: '/ledger', label: 'Ledger', Icon: IconTable },
+      { to: '/discounts', label: 'Discounts', Icon: IconCoins },
     ],
   },
   {

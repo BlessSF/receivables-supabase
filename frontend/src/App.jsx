@@ -12,6 +12,7 @@ const loaders = {
   Summary: () => import('./pages/Summary'),
   Companies: () => import('./pages/Companies'),
   Ledger: () => import('./pages/Ledger'),
+  Discounts: () => import('./pages/Discounts'),
   Billing: () => import('./pages/Billing'),
   Hmos: () => import('./pages/Hmos'),
   CompanyCharges: () => import('./pages/CompanyCharges'),
@@ -44,6 +45,7 @@ const Dashboard = lazy(loaders.Dashboard);
 const Summary = lazy(loaders.Summary);
 const Companies = lazy(loaders.Companies);
 const Ledger = lazy(loaders.Ledger);
+const Discounts = lazy(loaders.Discounts);
 const Billing = lazy(loaders.Billing);
 const Hmos = lazy(loaders.Hmos);
 const CompanyCharges = lazy(loaders.CompanyCharges);
@@ -97,6 +99,7 @@ function GateInner({ maint, recheck }) {
     <Route key="charges" path="/company-charges" element={g('/company-charges', <CompanyCharges />)} />,
     <Route key="billing" path="/billing" element={g('/billing', <Billing />)} />,
     <Route key="ledger" path="/ledger" element={g('/ledger', <Ledger />)} />,
+    <Route key="discounts" path="/discounts" element={g('/discounts', <Discounts />)} />,
     <Route key="aging" path="/aging" element={g('/aging', <Aging />)} />,
     <Route key="pastdue" path="/past-due" element={g('/past-due', <PastDue />)} />,
     <Route key="combined" path="/combined" element={g('/combined', <Combined />)} />,
@@ -166,6 +169,7 @@ function GateInner({ maint, recheck }) {
           <Route path="/company-charges" element={g("/company-charges", <CompanyCharges />)} />
         <Route path="/billing" element={g("/billing", <Billing />)} />
         <Route path="/ledger" element={g("/ledger", <Ledger />)} />
+        <Route path="/discounts" element={g("/discounts", <Discounts />)} />
         <Route path="/aging" element={g("/aging", <Aging />)} />
         <Route path="/past-due" element={g("/past-due", <PastDue />)} />
         <Route path="/combined" element={g("/combined", <Combined />)} />

@@ -33,16 +33,16 @@ const sum = (rows, key) => rows.reduce((t, r) => t + toFloat(r[key]), 0);
 
 // Sidebar pages a role may be given (Settings > Users > Sidebar access). Admin always sees everything.
 // A role can only be switched on/off inside its own list; pages outside it stay closed for that role.
-const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/aging', '/past-due', '/soa-tracker', '/monitoring',
+const NAV_PAGES = ['/', '/summary', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger', '/discounts', '/aging', '/past-due', '/soa-tracker', '/monitoring',
   '/payables/cash-position', '/payables/main', '/payables/running', '/payables/pdc', '/payables/record', '/payables/titles', '/combined'];
 // '/combined' (HMO across both branches) is only for Admin and Accounting.
 const NAV_NO_COMBINED = NAV_PAGES.filter((p) => p !== '/combined');
 // Payables pages start switched OFF for every role except Admin until Admin / Executive ticks them.
-const NAV_DEFAULT_OFF = NAV_PAGES.filter((p) => p.startsWith('/payables'));
+const NAV_DEFAULT_OFF = NAV_PAGES.filter((p) => p.startsWith('/payables') || p === '/discounts'); // Discounts: Admin ticks it per role (Users > Sidebar access)
 // Every role can be given every page. NAV_DEFAULT is what a role has until Admin / Executive changes it.
 const NAV_BASE = { accounting: NAV_PAGES, branch: NAV_NO_COMBINED, staff: NAV_NO_COMBINED, executive: NAV_NO_COMBINED };
 const NAV_DEFAULT = {
-  accounting: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
+  accounting: NAV_PAGES.filter((p) => !NAV_DEFAULT_OFF.includes(p) || p === '/discounts'),
   branch: NAV_NO_COMBINED.filter((p) => !NAV_DEFAULT_OFF.includes(p)),
   staff: ['/', '/reports-by-month', '/companies', '/hmos', '/company-charges', '/billing', '/ledger'],
   executive: ['/', '/summary', '/past-due', '/aging', '/reports-by-month', '/ledger', '/payables/cash-position'],
@@ -57,6 +57,7 @@ const NAV_PAGE_ACTIONS = {
   '/company-charges': ['get_companies'],
   '/billing': ['get_billing', 'save_billing', 'parse_soa', 'post_billing', 'get_settings', 'get_companies'],
   '/ledger': ['get_ledger', 'inline_update_ledger', 'get_companies', 'get_payments', 'add_payment', 'update_payment', 'delete_payment', 'add_payment_proof', 'delete_payment_proof', 'get_payment_proof'],
+  '/discounts': ['get_discounts', 'get_companies'],
   '/aging': ['get_aging', 'get_companies'],
   '/past-due': ['get_past_due', 'get_companies'],
   '/soa-tracker': ['get_soa_tracker', 'soa_generate', 'soa_update_entry', 'soa_delete', 'soa_check', 'get_companies'],
@@ -2162,6 +2163,62 @@ const actions = {
     if (!name) jsonExit({ ok: false, error: 'Choose an HMO.' }, 400);
     if (await isExcludedHmo(name)) jsonExit({ ok: false, error: 'This HMO is hidden from this page.' }, 400);
     return { ok: true, data: await combinedReport(name, trim(input.from ?? ''), trim(input.to ?? '')) };
+  },
+
+  // Discounts: the Disc amounts of the ledger, per HMO / Company Charge and per day, month or year.
+  // The date of a discount is the entry's payment date (its billing date while nothing is paid yet).
+  async get_discounts(input, auth) {
+    const [bw, bp] = branchWhere(auth, 'c');
+    const rows = await all(
+      `SELECT l.id, l.company_id, l.soa_number, l.disc_amount, l.payment_date, l.billing_date, c.name AS company_name, c.account_type
+       FROM ledger_entries l JOIN companies c ON c.id = l.company_id
+       WHERE l.disc_amount > 0.004 ${bw}`, bp);
+    const iso = (v) => {
+      const t = trim(v ?? '');
+      if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+      const d = t ? new Date(t) : null;
+      return d && !Number.isNaN(d.getTime()) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+    };
+    const from = iso(input.from), to = iso(input.to);
+    const type = ['hmo', 'charge'].includes(input.type) ? input.type : 'all';
+    const group = ['day', 'month', 'year'].includes(input.group) ? input.group : 'month';
+    const companyId = toInt(input.company_id);
+    const list = [];
+    for (const r of rows) {
+      const d = iso(r.payment_date) || iso(r.billing_date);
+      if (from && (!d || d < from)) continue;
+      if (to && (!d || d > to)) continue;
+      const charge = r.account_type === 'CHARGE';
+      if (type === 'hmo' && charge) continue;
+      if (type === 'charge' && !charge) continue;
+      if (companyId && toInt(r.company_id) !== companyId) continue;
+      list.push({ id: toInt(r.id), company_id: toInt(r.company_id), company_name: r.company_name, charge, soa_number: r.soa_number, date: d, amount: toFloat(r.disc_amount) });
+    }
+    const byCompany = new Map();
+    const bySeries = new Map();
+    for (const r of list) {
+      const k = String(r.company_id);
+      const cur = byCompany.get(k) || { id: r.company_id, name: r.company_name, charge: r.charge, total: 0, entries: 0 };
+      cur.total = round(cur.total + r.amount, 2); cur.entries += 1;
+      byCompany.set(k, cur);
+      const key = r.date ? (group === 'year' ? r.date.slice(0, 4) : group === 'month' ? r.date.slice(0, 7) : r.date) : 'No date';
+      bySeries.set(key, round((bySeries.get(key) || 0) + r.amount, 2));
+    }
+    const cs = [...byCompany.values()].sort((a, b) => b.total - a.total);
+    const series = [...bySeries.entries()].map(([key, total]) => ({ key, total })).sort((a, b) => (a.key < b.key ? 1 : -1));
+    return {
+      ok: true,
+      data: {
+        total: round(list.reduce((t, r) => t + r.amount, 0), 2),
+        count: list.length,
+        hmo_total: round(cs.filter((x) => !x.charge).reduce((t, x) => t + x.total, 0), 2),
+        charge_total: round(cs.filter((x) => x.charge).reduce((t, x) => t + x.total, 0), 2),
+        hmos: cs.filter((x) => !x.charge),
+        charges: cs.filter((x) => x.charge),
+        series, group,
+        entries: list.sort((a, b) => (a.date < b.date ? 1 : -1)),
+      },
+    };
   },
 
   async get_past_due(input, auth) {

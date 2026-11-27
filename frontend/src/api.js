@@ -118,6 +118,7 @@ export const api = {
   saveCombinedExcluded: (scopes) => call('save_combined_excluded', { method: 'POST', body: { scopes } }),
   getCombinedHmo: (name, from, to) => call('get_combined_hmo', { params: { name, from: from || '', to: to || '' } }),
   getMonthlyReport: (params) => call('get_monthly_report', { params }),
+  getDiscounts: (params) => call('get_discounts', { params }),
 
   // soa tracker
   getSoaTracker: (prefix) => call('get_soa_tracker', { params: { prefix } }),
